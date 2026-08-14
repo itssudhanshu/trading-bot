@@ -1,0 +1,14 @@
+# Raw NSE payloads: 293MB and growing, refetchable via backfill.py.
+# The manifests are what make a backtest reproducible, not the bytes.
+data/raw/
+data/journal.db
+data/cron.log
+
+# Keep: holidays.json and judge_ledger.json are derived state that must not be
+# silently regenerated -- the ledger is the audit trail of holdout consultations.
+!data/holidays.json
+!data/judge_ledger.json
+
+__pycache__/
+*.pyc
+.venv/
