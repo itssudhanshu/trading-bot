@@ -136,6 +136,19 @@ def stop_fill(stop: float, bar) -> float | None:
     return min(stop, bar.open)
 
 
+def target_fill(target: float, bar) -> float | None:
+    """Limit sell at `target`. A gap ABOVE the target fills at the open, which
+    is BETTER -- the favourable mirror of stop_fill. Modelling this as a fill at
+    exactly `target` understates winners as surely as filling stops at `stop`
+    overstates them; both errors must be corrected or the asymmetry is fake.
+    """
+    if bar.high == bar.low:
+        return None
+    if bar.high < target:
+        return None
+    return max(target, bar.open)
+
+
 class Journal:
     """Append-only. Rejections are logged too -- they are the training signal
     for the generator and the only record of what the gate actually blocked."""
@@ -231,6 +244,11 @@ def _selftest():
     assert stop_fill(90, bar(95, 96, 88, 89)) == 90           # trades down -> stop
     assert stop_fill(90, bar(85, 87, 84, 86)) == 85           # gaps below -> open, worse
     assert stop_fill(90, bar(95, 96, 91, 92)) is None         # never hit
+
+    assert target_fill(130, bar(125, 132, 124, 131)) == 130   # trades up -> target
+    assert target_fill(130, bar(135, 138, 134, 137)) == 135   # gaps above -> open, better
+    assert target_fill(130, bar(120, 128, 119, 127)) is None  # never reached
+    assert target_fill(130, bar(131, 131, 131, 131)) is None  # locked
 
     # --- costs: asymmetric, buy pays stamp duty ----------------------------
     c = Costs()
