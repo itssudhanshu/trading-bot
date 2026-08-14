@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""Pivot the date-major corpus into per-symbol series, plus the indicator
+primitives the strategy vocabulary is built from.
+
+Stdlib only -- 1.98M bars load in under 7s, so pandas would buy nothing here.
+
+Gaps are real: a symbol that did not trade on a date simply has no bar. Series
+are per-symbol and self-aligned, so indicators are computed over the bars that
+actually exist. A symbol that delists just stops -- which is the correct
+point-in-time behaviour and the reason this beats screening today's index.
+"""
+import statistics
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+
+import universe
+
+ROOT = Path(__file__).resolve().parent
+RAW = ROOT / "data" / "raw"
+
+
+@dataclass
+class Series:
+    symbol: str
+    days: list = field(default_factory=list)
+    open: list = field(default_factory=list)
+    high: list = field(default_factory=list)
+    low: list = field(default_factory=list)
+    close: list = field(default_factory=list)
+    volume: list = field(default_factory=list)
+    turnover: list = field(default_factory=list)
+    deliv_pct: list = field(default_factory=list)
+    surveillance_known: list = field(default_factory=list)
+
+    def __len__(self):
+        return len(self.days)
+
+    def index_of(self, day: date):
+        try:
+            return self.days.index(day)
+        except ValueError:
+            return None
+
+
+def trading_days(start=None, end=None):
+    days = sorted(date.fromisoformat(p.name) for p in RAW.iterdir()
+                  if p.is_dir() and (p / "bhavcopy_delivery.csv").exists())
+    return [d for d in days if (start is None or d >= start) and (end is None or d <= end)]
+
+
+def load_corpus(start=None, end=None, min_bars=200) -> dict:
+    """-> {symbol: Series}, chronological. Symbols with too little history are
+    dropped: an indicator seeded on 20 bars is noise, not signal."""
+    out = {}
+    for d in trading_days(start, end):
+        for sym, b in universe.load(d).items():
+            s = out.get(sym)
+            if s is None:
+                s = out[sym] = Series(symbol=sym)
+            s.days.append(d)
+            s.open.append(b.open)
+            s.high.append(b.high)
+            s.low.append(b.low)
+            s.close.append(b.close)
+            s.volume.append(b.volume)
+            s.turnover.append(b.turnover)
+            s.deliv_pct.append(b.deliv_pct)
+            s.surveillance_known.append(b.surveillance_known)
+    return {k: v for k, v in out.items() if len(v) >= min_bars}
+
+
+# --- indicator primitives -------------------------------------------------
+# All return a list aligned to the input, with None where there is not yet
+# enough history. Callers must treat None as "unknown", never as zero.
+
+def sma(xs, n):
+    out, run = [None] * len(xs), 0.0
+    for i, x in enumerate(xs):
+        run += x
+        if i >= n:
+            run -= xs[i - n]
+        if i >= n - 1:
+            out[i] = run / n
+    return out
+
+
+def ema(xs, n):
+    """Seeded with the SMA of the first n bars, then standard smoothing."""
+    out = [None] * len(xs)
+    if len(xs) < n:
+        return out
+    prev = sum(xs[:n]) / n
+    out[n - 1] = prev
+    k = 2.0 / (n + 1)
+    for i in range(n, len(xs)):
+        prev = xs[i] * k + prev * (1 - k)
+        out[i] = prev
+    return out
+
+
+def true_range(high, low, close):
+    out = [None] * len(high)
+    for i in range(len(high)):
+        if i == 0:
+            out[i] = high[i] - low[i]
+        else:
+            pc = close[i - 1]
+            out[i] = max(high[i] - low[i], abs(high[i] - pc), abs(low[i] - pc))
+    return out
+
+
+def atr(high, low, close, n=14):
+    """Wilder's smoothing, the standard for ATR-based stops."""
+    tr = true_range(high, low, close)
+    out = [None] * len(tr)
+    if len(tr) < n + 1:
+        return out
+    prev = sum(tr[1:n + 1]) / n
+    out[n] = prev
+    for i in range(n + 1, len(tr)):
+        prev = (prev * (n - 1) + tr[i]) / n
+        out[i] = prev
+    return out
+
+
+def rolling_max(xs, n):
+    """Trailing window INCLUDING the current bar. For a breakout test compare
+    against index i-1, or today's own high trivially satisfies it."""
+    return [max(xs[max(0, i - n + 1):i + 1]) if i >= n - 1 else None
+            for i in range(len(xs))]
+
+
+def rolling_min(xs, n):
+    return [min(xs[max(0, i - n + 1):i + 1]) if i >= n - 1 else None
+            for i in range(len(xs))]
+
+
+def zscore(xs, n):
+    """Trailing z-score ending at i. None when the window is flat (std 0),
+    because 'infinitely unusual' is not a useful signal."""
+    out = [None] * len(xs)
+    for i in range(n - 1, len(xs)):
+        w = xs[i - n + 1:i + 1]
+        sd = statistics.pstdev(w)
+        if sd > 0:
+            out[i] = (xs[i] - statistics.fmean(w)) / sd
+    return out
+
+
+def slope_up(xs, lookback):
+    """True where xs[i] > xs[i-lookback]. None-safe."""
+    out = [None] * len(xs)
+    for i in range(lookback, len(xs)):
+        a, b = xs[i], xs[i - lookback]
+        out[i] = (a > b) if (a is not None and b is not None) else None
+    return out
+
+
+def breadth(corpus, period=50) -> dict:
+    """Cross-sectional market health: fraction of symbols above their own EMA,
+    per date. This is the one measure that needs the whole universe at once --
+    exactly the access pattern a per-symbol data source cannot serve."""
+    above, total = {}, {}
+    for s in corpus.values():
+        e = ema(s.close, period)
+        for i, d in enumerate(s.days):
+            if e[i] is None:
+                continue
+            total[d] = total.get(d, 0) + 1
+            if s.close[i] > e[i]:
+                above[d] = above.get(d, 0) + 1
+    return {d: above.get(d, 0) / n for d, n in total.items() if n}
+
+
+def _selftest():
+    xs = [1, 2, 3, 4, 5, 6, 7, 8]
+    assert sma(xs, 3)[:3] == [None, None, 2.0], sma(xs, 3)[:3]
+    assert sma(xs, 3)[-1] == 7.0
+
+    e = ema(xs, 3)
+    assert e[:2] == [None, None] and e[2] == 2.0          # seed = mean(1,2,3)
+    assert abs(e[3] - (4 * 0.5 + 2.0 * 0.5)) < 1e-12      # k = 2/(3+1) = 0.5
+
+    h = [10, 11, 12, 11, 13]
+    l = [9, 10, 10, 9, 11]
+    c = [9.5, 10.5, 11.5, 10, 12.5]
+    tr = true_range(h, l, c)
+    assert tr[0] == 1                                     # first bar: h-l
+    assert tr[2] == max(12 - 10, abs(12 - 10.5), abs(10 - 10.5)) == 2.0
+
+    assert rolling_max([1, 5, 3, 2], 2) == [None, 5, 5, 3]
+    assert rolling_min([1, 5, 3, 2], 2) == [None, 1, 3, 2]
+
+    z = zscore([1, 1, 1, 1], 4)
+    assert z[-1] is None, "flat window must be None, not a divide-by-zero"
+    z2 = zscore([1, 2, 3, 10], 4)
+    assert z2[-1] > 1.0, z2
+
+    assert slope_up([1, 2, 3, 4], 2) == [None, None, True, True]
+    assert slope_up([4, 3, 2, 1], 2)[-1] is False
+
+    # ATR must be None until it has n+1 bars, never 0
+    a = atr(h, l, c, n=3)
+    assert a[:3] == [None, None, None] and a[3] is not None, a
+
+    # breadth over a 2-symbol toy corpus
+    d1, d2 = date(2024, 1, 1), date(2024, 1, 2)
+    up = Series("UP", [d1, d2], close=[1, 100])
+    dn = Series("DN", [d1, d2], close=[1, 1])
+    for s in (up, dn):
+        s.high, s.low, s.open = s.close, s.close, s.close
+    b = breadth({"UP": up, "DN": dn}, period=2)
+    assert b[d2] == 0.5, b                                 # one of two above EMA
+    print("features selftest ok")
+
+
+if __name__ == "__main__":
+    import sys
+    import time
+    if "--selftest" in sys.argv:
+        _selftest()
+    else:
+        t0 = time.time()
+        c = load_corpus()
+        print(f"{len(c)} symbols with >=200 bars, loaded in {time.time()-t0:.1f}s")
+        longest = max(c.values(), key=len)
+        print(f"longest series: {longest.symbol} ({len(longest)} bars)")
+        b = breadth(c)
+        recent = sorted(b)[-5:]
+        print("breadth (% above 50 EMA):")
+        for d in recent:
+            print(f"  {d}  {b[d]*100:5.1f}%")

@@ -90,8 +90,42 @@ def _ban_symbols(txt) -> set:
     return out
 
 
-def load(day: date) -> dict:
+_NON_EQUITY = None
+
+
+def non_equity_symbols() -> set:
+    """EQ-series symbols that are not operating companies -- ETFs, liquid funds,
+    index trackers. NSE lists them in EQ but omits them from the company master.
+
+    Derived from the newest snapshot holding equity_master.csv and applied to
+    every date. That is deliberately a denylist, not a company allowlist: a
+    company delisted in 2023 is absent from today's master AND today's bhavcopy,
+    so it never lands here. Requiring master membership instead would silently
+    delete every delisted name from history -- textbook survivorship bias.
+    """
+    global _NON_EQUITY
+    if _NON_EQUITY is not None:
+        return _NON_EQUITY
+    _NON_EQUITY = set()
+    for d in sorted((p for p in RAW.iterdir() if p.is_dir()), reverse=True):
+        master_f, bhav_f = d / "equity_master.csv", d / "bhavcopy_delivery.csv"
+        if not (master_f.exists() and bhav_f.exists()):
+            continue
+        master = {r["SYMBOL"].strip()
+                  for r in csv.DictReader(io.StringIO(master_f.read_text(errors="replace")))
+                  if r.get("SYMBOL")}
+        traded = {r["SYMBOL"].strip()
+                  for r in csv.DictReader(io.StringIO(bhav_f.read_text(errors="replace")),
+                                          skipinitialspace=True)
+                  if r.get("SYMBOL") and r.get("SERIES", "").strip() in TRADEABLE_SERIES}
+        _NON_EQUITY = traded - master
+        break
+    return _NON_EQUITY
+
+
+def load(day: date, exclude_non_equity=True) -> dict:
     """-> {symbol: Bar} for the given snapshot date."""
+    deny = non_equity_symbols() if exclude_non_equity else set()
     bhav = _read(day, "bhavcopy_delivery", "csv")
     if not bhav:
         return {}
@@ -106,7 +140,7 @@ def load(day: date) -> dict:
         row = {k.strip(): (v.strip() if isinstance(v, str) else v)
                for k, v in row.items() if k}
         sym, series = row.get("SYMBOL", ""), row.get("SERIES", "")
-        if series not in TRADEABLE_SERIES or not sym:
+        if series not in TRADEABLE_SERIES or not sym or sym in deny:
             continue
         bars[sym] = Bar(
             symbol=sym, day=day,
@@ -147,6 +181,9 @@ def _selftest():
             (snap / "fo_secban.csv").write_text(
                 "Securities in Ban For Trade Date 02-JAN-2026:\n1,BANNED\n")
 
+            # no equity_master.csv in this fixture -> denylist empty, nothing dropped
+            global _NON_EQUITY
+            _NON_EQUITY = None
             u = load(d)
             assert "T2TONLY" not in u, "BE series must be excluded"
             assert set(u) == {"GOOD", "FLAGGED", "BANNED"}, sorted(u)
@@ -169,6 +206,22 @@ def _selftest():
             old = load(d2)["OLD"]
             assert not old.surveillance_known, "backfilled bars must flag unknown surveillance"
             assert not old.restricted, "no known flags, but that is not the same as clean"
+
+            # with a company master present, EQ symbols missing from it are dropped
+            (snap / "equity_master.csv").write_text(
+                "SYMBOL,NAME OF COMPANY, SERIES\nGOOD,Good Ltd,EQ\n"
+                "FLAGGED,Flagged Ltd,EQ\nBANNED,Banned Ltd,EQ\n")
+            _NON_EQUITY = None
+            assert non_equity_symbols() == set(), "d has no ETFs beyond the master"
+            _NON_EQUITY = None
+            (snap / "bhavcopy_delivery.csv").write_text(
+                (snap / "bhavcopy_delivery.csv").read_text()
+                + "SOMEETF, EQ, 01-Jan-2026, 10, 10, 11, 9, 10, 10, 10, 100, 1.0, 5, 50, 50.0\n")
+            _NON_EQUITY = None
+            assert "SOMEETF" in non_equity_symbols(), "EQ symbol absent from master is not a company"
+            assert "SOMEETF" not in load(d), "non-company must be excluded from the universe"
+            assert "SOMEETF" in load(d, exclude_non_equity=False), "opt-out must still return it"
+            _NON_EQUITY = None
     finally:
         RAW = original
     print("universe selftest ok")

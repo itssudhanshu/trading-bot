@@ -14,6 +14,10 @@ ROOT = Path(__file__).resolve().parent
 
 # --- invariants: not tunable, not searchable -------------------------------
 MIN_RR = 3.0                  # asymmetric R:R floor
+# Targets built as entry + r*(entry-stop) recover a ratio of r only to within
+# float precision -- worst when (entry-stop) is small next to entry. Without
+# this tolerance a spec that asks for exactly 3.0 is rejected ~16% of the time.
+RR_EPS = 1e-9
 MAX_ADV_PARTICIPATION = 0.01  # never more than 1% of the day's traded value
 MAX_PORTFOLIO_HEAT = 0.06     # total open risk across all positions
 RISK_PER_TRADE = 0.005        # 0.5% of equity at risk per position
@@ -85,7 +89,7 @@ def gate(signal: Signal, bar, equity: float, open_risk: float) -> tuple[int, str
     """The invariants. Returns (qty, reject_reason); reason None means accepted."""
     if signal.risk_per_share <= 0:
         return 0, "stop_above_entry"
-    if signal.rr < MIN_RR:
+    if signal.rr < MIN_RR - RR_EPS:
         return 0, f"rr_below_{MIN_RR}"
     if bar.asm:
         return 0, f"asm:{bar.asm}"
@@ -189,6 +193,18 @@ def _selftest():
     assert abs(just_under.rr - 2.99) < 1e-9, just_under.rr
     assert gate(just_under, clean, eq, 0)[1] == "rr_below_3.0"
     assert gate(Signal("X", "vcp", 100, 90, 130), clean, eq, 0)[1] is None  # 3.00 passes
+
+    # Regression: targets built as entry + 3*(entry-stop) recover rr slightly
+    # under 3.0 when the stop is itself computed (swing_low - atr*mult), which
+    # carries its own dust. Real values from the 2022-2026 scan; without RR_EPS
+    # these 3R signals were rejected as "rr_below_3.0".
+    for e_, s_, t_ in [(267.51725, 245.78151627587297, 332.724451172381),
+                       (450.9004499999999, 409.18364660090975, 576.0508601972704),
+                       (2099.6975999999995, 1885.3288375577852, 2742.8038873266423)]:
+        built = Signal("X", "stage2", entry=e_, stop=s_, target=t_)
+        assert built.rr < MIN_RR, f"expected float dust, got {built.rr!r}"
+        assert gate(built, clean, eq, 0)[1] is None, \
+            f"float dust rejected a valid 3R: {built.rr!r}"
 
     # --- surveillance flags block regardless of how good the setup looks ----
     great = Signal("X", "vcp", entry=100, stop=90, target=200)
