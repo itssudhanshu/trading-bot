@@ -95,3 +95,82 @@ of a long list. That ordering is NOT evidence and must never be reported as a
 result -- it is the maximum of many trials on one dataset, which is precisely
 the quantity that overstates itself. Only the walk-forward folds, and finally a
 holdout consultation, carry inferential weight.
+## L8 — A longer horizon DOES rescue 3R reachability (strong) — resolves L1
+Across 91 evaluated specs, median target-hit rate by holding horizon:
+
+    hold=10 bars -> 0.5%    hold=20 -> 3.9%    hold=30 -> 5.2%
+    hold=45 bars -> 10.3%   hold=60 -> 15.0%
+
+Monotonic and steep. L1 concluded 3R was unreachable; it was unreachable **at
+30 bars**. The constraint was the horizon, not the R:R rule.
+
+**The tension, precisely stated:** 60 bars is ~12 weeks, double the persona's
+stated 3-day-to-6-week window. So the 1:3 R:R rule and the 6-week ceiling are
+jointly infeasible on NSE equities -- each is reasonable alone. Resolving it
+means extending the horizon past 6 weeks, or accepting a lower R:R. That is an
+operator decision; the generator cannot relax an invariant and must not try.
+
+## L9 — A position must be economically viable, not merely risk-sized (settled)
+The seed-42 search surfaced a spec reporting avgR -4.28 alongside POSITIVE
+Rs 987 expectancy. Both were computed correctly; the trades were nonsense.
+
+When the liquidity cap sizes a position down to a few shares, fixed brokerage
+(Rs 20/order, Rs 40 round trip) dwarfs the risk base. Real case: KOTAKMNC,
+risk/share Rs 0.94, qty 1, Rs 45 booked loss -> R = -47.7. Worst instance in
+that spec: R = -10,939.
+
+Added `MAX_COST_RATIO = 0.10` to the gate -- round-trip costs must stay under
+10% of the risk being taken. Effect on that spec: avgR -4.28 -> +0.25, R range
+collapsed from -10,939..+9.6 to -6.9..+9.6, 517 unviable trades removed.
+
+**One invariant killed three pathologies:** unviable sizing, illiquid
+instruments that escaped classification, and the R-multiple blow-ups they
+produced downstream. Prefer the invariant that makes a class of nonsense
+impossible over the filter that catches today's instance of it.
+
+## L10 — The non-equity denylist misses instruments that stopped trading (open)
+L3's denylist is (EQ symbols trading TODAY) minus (company master). An ETF that
+delisted before the master snapshot is present in historical bhavcopy, absent
+from today's bhavcopy, and therefore never denied. KOTAKMNC, ICICI5GSEC,
+ICICIINFRA and KOTAKCONS all reached the corpus this way.
+
+The asymmetry is structural: for a symbol absent from today's master we cannot
+tell a delisted COMPANY (must keep, or we get survivorship bias) from a delisted
+ETF (must drop). NSE publishes no point-in-time instrument classification.
+
+Largely neutralised by L9 -- these instruments are illiquid and now fail the
+viability gate regardless of classification. Proper fix is to snapshot an ETF
+list daily from today forward, accepting that history stays imperfect.
+
+## L11 — Search results are invalidated by any gate change (standing)
+`candidates.jsonl` is only valid for the gate that produced it. The L9 invariant
+changed which signals are admissible, so every prior result is stale and must be
+regenerated before it is read. Gate changes are not backward compatible; do not
+compare candidate runs across them.
+## L12 — Rank on portfolio-realizable expectancy, not unconstrained (settled)
+The seed-42 rerun surfaced specs with 11,252 and 17,856 instances over three
+years. Both cleared `MAX_SIGNALS_PER_SYMBOL_YEAR` (2.9/symbol-year, under the
+6.0 ceiling) yet generate ~6,000 signals a year.
+
+Capacity is the binding constraint: `MAX_PORTFOLIO_HEAT` 6% at
+`RISK_PER_TRADE` 0.5% permits 12 concurrent positions, which at a 30-bar hold
+is roughly 100 trades a year. A spec offering 6,000 exceeds capacity ~60x, so
+its unconstrained expectancy describes trades that could never have been taken,
+and the ones that WOULD be taken are an arbitrary chronological subset.
+
+`backtest.portfolio_path` now returns the admitted subset, and results carry
+`n_taken`, `capacity_ratio` and `portfolio_expectancy`. The generator ranks on
+portfolio expectancy.
+
+Instance count remains the EVIDENCE base (statistical power); portfolio
+expectancy is the RETURN estimate. Conflating the two is what let a spec with
+60x more signals than capacity reach the top of the table.
+
+## L13 — Gap detectors must not report known-absent data (settled)
+The first surveillance-gap report flagged 33 "unrecoverable" days -- the entire
+backfilled history, which never had ASM/GSM by design. A detector that fires on
+expected absence gets ignored, which costs more than having no detector.
+
+Anchored on the earliest `asm.json`: only days after collection began can be
+gaps. Applies generally -- alert on the difference between what SHOULD exist and
+what does, never on the difference between what you WANT and what exists.

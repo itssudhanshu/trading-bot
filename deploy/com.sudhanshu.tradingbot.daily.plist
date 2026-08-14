@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd replacement for the cron entry.
+
+  Why not cron: cron SKIPS a job entirely if the machine is asleep at the
+  scheduled time, with no catch-up. launchd runs a missed StartCalendarInterval
+  job on the next wake, coalescing multiple missed intervals into one run.
+
+  That difference is load-bearing here. NSE publishes ASM/GSM/F&O-ban state for
+  the current day only, so a session the machine slept through is a permanent
+  hole in the point-in-time record -- it cannot be backfilled at any price.
+
+  Install:
+    cp deploy/com.sudhanshu.tradingbot.daily.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.sudhanshu.tradingbot.daily.plist
+    crontab -l | grep -v trading-bot | crontab -      # drop the cron entry
+
+  Verify:  launchctl list | grep tradingbot
+  Logs:    tail -f ~/Documents/Repo/trading-bot/data/cron.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.sudhanshu.tradingbot.daily</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <!-- catchup first: recovers bhavcopy for any session that was missed, and
+         reports surveillance gaps that cannot be recovered -->
+    <string>/usr/local/bin/python3 snapshot.py &amp;&amp; /usr/local/bin/python3 snapshot.py --catchup &amp;&amp; /usr/local/bin/python3 runner.py</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/cron.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/cron.log</string>
+</dict>
+</plist>

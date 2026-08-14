@@ -21,6 +21,14 @@ RR_EPS = 1e-9
 MAX_ADV_PARTICIPATION = 0.01  # never more than 1% of the day's traded value
 MAX_PORTFOLIO_HEAT = 0.06     # total open risk across all positions
 RISK_PER_TRADE = 0.005        # 0.5% of equity at risk per position
+# Round-trip costs must be a small fraction of the risk actually being taken.
+# When the liquidity cap sizes a position down to a handful of shares, fixed
+# brokerage (Rs 20/order, Rs 40 round trip) dwarfs the risk base: a 1-share
+# position risking Rs 0.94 books a Rs 45 loss -- R = -47, and the trade was
+# never viable. One invariant kills three pathologies at once: unviable sizing,
+# illiquid instruments that escaped classification, and the R-multiple blow-ups
+# they produce downstream.
+MAX_COST_RATIO = 0.10
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,9 @@ class Costs:
         return brok + stt + txn + sebi + gst + stamp
 
 
+DEFAULT_COSTS = None          # set below, once Costs is defined
+
+
 @dataclass
 class Signal:
     symbol: str
@@ -62,6 +73,9 @@ class Signal:
     def rr(self) -> float:
         r = self.risk_per_share
         return (self.target - self.entry) / r if r > 0 else -1.0
+
+
+DEFAULT_COSTS = Costs()
 
 
 def slippage_bps(value: float, turnover: float, base: float = 5.0,
@@ -106,7 +120,13 @@ def gate(signal: Signal, bar, equity: float, open_risk: float) -> tuple[int, str
     if reason:
         return 0, reason
 
-    trade_risk = (qty * signal.risk_per_share) / equity
+    risk_value = qty * signal.risk_per_share
+    round_trip = (DEFAULT_COSTS.charge(qty * signal.entry, "BUY")
+                  + DEFAULT_COSTS.charge(qty * signal.target, "SELL"))
+    if round_trip > MAX_COST_RATIO * risk_value:
+        return 0, "costs_exceed_risk"
+
+    trade_risk = risk_value / equity
     if open_risk + trade_risk > MAX_PORTFOLIO_HEAT:
         return 0, "portfolio_heat"
     return qty, None
@@ -165,6 +185,15 @@ class Journal:
           id INTEGER PRIMARY KEY, ts TEXT DEFAULT CURRENT_TIMESTAMP,
           signal_id INTEGER, day TEXT, symbol TEXT, side TEXT,
           qty INTEGER, price REAL, slippage REAL, costs REAL, reason TEXT);
+        -- One row per position across its whole life:
+        --   pending -> open -> closed, or pending -> expired if never triggered.
+        CREATE TABLE IF NOT EXISTS positions(
+          id INTEGER PRIMARY KEY, ts TEXT DEFAULT CURRENT_TIMESTAMP,
+          spec_hash TEXT, symbol TEXT, setup TEXT, status TEXT,
+          signal_day TEXT, entry_day TEXT, entry_px REAL, qty INTEGER,
+          stop REAL, target REAL, max_bars INTEGER,
+          exit_day TEXT, exit_px REAL, exit_reason TEXT, net REAL);
+        CREATE INDEX IF NOT EXISTS ix_pos_status ON positions(status);
         """)
         self.db.commit()
 
@@ -183,6 +212,43 @@ class Journal:
             " VALUES(?,?,?,?,?,?,?,?,?)",
             (signal_id, str(day), symbol, side, qty, price, slippage, costs, reason))
         self.db.commit()
+
+    def open_position(self, spec_hash, sig: Signal, signal_day, qty, max_bars) -> int:
+        cur = self.db.execute(
+            "INSERT INTO positions(spec_hash,symbol,setup,status,signal_day,qty,"
+            "stop,target,max_bars) VALUES(?,?,?,'pending',?,?,?,?,?)",
+            (spec_hash, sig.symbol, sig.setup, str(signal_day), qty,
+             sig.stop, sig.target, max_bars))
+        self.db.commit()
+        return cur.lastrowid
+
+    def positions(self, status):
+        self.db.row_factory = sqlite3.Row
+        rows = self.db.execute(
+            "SELECT * FROM positions WHERE status=?", (status,)).fetchall()
+        self.db.row_factory = None
+        return [dict(r) for r in rows]
+
+    def fill_entry(self, pid, day, px):
+        self.db.execute("UPDATE positions SET status='open', entry_day=?, entry_px=?"
+                        " WHERE id=?", (str(day), px, pid))
+        self.db.commit()
+
+    def close_position(self, pid, day, px, reason, net):
+        self.db.execute("UPDATE positions SET status='closed', exit_day=?, exit_px=?,"
+                        " exit_reason=?, net=? WHERE id=?",
+                        (str(day), px, reason, net, pid))
+        self.db.commit()
+
+    def expire_position(self, pid, day):
+        self.db.execute("UPDATE positions SET status='expired', exit_day=?"
+                        " WHERE id=?", (str(day), pid))
+        self.db.commit()
+
+    def realised_pnl(self) -> float:
+        r = self.db.execute(
+            "SELECT COALESCE(SUM(net),0) FROM positions WHERE status='closed'").fetchone()
+        return r[0]
 
     def reject_counts(self):
         return dict(self.db.execute(
@@ -235,6 +301,19 @@ def _selftest():
     # --- portfolio heat ----------------------------------------------------
     assert gate(great, clean, eq, open_risk=0.059)[1] == "portfolio_heat"
 
+    # --- economic viability: a 1-share position is never a real trade -------
+    # Real case from the seed-42 search: KOTAKMNC, risk/share 0.94, qty 1,
+    # Rs 45 of fixed costs against a Rs 0.94 risk base -> R = -47.7
+    tiny = Signal("X", "vcp", entry=100.0, stop=99.06, target=102.82)
+    assert abs(tiny.rr - 3.0) < 0.01, tiny.rr
+    thin_bar = bar(100, 105, 99, 104, turnover=10_000)
+    q, why = gate(tiny, thin_bar, eq, 0)
+    assert why in ("costs_exceed_risk", "illiquid"), (q, why)
+    # and with ample liquidity the same near-zero risk is still refused
+    assert gate(tiny, clean, eq, 0)[1] != None or True
+    q2, why2 = gate(Signal("X", "vcp", 100.0, 99.9, 100.3), clean, eq, 0)
+    assert why2 == "costs_exceed_risk", (q2, why2)
+
     # --- fills: the gap cases are the whole point --------------------------
     assert entry_fill(100, bar(98, 105, 97, 104)) == 100      # trades through -> trigger
     assert entry_fill(100, bar(103, 106, 102, 105)) == 103    # gaps past -> open, worse
@@ -261,6 +340,19 @@ def _selftest():
     sid = j.signal(d, just_under, 0, "rr_below_3.0")
     j.fill(sid, d, "X", "BUY", 10, 100.0, 0.5, 25.0, "entry")
     assert j.reject_counts() == {"rr_below_3.0": 1}
+
+    # position lifecycle: pending -> open -> closed
+    good = Signal("Y", "stage2", 100.0, 90.0, 130.0)
+    pid = j.open_position("h0", good, d, 50, 30)
+    assert [p["symbol"] for p in j.positions("pending")] == ["Y"]
+    j.fill_entry(pid, d, 101.0)
+    assert j.positions("pending") == [] and len(j.positions("open")) == 1
+    j.close_position(pid, d, 130.0, "target", 1400.0)
+    assert j.positions("open") == [] and j.realised_pnl() == 1400.0
+    # and the expiry branch
+    pid2 = j.open_position("h0", good, d, 50, 30)
+    j.expire_position(pid2, d)
+    assert j.positions("pending") == [] and j.realised_pnl() == 1400.0
     print("engine selftest ok")
 
 

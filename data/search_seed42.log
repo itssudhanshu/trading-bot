@@ -1,2 +1,37 @@
 train corpus: 2072 symbols, through 2025-08-14 (holdout sealed from 2025-08-15)
-  10/200  {'evaluated': 5, 'too_few_instances': 4, 'too_frequent': 1}  122s
+  10/200  {'evaluated': 4, 'too_few_instances': 5, 'too_frequent': 1}  123s
+  20/200  {'evaluated': 8, 'too_few_instances': 10, 'too_frequent': 2}  207s
+  30/200  {'evaluated': 15, 'too_few_instances': 13, 'too_frequent': 2}  272s
+  40/200  {'evaluated': 19, 'too_few_instances': 19, 'too_frequent': 2}  378s
+  50/200  {'evaluated': 21, 'too_few_instances': 26, 'too_frequent': 3}  486s
+  60/200  {'evaluated': 25, 'too_few_instances': 31, 'too_frequent': 3, 'unreachable_target': 1}  541s
+  70/200  {'evaluated': 30, 'too_few_instances': 35, 'too_frequent': 4, 'unreachable_target': 1}  652s
+  80/200  {'evaluated': 36, 'too_few_instances': 39, 'too_frequent': 4, 'unreachable_target': 1}  688s
+  90/200  {'evaluated': 43, 'too_few_instances': 42, 'too_frequent': 4, 'unreachable_target': 1}  761s
+  100/200  {'evaluated': 47, 'too_few_instances': 46, 'too_frequent': 6, 'unreachable_target': 1}  782s
+  110/200  {'evaluated': 50, 'too_few_instances': 53, 'too_frequent': 6, 'unreachable_target': 1}  1121s
+  120/200  {'evaluated': 52, 'too_few_instances': 60, 'too_frequent': 6, 'unreachable_target': 2}  1136s
+  130/200  {'evaluated': 57, 'too_few_instances': 64, 'too_frequent': 6, 'unreachable_target': 3}  1176s
+  140/200  {'evaluated': 59, 'too_few_instances': 71, 'too_frequent': 7, 'unreachable_target': 3}  1234s
+  150/200  {'evaluated': 64, 'too_few_instances': 76, 'too_frequent': 7, 'unreachable_target': 3}  1258s
+  160/200  {'evaluated': 70, 'too_few_instances': 80, 'too_frequent': 7, 'unreachable_target': 3}  1349s
+  170/200  {'evaluated': 75, 'too_few_instances': 85, 'too_frequent': 7, 'unreachable_target': 3}  1399s
+  180/200  {'evaluated': 82, 'too_few_instances': 87, 'too_frequent': 8, 'unreachable_target': 3}  1517s
+  190/200  {'evaluated': 87, 'too_few_instances': 89, 'too_frequent': 11, 'unreachable_target': 3}  1546s
+  200/200  {'evaluated': 91, 'too_few_instances': 94, 'too_frequent': 12, 'unreachable_target': 3}  1600s
+
+screening outcomes: {'evaluated': 91, 'too_few_instances': 94, 'too_frequent': 12, 'unreachable_target': 3}
+generator yield: 91/200 = 45.5%
+
+top candidates by train expectancy (NOT evidence -- train only):
+  hash             setup               n  winR   avgR  tgt%    exp Rs
+  470bd9fec2e84b88 vcp              1704   44%  +0.57    3%    +2,834
+  2efaf2a22c2e0fa2 ema_pullback     11252   48%  +0.53   17%    +2,026
+  d12337899eb237fc vcp              3028   43%  +0.33   18%    +1,620
+  3eee003a8c065e5f vcp               419   56%  +0.29    2%    +1,446
+  1f29d887ec4be910 vcp               448   36%  +0.30   31%    +1,442
+  979dddc2a7abb6f0 ema_pullback     17856   32%  +0.28   29%    +1,259
+  10caa94eba6cb59a stage2_breakout   272   36%  +0.24   10%    +1,232
+  acad6c4d38924a4a vcp              1405   56%  +0.26    3%    +1,212
+  7cf3c44140243adf vcp               736   36%  +0.24   18%    +1,173
+  961f935334cd11da ema_pullback     5127   50%  +0.25    5%    +1,169

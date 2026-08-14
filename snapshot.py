@@ -136,9 +136,88 @@ def _selftest():
             assert m2["bhavcopy_delivery"]["status"] == 404, m2["bhavcopy_delivery"]
             assert not (RAW / hol.isoformat() / "bhavcopy_delivery.csv").exists(), \
                 "stale-dated bhavcopy stored under the wrong date"
+
+            # gap detection: a day with bhavcopy but no asm.json is an
+            # unrecoverable surveillance hole, not a missing-data problem
+            from datetime import timedelta
+            probe = date(2026, 8, 14) + timedelta(days=3)      # Mon 17 Aug
+            (RAW / "2026-08-14").mkdir(parents=True, exist_ok=True)
+            mb, ms = gaps(lookback_days=3, today=probe)
+            assert date(2026, 8, 14) not in mb, "day with bhavcopy is not missing"
+            assert date(2026, 8, 14) not in ms, "asm.json present, so no surv gap"
+            # a later day missing asm.json IS a gap, once collection has started
+            (RAW / "2026-08-18").mkdir(parents=True, exist_ok=True)
+            (RAW / "2026-08-18" / "bhavcopy_delivery.csv").write_bytes(good_bhav)
+            probe2 = date(2026, 8, 19)
+            mb2, ms2 = gaps(lookback_days=5, today=probe2)
+            assert date(2026, 8, 18) in ms2, "post-collection gap must be reported"
+            assert date(2026, 8, 18) not in mb2, "surveillance gap is not a bhavcopy gap"
+
+            # ...but a day BEFORE the first asm.json is backfill, not a gap
+            (RAW / "2026-08-10").mkdir(parents=True, exist_ok=True)
+            (RAW / "2026-08-10" / "bhavcopy_delivery.csv").write_bytes(good_bhav)
+            mb3, ms3 = gaps(lookback_days=12, today=probe2)
+            assert date(2026, 8, 10) not in ms3, \
+                "backfilled history predates collection; not a gap"
     finally:
         RAW = original
     print("selftest ok")
+
+
+def gaps(lookback_days=45, today=None):
+    """-> (missing_bhavcopy, missing_surveillance) over recent weekdays.
+
+    Bhavcopy gaps are recoverable -- NSE archives it. Surveillance gaps are NOT:
+    ASM/GSM/ban are published for the current day only, so a day the machine
+    slept through is gone permanently. The two are reported separately because
+    only one of them can be fixed.
+    """
+    from datetime import timedelta
+    today = today or date.today()
+    holidays = set()
+    hol_file = RAW.parent / "holidays.json"
+    if hol_file.exists():
+        holidays = set(json.loads(hol_file.read_text()))
+
+    # Backfilled history has no surveillance by design (NSE publishes today only),
+    # so absence before the collector's first run is expected, not a gap. Anchor
+    # on the earliest asm.json: a detector that cries wolf over known-missing data
+    # gets ignored, which costs more than not having it.
+    collected = [p.parent.name for p in RAW.glob("*/asm.json")]
+    since = min(collected) if collected else None
+
+    missing_bhav, missing_surv = [], []
+    for k in range(1, lookback_days + 1):
+        d = today - timedelta(days=k)
+        if d.weekday() >= 5 or d.isoformat() in holidays:
+            continue
+        day_dir = RAW / d.isoformat()
+        if not (day_dir / "bhavcopy_delivery.csv").exists():
+            missing_bhav.append(d)
+        elif since and d.isoformat() >= since and not (day_dir / "asm.json").exists():
+            # bhavcopy present so it WAS a trading day, but surveillance is absent
+            missing_surv.append(d)
+    return missing_bhav, missing_surv
+
+
+def catchup(lookback_days=45):
+    """Recover what can be recovered; report loudly what cannot."""
+    import backfill
+    missing_bhav, missing_surv = gaps(lookback_days)
+    if missing_bhav:
+        print(f"backfilling {len(missing_bhav)} missing bhavcopy days...")
+        backfill.backfill(min(missing_bhav), max(missing_bhav))
+        missing_bhav, missing_surv = gaps(lookback_days)
+
+    if missing_bhav:
+        print(f"still missing bhavcopy: {[str(d) for d in missing_bhav]}")
+    if missing_surv:
+        print(f"UNRECOVERABLE: {len(missing_surv)} trading days have no ASM/GSM/ban "
+              f"snapshot. Those days can never be used for point-in-time backtests.")
+        print(f"  {', '.join(str(d) for d in missing_surv[:10])}")
+    if not missing_bhav and not missing_surv:
+        print(f"no gaps in the last {lookback_days} days")
+    return missing_bhav, missing_surv
 
 
 def main():
@@ -146,10 +225,20 @@ def main():
     ap.add_argument("--date", type=date.fromisoformat, default=date.today())
     ap.add_argument("--force", action="store_true", help="refetch sources already stored")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--catchup", action="store_true",
+                    help="backfill recoverable gaps, report unrecoverable ones")
+    ap.add_argument("--gaps", action="store_true", help="report gaps, change nothing")
     a = ap.parse_args()
 
     if a.selftest:
         return _selftest()
+    if a.gaps:
+        mb, ms = gaps()
+        print(f"missing bhavcopy ({len(mb)}, recoverable): {[str(d) for d in mb[:10]]}")
+        print(f"missing surveillance ({len(ms)}, NOT recoverable): {[str(d) for d in ms[:10]]}")
+        return
+    if a.catchup:
+        return catchup()
 
     m = snapshot(a.date, force=a.force)
     for name in SOURCES:

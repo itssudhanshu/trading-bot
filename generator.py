@@ -223,13 +223,16 @@ def main():
     if not results:
         print("no spec survived screening")
         return
-    results.sort(key=lambda r: r["expectancy_after_costs"], reverse=True)
-    print(f"\ntop candidates by train expectancy (NOT evidence -- train only):")
-    print(f"  {'hash':16} {'setup':16} {'n':>4} {'winR':>5} {'avgR':>6} {'tgt%':>5} {'exp Rs':>9}")
+    # Ranked on PORTFOLIO expectancy: what the invariants would actually let you
+    # take. Unconstrained expectancy flatters specs that exceed capacity.
+    results.sort(key=lambda r: r["portfolio_expectancy"], reverse=True)
+    print(f"\ntop candidates by portfolio expectancy (NOT evidence -- train only):")
+    print(f"  {'hash':16} {'setup':16} {'inst':>6} {'taken':>6} {'cap':>5} "
+          f"{'avgR':>6} {'tgt%':>5} {'portExp':>9}")
     for r in results[:10]:
-        print(f"  {r['spec_hash']:16} {r['spec']['setup']:16} {r['n_trades']:>4} "
-              f"{r['win_rate']*100:>4.0f}% {r['avg_r']:>+6.2f} "
-              f"{r['target_hit_rate']*100:>4.0f}% {r['expectancy_after_costs']:>+9,.0f}")
+        print(f"  {r['spec_hash']:16} {r['spec']['setup']:16} {r['n_trades']:>6} "
+              f"{r['n_taken']:>6} {r['capacity_ratio']:>5.1f}x {r['avg_r']:>+6.2f} "
+              f"{r['target_hit_rate']*100:>4.0f}% {r['portfolio_expectancy']:>+9,.0f}")
 
 
 def _selftest():

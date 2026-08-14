@@ -114,11 +114,17 @@ def generate(spec, corpus, breadth, equity=1_000_000.0):
 
 
 def portfolio_path(trades, equity0=1_000_000.0):
-    """Sequential equity with heat and concurrency limits -> (curve, max_dd)."""
+    """Sequential equity with heat and concurrency limits.
+
+    -> (curve, max_dd, admitted). `admitted` is the subset actually takeable
+    under the invariants. For a spec generating more signals than the portfolio
+    has capacity for, unconstrained expectancy describes trades you could never
+    have taken -- the realizable number is computed over `admitted`.
+    """
     trades = sorted(trades, key=lambda t: t.entry_day)
     equity, peak, max_dd, curve = equity0, equity0, 0.0, []
     open_risk, open_by_day = 0.0, {}
-    held = set()
+    held, admitted = set(), []
     for t in trades:
         for d in [d for d in open_by_day if d <= t.entry_day]:
             r, sym = open_by_day.pop(d)
@@ -134,10 +140,11 @@ def portfolio_path(trades, equity0=1_000_000.0):
         peak = max(peak, equity)
         max_dd = max(max_dd, (peak - equity) / peak)
         curve.append((t.exit_day, equity))
-    return curve, max_dd
+        admitted.append(t)
+    return curve, max_dd, admitted
 
 
-def summarise(trades, curve_dd):
+def summarise(trades, curve_dd, admitted=None):
     if not trades:
         return {"n_trades": 0, "expectancy_after_costs": 0.0, "max_dd": 1.0}
     rs = [t.r for t in trades]
@@ -153,6 +160,12 @@ def summarise(trades, curve_dd):
         "avg_bars_held": statistics.fmean(t.bars_held for t in trades),
         "exits": {r: sum(1 for t in trades if t.exit_reason == r)
                   for r in ("stop", "target", "time")},
+        # What the portfolio could actually take. This is the number to rank on.
+        "n_taken": len(admitted) if admitted is not None else len(trades),
+        "capacity_ratio": (len(trades) / len(admitted)) if admitted else 1.0,
+        "portfolio_expectancy": (statistics.fmean(t.net for t in admitted)
+                                 if admitted else 0.0),
+        "portfolio_total": sum(t.net for t in admitted) if admitted else 0.0,
     }
 
 
@@ -178,8 +191,8 @@ def run(spec, corpus, breadth, equity=1_000_000.0):
     sigs = generate(spec, corpus, breadth, equity)
     hold = spec.get("hold", {}).get("max_bars", MAX_HOLD)
     trades = [t for t in (simulate(sig, s, i, q, hold) for i, s, sig, q in sigs) if t]
-    curve, dd = portfolio_path(trades, equity)
-    res = summarise(trades, dd)
+    curve, dd, admitted = portfolio_path(trades, equity)
+    res = summarise(trades, dd, admitted)
     res["n_signals"] = len(sigs)
     res["unfilled_or_open"] = len(sigs) - len(trades)
     return res, trades
@@ -238,10 +251,18 @@ def _selftest():
         assert gap >= 30, f"purge gap too small: {gap}"
 
     # portfolio must refuse to breach heat
-    big = [Trade("A%d" % k, days[0], days[0], days[20], 100, 101, 1000,
+    # 20 concurrent trades, each risking 1% of equity: the 6% heat ceiling
+    # admits ~6 of them, so capacity binds and the rest are never taken.
+    big = [Trade("A%d" % k, days[0], days[0], days[20], 100, 101, 100,
                  100.0, "target", 1000, 10, 990, 0.01, 5) for k in range(20)]
-    _, dd = portfolio_path(big, 1_000_000.0)
+    _, dd, adm = portfolio_path(big, 1_000_000.0)
     assert dd >= 0.0
+    assert len(adm) < len(big), "heat ceiling must refuse some of 20 concurrent trades"
+
+    # over-capacity: realizable expectancy is computed on the admitted subset
+    r = summarise(big, dd, adm)
+    assert r["n_taken"] == len(adm) and r["capacity_ratio"] > 1.0, r
+    assert r["n_trades"] == len(big), "instance count stays the evidence base"
     print("backtest selftest ok")
 
 
