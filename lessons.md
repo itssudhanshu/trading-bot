@@ -72,3 +72,26 @@ must not be quoted as results. Performance claims require the walk-forward
 harness, and a holdout consultation must be spent only on a spec that already
 survived train/val.
 
+## L6 — Selectivity needs an upper bound, not just a lower one (settled)
+The first search ranked an `ema_pullback` spec first on train expectancy:
+43,342 trades, +Rs 110/trade, from 400 symbols over 3 years -- 14% of all
+bar-opportunities, 36 signals per symbol per year.
+
+That is not a setup. With n that large a microscopic edge averages into a
+positive number and outranks every genuine candidate; the portfolio simulation
+would reject nearly all of it on heat and concurrency anyway, so the ranked
+figure describes a strategy that cannot be traded.
+
+L4 asked for specs "loose enough to be testable while still selective".
+Only the first half had been implemented. Added
+`MAX_SIGNALS_PER_SYMBOL_YEAR = 6.0`, screened before P&L like the lower bound.
+
+**General form:** every screen expressed as a floor needs its ceiling stated
+too, or the search walks to the boundary the floor does not defend.
+
+## L7 — The generator ranks on train expectancy, which is triage only (standing)
+`candidates.jsonl` is sorted by train expectancy so a human can look at the top
+of a long list. That ordering is NOT evidence and must never be reported as a
+result -- it is the maximum of many trials on one dataset, which is precisely
+the quantity that overstates itself. Only the walk-forward folds, and finally a
+holdout consultation, carry inferential weight.

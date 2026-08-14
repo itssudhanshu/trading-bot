@@ -55,7 +55,7 @@ class Trade:
     bars_held: int
 
 
-def simulate(sig, s, i, qty):
+def simulate(sig, s, i, qty, max_hold=MAX_HOLD):
     """Trade the signal from bar i. Entry attempted on i+1 only -- a stop order
     is good for the day; a signal that never triggers simply expires.
 
@@ -75,14 +75,14 @@ def simulate(sig, s, i, qty):
     risk = sig.entry - sig.stop
     entry_day = s.days[j]
 
-    for k in range(j, min(j + MAX_HOLD, len(s))):
+    for k in range(j, min(j + max_hold, len(s))):
         b = _B(s, k)
         px = engine.stop_fill(sig.stop, b)
         reason = "stop"
         if px is None:
             px = engine.target_fill(sig.target, b)
             reason = "target"
-        if px is None and k == j + MAX_HOLD - 1:
+        if px is None and k == j + max_hold - 1:
             px, reason = s.close[k], "time"
         if px is None:
             continue
@@ -176,7 +176,8 @@ def walk_forward_folds(days, n_folds=4, purge=MAX_HOLD):
 
 def run(spec, corpus, breadth, equity=1_000_000.0):
     sigs = generate(spec, corpus, breadth, equity)
-    trades = [t for t in (simulate(sig, s, i, q) for i, s, sig, q in sigs) if t]
+    hold = spec.get("hold", {}).get("max_bars", MAX_HOLD)
+    trades = [t for t in (simulate(sig, s, i, q, hold) for i, s, sig, q in sigs) if t]
     curve, dd = portfolio_path(trades, equity)
     res = summarise(trades, dd)
     res["n_signals"] = len(sigs)

@@ -1,0 +1,2 @@
+train corpus: 2072 symbols, through 2025-08-14 (holdout sealed from 2025-08-15)
+  10/200  {'evaluated': 5, 'too_few_instances': 4, 'too_frequent': 1}  122s

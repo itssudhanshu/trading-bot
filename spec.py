@@ -151,6 +151,7 @@ PREDICATES = {
     "surveillance_known":  (_p_surveillance_known, {}),
 }
 
+HOLD_RANGE = (5, 60)          # trading days; 60 ~= 12 weeks
 ENTRY_RULES = {"prior_high", "close"}
 STOP_RULES = {"swing_low", "atr"}
 TARGET_RULES = {"r_multiple", "prior_swing_high"}
@@ -183,6 +184,10 @@ def validate(spec: dict):
         rule = spec.get(key, {}).get("rule")
         if rule not in allowed:
             raise SpecError(f"{key}.rule {rule!r} not in {sorted(allowed)}")
+    hold = spec.get("hold", {}).get("max_bars")
+    lo, hi = HOLD_RANGE
+    if not isinstance(hold, int) or isinstance(hold, bool) or not (lo <= hold <= hi):
+        raise SpecError(f"hold.max_bars must be an int in [{lo}, {hi}], got {hold!r}")
     return True
 
 
@@ -248,6 +253,7 @@ STAGE2_BREAKOUT = {
     "entry": {"rule": "prior_high", "buffer_pct": 0.1},
     "stop": {"rule": "swing_low", "lookback": 10, "atr_mult": 0.5},
     "target": {"rule": "r_multiple", "r": 3.0},
+    "hold": {"max_bars": 30},
 }
 
 
@@ -262,6 +268,8 @@ def _selftest():
         ({**STAGE2_BREAKOUT, "conditions": [{"pred": "close_above_sma"}]}, "missing param"),
         ({**STAGE2_BREAKOUT, "target": {"rule": "moon"}}, "unknown target rule"),
         ({**STAGE2_BREAKOUT, "conditions": []}, "empty conditions"),
+        ({**STAGE2_BREAKOUT, "hold": {"max_bars": 500}}, "hold out of range"),
+        ({**STAGE2_BREAKOUT, "hold": {"max_bars": 30.5}}, "hold not an int"),
     ]:
         try:
             validate(bad)

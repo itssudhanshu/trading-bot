@@ -18,11 +18,16 @@ is. Enforced here by refusing to run if the holdout sits inside the repo.
 import hashlib
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 LEDGER = ROOT / "data" / "judge_ledger.json"
+
+# The sealed period. Nothing in the search path may load bars on or after this
+# date. True enforcement is filesystem separation at deploy time; in-tree this is
+# a constant plus an assertion in generator.py -- honour it.
+HOLDOUT_START = date(2025, 8, 15)
 
 BUDGET = 50          # lifetime holdout consultations
 MIN_TRADES = 30      # swing frequency is low; below this it is not evidence
