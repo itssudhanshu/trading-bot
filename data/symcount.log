@@ -1,0 +1,12 @@
+denylist: 340 symbols
+  300/1695 days
+  600/1695 days
+  900/1695 days
+  1200/1695 days
+  1500/1695 days
+
+days scanned           : 1695
+symbols seen           : 2888
+symbols with >=200 bars: 2486
+epoch 3 baseline       : 2486
+MATCH

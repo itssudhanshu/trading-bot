@@ -107,10 +107,9 @@ def non_equity_symbols() -> set:
     if _NON_EQUITY is not None:
         return _NON_EQUITY
     _NON_EQUITY = set()
-    for d in sorted((p for p in RAW.iterdir() if p.is_dir()), reverse=True):
+    d = master_snapshot()
+    if d is not None:
         master_f, bhav_f = d / "equity_master.csv", d / "bhavcopy_delivery.csv"
-        if not (master_f.exists() and bhav_f.exists()):
-            continue
         master = {r["SYMBOL"].strip()
                   for r in csv.DictReader(io.StringIO(master_f.read_text(errors="replace")))
                   if r.get("SYMBOL")}
@@ -119,8 +118,27 @@ def non_equity_symbols() -> set:
                                           skipinitialspace=True)
                   if r.get("SYMBOL") and r.get("SERIES", "").strip() in TRADEABLE_SERIES}
         _NON_EQUITY = traded - master
-        break
     return _NON_EQUITY
+
+
+def master_snapshot():
+    """-> newest snapshot dir holding BOTH equity_master.csv and a bhavcopy, or
+    None if no snapshot does.
+
+    Exposed so a caller building a CORPUS can refuse to proceed without it.
+    Absent the master, `non_equity_symbols` is empty and every ETF, liquid fund
+    and index tracker enters the universe -- silently, because an empty denylist
+    is indistinguishable from a denylist with nothing to say. `backfill.py`
+    fetches bhavcopy only, so a rebuilt machine hits exactly that (see L36).
+    Single-day `load()` keeps the permissive behaviour: it is used on fixtures
+    that legitimately have no master.
+    """
+    if not RAW.exists():
+        return None
+    for d in sorted((p for p in RAW.iterdir() if p.is_dir()), reverse=True):
+        if (d / "equity_master.csv").exists() and (d / "bhavcopy_delivery.csv").exists():
+            return d
+    return None
 
 
 def load(day: date, exclude_non_equity=True) -> dict:

@@ -50,9 +50,27 @@ def trading_days(start=None, end=None):
     return [d for d in days if (start is None or d >= start) and (end is None or d <= end)]
 
 
-def load_corpus(start=None, end=None, min_bars=200) -> dict:
+def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict:
     """-> {symbol: Series}, chronological. Symbols with too little history are
-    dropped: an indicator seeded on 20 bars is noise, not signal."""
+    dropped: an indicator seeded on 20 bars is noise, not signal.
+
+    Refuses to build a corpus with no non-equity denylist available. That state
+    is not visibly broken -- it loads, prints a plausible symbol count, and
+    quietly returns a different universe (2,740 symbols instead of 2,486, the
+    surplus being ETFs and liquid funds), so every downstream number is wrong
+    with nothing to show for it. See L36.
+    """
+    if require_master and universe.master_snapshot() is None:
+        raise RuntimeError(
+            "no snapshot holds equity_master.csv, so the non-equity denylist "
+            "would be empty and ETFs would silently enter the corpus. "
+            "backfill.py fetches bhavcopy only -- fetch EQUITY_L.csv into a "
+            "snapshot directory that also has a bhavcopy:\n"
+            "    python -c \"from snapshot import SOURCES, fetch, RAW; "
+            "s,b = fetch(SOURCES['equity_master'][0]); "
+            "(RAW/'<newest-day>'/'equity_master.csv').write_bytes(b)\"\n"
+            "Pass require_master=False only for a deliberately unfiltered load."
+        )
     out = {}
     for d in trading_days(start, end):
         for sym, b in universe.load(d).items():
@@ -293,6 +311,25 @@ def _selftest():
     assert strong.rs[20][-1] > weak.rs[20][-1], (strong.rs[20][-1], weak.rs[20][-1])
     assert strong.rs[20][-1] == 100.0, strong.rs[20][-1]   # top of two
     assert strong.rs[20][5] is None, "no rank before the lookback fills"
+
+    # --- a corpus must never be built without a non-equity denylist ----------
+    # The failure this guards is silent, not loud: an absent equity_master.csv
+    # yields an EMPTY denylist, and an empty denylist looks exactly like one
+    # with nothing to exclude. A rebuilt machine got 2,740 symbols instead of
+    # 2,486 and every downstream number moved with it (L36).
+    real = universe.master_snapshot
+    try:
+        universe.master_snapshot = lambda: None
+        try:
+            load_corpus()
+            raise AssertionError("load_corpus built a corpus with no denylist source")
+        except RuntimeError as e:
+            assert "equity_master" in str(e), e
+        # the opt-out must still work, for a deliberately unfiltered load
+        assert load_corpus.__defaults__[-1] is True, "require_master must default to on"
+    finally:
+        universe.master_snapshot = real
+
     print("features selftest ok")
 
 

@@ -1,0 +1,20 @@
+corpus 2019-10-01 .. 2026-08-14   1695 days
+train 885   holdout 491   purged 319
+
+  2019-H2     60d  flat  
+  2020-H1    122d  BEAR  
+  2020-H2    128d  BULL  HOLDOUT
+  2021-H1    122d  BULL  
+  2021-H2    125d  flat  
+  2022-H1    123d  BEAR  
+  2022-H2    124d  BULL  
+  2023-H1    122d  flat  HOLDOUT
+  2023-H2    123d  BULL  
+  2024-H1    120d  BULL  
+  2024-H2    126d  flat  
+  2025-H1    122d  BEAR  HOLDOUT
+  2025-H2    126d  BEAR  
+  2026-H1    119d  flat  HOLDOUT
+  2026-H2     33d  flat  
+
+holdout regime mix: {'BEAR': 1, 'flat': 2, 'BULL': 1}

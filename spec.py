@@ -10,6 +10,7 @@ Predicates return None when history is insufficient. None propagates to "no
 signal" -- unknown is never silently read as False, which would manufacture
 entries at the start of every series.
 """
+import collections
 import json
 
 import engine
@@ -19,15 +20,32 @@ import features
 class Ctx:
     """Memoised indicators for one symbol. Many specs over one symbol share work."""
 
+    # The memo is BOUNDED. Keys are (indicator, period) and the generator samples
+    # periods continuously, so almost every spec introduces new ones: an unbounded
+    # dict grows by ~117 MB per distinct key across a 2,486-symbol universe, and a
+    # 30-spec run exhausted a 6.9 GB machine before finishing a quarter of it.
+    #
+    # Eviction is numerically invisible -- an evicted array is recomputed to the
+    # same values. The cap only has to exceed one spec's working set, because
+    # signals_for walks every bar of a symbol for ONE spec before moving on. That
+    # working set is at most 8 keys, measured over the 400 specs of seed 31, so 16
+    # never evicts inside a spec; it drops the previous spec's indicators instead.
+    MEMO = 16
+
     def __init__(self, series, breadth=None):
         self.s = series
         self.breadth = breadth or {}
-        self._m = {}
+        self._m = collections.OrderedDict()
 
     def _get(self, key, fn):
-        if key not in self._m:
-            self._m[key] = fn()
-        return self._m[key]
+        m = self._m
+        if key in m:
+            m.move_to_end(key)
+            return m[key]
+        v = m[key] = fn()
+        if len(m) > self.MEMO:
+            m.popitem(last=False)          # least recently used
+        return v
 
     def sma(self, n):   return self._get(("sma", n), lambda: features.sma(self.s.close, n))
     def ema(self, n):   return self._get(("ema", n), lambda: features.ema(self.s.close, n))
@@ -378,6 +396,25 @@ def _selftest():
 
     # spec must survive a JSON round-trip -- the judge hashes it
     assert json.loads(json.dumps(STAGE2_BREAKOUT)) == STAGE2_BREAKOUT
+
+    # --- the memo is bounded, and bounding it changes no number ---------------
+    # An unbounded memo is what exhausted memory: ~117 MB per distinct
+    # (indicator, period) across the real universe. Eviction must be invisible.
+    c = Ctx(s)
+    first = c.sma(20)[-1]
+    for period in range(21, 21 + Ctx.MEMO * 3):      # force many evictions
+        c.sma(period)
+    assert len(c._m) <= Ctx.MEMO, f"memo unbounded: {len(c._m)} entries"
+    assert ("sma", 20) not in c._m, "LRU did not evict the oldest key"
+    assert c.sma(20)[-1] == first, "recomputed value differs after eviction"
+
+    # a spec's own working set must never evict inside that spec, or every bar
+    # recomputes: the cap is only safe while it exceeds what one spec touches
+    c = Ctx(s)
+    evaluate(STAGE2_BREAKOUT, c, n - 1)
+    touched = len(c._m)
+    assert touched <= Ctx.MEMO, f"one spec touches {touched} keys > cap {Ctx.MEMO}"
+
     print("spec selftest ok")
 
 

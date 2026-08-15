@@ -5,7 +5,7 @@ machine with no chat history, this file plus `lessons.md` is the context.
 `README.md` explains what the system is; this explains where it stands and what
 must not be broken.
 
-Last updated: 2026-08-15 (epoch 4 in flight)
+Last updated: 2026-08-15 (epoch 3 recovered and verified; epoch 4 not yet run)
 
 ---
 
@@ -16,7 +16,8 @@ Last updated: 2026-08-15 (epoch 4 in flight)
 | Corpus | 1,695 trading days · 2,486 symbols · 2019-10-01 → 2026-08-14 |
 | Modules | stdlib only, no pip install; every file has `--selftest` |
 | Vocabulary | 21 predicates, 6 setup families (`spec.py`) |
-| Lessons | 29 entries in `lessons.md`, each with evidence and sample size |
+| Lessons | 36 entries in `lessons.md`, each with evidence and sample size |
+| Trial pool | 193 Sharpes · `E[max SR]` 0.3215 · git-tracked (rule 0) |
 | Live paper trading | 0 closed trades — the runner works, the calendar is the limit |
 
 ### Holdout ledgers
@@ -81,35 +82,89 @@ would FAIL today's tightened criteria. See L27/L28.
    refetchable (`backfill.py`), so a fresh machine does not need the 449 MB of
    `data/raw` transferred -- only the days collected live are irreplaceable.
 
+   **Bhavcopy alone is not the corpus.** `backfill.py` fetches only bhavcopy.
+   The universe also needs `equity_master.csv` in the newest snapshot, or the
+   non-equity denylist is EMPTY and 254 ETFs and liquid funds enter the corpus
+   with no error at all -- 2,740 symbols where the real universe is 2,486, and
+   every number downstream moves with it (L36). `features.load_corpus` now
+   refuses to build a corpus without it. A rebuilt machine is not ready until
+   its search header prints `corpus 2486 symbols`.
+
 ---
 
 ## Where the work stopped
 
 Epoch 3 = the SAME holdout as epoch 2 with tightened criteria (L29), not a new
-holdout, so the ledger continues from 2/50. A 400-spec search (`seed 31`) was
-running at the time of writing; `data/search_epoch3.log` has its progress.
+holdout, so the ledger continues. Its 400-spec search (`seed 31`) completed and
+five candidates were judged; all five FAILED. The ledger stands at 7/50.
 
-### Epoch 4 (queued, requested)
+**Epoch 3 is recovered.** A throwaway smoke test had destroyed its 193 trial
+Sharpes (L32); re-running the deterministic seed reproduced them. Verified three
+independent ways, not assumed:
+
+  - 193 candidates, with the top-10 hashes and portfolio expectancies matching
+    `data/search_epoch3_redo.log` line for line
+  - the trial pool equals the recovered candidates' Sharpes exactly
+  - `E[max SR] = 0.3215` recomputed at N=193 -- the exact figure recorded above
+    for the near miss, to four decimals
+
+`data/trial_sharpes.json` and `data/candidates_seed31.jsonl` are both committed.
+
+### Epoch 4 (not yet run)
 
 Same holdout, same ledger. Differs in METHOD, not just seed:
-  - `cpcv.py` PBO over the candidate set -- measures whether the ranking
-    procedure generalises at all, independent of any single candidate
-  - `psearch.py` (3.8x) cross-checked against a serial run on a shared seed
-    BEFORE it produces anything that spends budget
-Runs after epoch 3's result is known, since that result may change what epoch 4
-should test.
+  - `cpcv.py` PBO over the candidate set -- already wired into
+    `validate.py --shortlist N`, which prints it below the promotion table
+  - `psearch.py` cross-checked by `xcheck.py` BEFORE it produces anything that
+    spends budget
+
+**Run it on the Mac.** This 6.9 GB Windows machine cannot. `psearch._init` has
+every worker call `features.load_corpus()` in full, so six workers want ~20 GB;
+and the serial path measured ~98 s/spec here against ~25 s/spec on the Mac,
+putting a 400-spec search at ~10 hours. Bounding the memo (L35) made the
+pipeline runnable here at all -- it did not make it fast.
 
 ### Next actions, in order
 
-1. `python3 validate.py --shortlist 30` when the search finishes.
-2. For anything promoted: holdout run with per-block breakdown, then
+0. On whatever machine runs it, confirm the header prints `corpus 2486
+   symbols`. Anything else means the non-equity denylist is missing and nothing
+   produced is comparable to any prior epoch (L36).
+1. `python3 xcheck.py` -- must print AGREE before psearch is trusted with
+   anything that spends budget.
+2. Back up `data/trial_sharpes.json`, then
+   `python3 generator.py -n 400 --seed 41 --parallel 6`.
+   Seed 41 is unused; 31 and 42 are spent. The run APPENDS to the trial pool,
+   and re-running any seed overwrites that seed's own `candidates_seed{N}.jsonl`
+   archive -- a case L32's mitigation does not cover, and one that already cost
+   the recovered set once during this session.
+3. `python3 validate.py --shortlist 30` -- promotion table, then PBO.
+   **If PBO > 0.5, stop.** The search is fitting noise and no candidate from it
+   is evidence, however good that candidate's own numbers look.
+4. For anything promoted: holdout run with per-block breakdown, then
    `judge.consult(...)` -- this spends budget and is irreversible.
-3. Report per-block, never a blended number. A total is not a finding when one
+5. Report per-block, never a blended number. A total is not a finding when one
    block supplies it.
 
-### The open decision that is not mine
+### The open decisions that are not mine
 
-`engine.MIN_RR = 3.0` has been implicated twice, independently:
+**`portfolio_path` drops concurrent positions that share an exit day** (L34).
+Two open positions with the same `exit_day` collide on a dict key; the second
+destroys the first, so its risk is never returned to the heat budget and its
+symbol is never released. The heat leak is monotonic for the rest of the run.
+
+The patch is two lines and a regression test, and it is deliberately NOT
+applied. Applying it changes `portfolio_expectancy` for every spec, which makes
+epoch 3 and epoch 4 incomparable -- the same standard set below for MIN_RR.
+Operator decision, 2026-08-15: document now, fix as a separate deliberate step.
+Epoch 4 must therefore run WITHOUT it, matching the recovered epoch 3 baseline.
+
+What it touches: the train ranking, the walk-forward promotion gates, and every
+holdout verdict recorded so far. What it does NOT touch: the trial pool and DSR,
+PBO block P&L, and every unconstrained statistic -- all computed over the full
+trade list rather than the admitted subset. The promotion gates fail
+conservatively; the expectancy figures move in no fixed direction.
+
+**`engine.MIN_RR = 3.0`** has been implicated twice, independently:
   - L8: a 3R target needs a ~60-bar horizon, double the stated 6-week ceiling
   - L20: it blocks mean reversion, the family best suited to the bear blocks
 
@@ -124,6 +179,21 @@ with a fresh holdout.
   More searching makes passing harder, not easier. That is correct behaviour.
 - `psearch.py` is 3.8x faster but has never produced a full production run.
   Cross-check it against a serial run on a shared seed before trusting output
-  that will spend budget.
+  that will spend budget. Note what `xcheck.py` actually compares: SIGNAL SETS
+  per spec. It does not compare `n_taken` or `portfolio_expectancy`, and those
+  DO differ between the serial and parallel paths -- `portfolio_path` sorts
+  trades by `(entry_day, -rank_score)` with a stable sort, so tied trades keep
+  input order, and the parallel merge orders them differently. AGREE from
+  xcheck means the signals match, not that the ranking will.
+
+- Re-running a seed overwrites that seed's own `candidates_seed{N}.jsonl`.
+  L32 added the archive so a DIFFERENT run could not clobber it; the same seed
+  still can, and did during the epoch 3 recovery session. Copy the recovered
+  artifacts outside the repo before re-running anything.
+
+- Anything that loads the corpus holds it in RAM for the whole run, and the
+  indicator memo adds ~117 MB per distinct (indicator, period) before L35's
+  bound. Budget ~3.5 GB for a bounded run; the unbounded version needed more
+  than 16 GB for 30 specs.
 - The two local fixes in the cloned `tradingview-mcp` (`src/core/pine.js`) are
   not upstream. `tv update` will clobber them; backup at `pine.js.bak`.

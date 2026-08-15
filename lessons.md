@@ -617,3 +617,177 @@ agreement across 6 specs including ones with 7,073 and 15,586 signals.
 Also fixed during integration: `backtest.run` regenerated every signal serially,
 discarding the speedup the parallel path had just paid for. It now accepts
 precomputed signals.
+
+## L34 — Positions sharing an exit day silently lose their risk release (open)
+`portfolio_path` tracked open positions in a dict keyed on exit day:
+
+    open_by_day[t.exit_day] = (risk_frac, t.symbol)
+
+Two positions open at once with the same exit day collide on that key. The
+second write destroys the first, so only one is ever popped: the lost position's
+risk is never returned to `open_risk`, and its symbol never leaves `held`. The
+heat budget leaks monotonically for the rest of the run, and that symbol is
+untradeable from then on.
+
+This is not an edge case. A spec with `hold.max_bars = N` that enters several
+positions on one day time-exits them all on the same bar.
+
+**Evidence.** Identical trades; the only difference is whether two ALREADY
+CLOSED positions shared an exit day:
+
+    distinct exit days: 5/6 later trades admitted
+    SHARED exit day   : 4/6 later trades admitted
+
+**Why the selftest missed it.** The fixture already builds 20 positions that all
+exit on `days[20]` -- exactly the colliding shape -- but asserts only
+`len(adm) < len(big)`, i.e. that the heat ceiling binds on ENTRY. Nothing enters
+after that date, so the book is never required to empty and the leak cannot be
+observed.
+
+**Blast radius.** Everything downstream of `admitted`: `portfolio_expectancy`
+(the train ranking), `validate.fold_stats` (`n_taken`, `exp`, `dd`, `capacity`
+-- the promotion gates), and `report.holdout_run` -> `stats(taken, ...)`, which
+is what the judge sees. All seven recorded verdicts rest on it. NOT affected:
+`trade_sharpe` and the trial pool, PBO block P&L, and every unconstrained
+statistic -- those are computed over the full trade list.
+
+Direction matters and is not uniform. The promotion GATES are conservative:
+leaked heat lowers `n_taken` into the 30-trade floor and inflates
+`capacity_ratio` into the 3.0x cap, so the bug rejects candidates rather than
+admitting them. The expectancy and return FIGURES move in no fixed direction,
+because which trades are admitted changes, not only how many.
+
+**Left unfixed deliberately.** The patch is two lines -- `setdefault(...)
+.append(...)` and a loop over the popped list -- plus a regression test. But
+applying it changes `portfolio_expectancy` for every spec and makes epoch 3 and
+epoch 4 incomparable, the same standard STATE.md sets for MIN_RR. Operator
+decision, 2026-08-15: document now, fix as a separate deliberate step. Epoch 4
+ran WITHOUT the fix, matching the recovered epoch 3 baseline.
+
+## L35 — An unbounded memo is a machine limit, not an optimisation (settled)
+`Ctx._m` memoised indicators per symbol on `(indicator, period)` with no cap,
+because "indicator cost is paid once for the whole search" is the right trade
+when memory is free. It is not free. The generator samples periods continuously,
+so nearly every spec introduces new keys, and one key costs
+
+    48.3 KB per array x 2,486 symbols = 117 MB
+
+A 30-spec `validate` run reached 3.9 GB and roughly four specs in 60 minutes on
+a 6.9 GB machine, paging throughout, and could not have finished. The 400-spec
+search needs an order of magnitude more. This never surfaced on the machine the
+code was written on.
+
+Fixed with a 16-entry LRU. Eviction is numerically invisible -- an evicted array
+recomputes to the same values -- and the cap only has to exceed ONE spec's
+working set, because `signals_for` walks every bar of a symbol for a single spec
+before moving on. That working set is at most 8 keys measured across the 400
+specs of seed 31, and bounded near 9 by construction (at most 6 conditions plus
+entry, stop and target indicators), so 16 never evicts inside a spec -- it drops
+the previous spec's indicators instead. Memory is bounded at ~1.8 GB.
+
+Verified numerically, not assumed -- and the first attempt was misleading.
+Re-running seed 31 serially under the LRU did NOT reproduce the recovered set:
+5 of 12 specs differed. Every differing field was an output of `portfolio_path`,
+while every indicator-derived statistic matched exactly. The recovered set came
+from the PARALLEL path and the check was serial, so two variables moved at once
+and the newly added one looked guilty. That is L37, not this.
+
+Isolated properly, with one variable:
+  - all 9 indicators x 8 periods recomputed under `MEMO=1`, so every single call
+    evicts: 151,200 list elements compared, zero mismatches
+  - a 40-spec search over identical data, `MEMO=16` vs unbounded: 54 fields
+    compared across every evaluated spec, zero differences
+
+The memoised functions are pure functions of the series, so an evicted array
+recomputes to the same values by construction. The tests confirm the code
+matches that reasoning; they are not the reason to believe it.
+
+**General form:** a cache with no eviction policy is a memory leak with good
+manners. It is invisible on the machine it was written on and fatal on a smaller
+one, and "compute it once" stops being an optimisation the moment the working
+set stops fitting in RAM.
+
+## L36 — A refetched corpus is not the same corpus (settled)
+Rule 6 says bhavcopy history is refetchable, so a fresh machine does not need
+`data/raw` transferred. That is true of bhavcopy and false of the corpus.
+
+`backfill.py` fetches ONE file per day, `bhavcopy_delivery.csv`. The universe
+also depends on `equity_master.csv`, which `non_equity_symbols()` uses to build
+the non-equity denylist -- ETFs, liquid funds, index trackers, all listed in the
+EQ series and none of them companies. It looks for the newest snapshot holding
+BOTH that master and a bhavcopy. A backfilled machine has no master in any
+snapshot, so the loop falls through and the denylist is the EMPTY SET.
+
+Nothing fails. The corpus loads, reports a plausible symbol count, and is wrong:
+
+    2,740 symbols   refetched, no master  <- 254 ETFs and funds
+    2,486 symbols   the real universe
+
+This is the ETF contamination 373a3b6 already fixed once, reintroduced through
+the data layer rather than the code.
+
+**How it was caught, which is the uncomfortable part.** Not by a test -- by the
+search header printing `corpus 2740 symbols` where every committed log said
+2486. Had the generator not printed that line, a full epoch would have run on a
+contaminated universe and produced entirely plausible candidates. The first
+suspect was the LRU of L35, which had just been introduced: two variables moved
+at once, and the innocent one looked guilty.
+
+**Fixed.** `universe.master_snapshot()` exposes the newest snapshot holding both
+files, and `features.load_corpus()` refuses to build a corpus when there is
+none, naming the missing file and the command that fetches it. Single-day
+`load()` keeps the permissive behaviour -- fixtures legitimately have no master,
+and the selftest asserts that path.
+
+**Rule 6 should read:** bhavcopy history is refetchable, and surveillance state
+is not; a rebuilt machine ALSO needs `equity_master.csv` in the newest snapshot
+before any corpus it builds is the same corpus.
+
+**General form:** an empty denylist and a denylist with nothing to exclude are
+the same value and opposite meanings. Every filter built from optional data
+needs to distinguish "nothing matched" from "nothing was loaded", or it degrades
+to permissive exactly when its input is missing -- and permissive failures do
+not announce themselves.
+
+## L37 — xcheck proves the signals agree, not that the ranking does (open)
+`xcheck.py` compares psearch against the serial path as SIGNAL SETS per spec,
+`{(symbol, bar_index)}`. It printed AGREE across 6 specs, and the signals really
+do agree. The RANKING does not.
+
+Re-running seed 31 serially and comparing against the committed recovered set,
+which came from the parallel path:
+
+    spec               n_taken        portfolio_expectancy
+    93bb7f49939203a6    93 -> 98      +1,668 -> -3
+    a27b6716e2cce8fe   119 -> 141        +12 -> +74
+    61d01392e9e6cee0    81 -> 91      +1,265 -> +1,857
+
+`n_trades`, `avg_r`, `win_rate`, `expectancy_after_costs` and `trade_sharpe` are
+identical in every case. Only `portfolio_path` outputs move. The LRU of L35 was
+in the serial run and was ruled out separately: forced eviction reproduces every
+indicator bit for bit.
+
+**Cause.** `portfolio_path` sorts on `(entry_day, -rank_score)` with Python's
+stable sort, so trades tied on both keys keep INPUT order -- and when
+`rank.by == "none"`, every same-day trade ties. Serial input order comes from
+iterating `corpus.items()`; the parallel path merges per-symbol partitions and
+produces a different order over the same set. Different order means different
+trades admitted once heat binds, and a different expectancy. The L34 exit-day
+collision amplifies it, since which position owns a colliding key is also an
+artifact of order.
+
+**Consequence.** `portfolio_expectancy` is the ranking metric and the promotion
+input, so the shortlist is path-dependent. Epoch 3's two runs disagree about
+their own top ten: `de68c9273654b3db`, which SPENT A BUDGET UNIT, is in the
+serial ranking and absent from the parallel one. The committed baseline is the
+parallel run, so epoch 4 must use `--parallel` to be comparable to it.
+
+Not affected: the trial pool. `trade_sharpe` is computed over all trades, so the
+DSR side of the ledger is path-independent, which is why the recovery verified
+exactly (`E[max SR]` 0.3215 at N=193) even though the rankings did not.
+
+**Open.** A deterministic total order -- appending `symbol` as a final tiebreak
+in the sort -- removes the ambiguity for one line of code. But it changes every
+existing `portfolio_expectancy`, carrying the same comparability cost as L34.
+Decide it together with L34, not separately: they touch the same function and
+would otherwise force two rounds of "every prior result is now incomparable".

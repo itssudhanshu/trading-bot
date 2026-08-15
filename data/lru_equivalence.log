@@ -1,0 +1,20 @@
+corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1, 2025-H1, 2026-H1)
+  10/20  {'evaluated': 6, 'too_few_instances': 3, 'unreachable_target': 1}  655s
+  20/20  {'evaluated': 12, 'too_few_instances': 6, 'too_frequent': 1, 'unreachable_target': 1}  1888s
+trial pool: +12 -> 205 cumulative
+
+screening outcomes: {'evaluated': 12, 'too_few_instances': 6, 'too_frequent': 1, 'unreachable_target': 1}
+generator yield: 12/20 = 60.0%
+
+top candidates by portfolio expectancy (NOT evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  e845d30a4f0ed110 rs_momentum       10520     83 126.7x  +0.25   31%    +2,988
+  31b003601fe658ac stage2_breakout     381     81   4.7x  +0.01   10%    +1,896
+  61d01392e9e6cee0 ema_pullback       1746     91  19.2x  +0.19   39%    +1,857
+  1750d0ebfc734347 stage2_breakout    2513     55  45.7x  -0.12    1%      +665
+  858b8d666040163d stage2_breakout    9189     70 131.3x  +0.18    7%      +481
+  0258abf922e2cc37 mean_reversion    13491     86 156.9x  +0.19    3%      +152
+  4a57723af33ef461 ema_pullback        250     76   3.3x  +0.10   18%      +142
+  a27b6716e2cce8fe mean_reversion    21111    141 149.7x  -0.08   17%       +74
+  93bb7f49939203a6 stage2_breakout   23291     98 237.7x  +0.06    1%        -3
+  0df1b58ff36eb061 vcp                 503    109   4.6x  -0.05    5%      -213
