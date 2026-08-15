@@ -791,3 +791,64 @@ in the sort -- removes the ambiguity for one line of code. But it changes every
 existing `portfolio_expectancy`, carrying the same comparability cost as L34.
 Decide it together with L34, not separately: they touch the same function and
 would otherwise force two rounds of "every prior result is now incomparable".
+## L38 — L37's real cause was a non-total sort key, not the heat leak (settled)
+Fixed L34 first (positions sharing an exit day now each release their risk;
+regression test verified by re-introducing the collision in a copy and watching
+it fire). Re-ran xcheck expecting the ranking divergence to disappear. It did
+not -- `n_taken` still differed by ONE trade.
+
+One trade is a tie-break, not a logic error. `portfolio_path` sorted on
+`(entry_day, -rank_score)`. Both tie constantly -- `rank: "none"` scores every
+trade 0.0 -- and Python's stable sort then falls back on INPUT order, which
+differs between the serial and parallel paths and between any two symbol
+iteration orders. The ordering was never total, so the admitted subset was never
+reproducible, and neither was any gate reading it.
+
+Fixed by adding `t.symbol` as a final tie-breaker. `xcheck` now agrees on
+signals AND ranking. The L34 leak amplified the symptom; it was not the cause.
+
+**Two lessons, and the second is the uncomfortable one.**
+- A comparison that passes tells you only what it compared. `xcheck` compared
+  signal SETS and printed AGREE while the rankings disagreed. It was not wrong,
+  it was narrow -- and its confident output made it look sufficient.
+- Fixing the first bug you find and assuming it explains the symptom is how the
+  second one survives. The heat leak was real, was mine, and was NOT the answer.
+
+## L39 — Prior results invalidated as measurements; budget stays spent
+L34 and L38 both change `portfolio_path`, which produces `n_taken`, `exp`, `dd`
+and `capacity` -- the promotion gates -- and `report.stats(taken, ...)`, which is
+exactly what the judge reads. Every number in epochs 2-4 was computed on that
+code. They are withdrawn as measurements and epochs 3-4 are being re-run.
+
+**The 7 consultations stay spent.** The hypotheses were tested against the
+holdout; that information leaked whether or not the arithmetic behind it was
+right. Refunding budget for a computation bug would let any future error buy
+back trials, which is precisely the accounting the budget exists to prevent.
+
+The trial pool IS reset and rebuilt: re-running seeds 31 and 41 tests the SAME
+hypotheses, so appending would double-count 395 specs and inflate E[max SR]
+against work never done. Backed up first -- L32 was learned the hard way.
+## L40 — The heat leak was suppressing the gates by ~6x (settled, quantified)
+Same seed, same signals, only `portfolio_path` fixed (L34 + L38):
+
+    median n_taken       ~50-90  ->  296
+    median capacity      40-100x ->  5.8x
+
+L34 predicted the direction -- leaked heat blocks later entries, so `n_taken`
+falls and `capacity_ratio` (instances/taken) inflates -- and said the gates were
+therefore CONSERVATIVE, rejecting candidates rather than admitting them. The
+magnitude was not predicted: roughly 6x on both.
+
+Every promotion decision in epochs 2-4 was made against gates reading those
+numbers. `MIN_TRADES_PER_FOLD = 30` on a suppressed `n_taken` and
+`MAX_CAPACITY_RATIO = 3.0` on an inflated ratio rejected specs that should have
+been evaluated. The recorded verdicts are not merely imprecise; a different set
+of candidates reached the judge at all.
+
+**Consequence for reading any earlier result:** "only N/4 folds had >=30 taken
+trades" and "capacity ratio 65x > 3.0x" were the two most common rejection
+reasons across every epoch. Both were the bug talking. The FAILs that cited
+expectancy, block consistency, PSR or DSR stand on firmer ground -- those are
+computed over the full trade list or the admitted subset's returns -- but any
+rejection whose stated reason was trade count or capacity should be treated as
+uninformative rather than as evidence against that spec.

@@ -1,0 +1,35 @@
+corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1, 2025-H1, 2026-H1)
+  signals generated in 2044s
+  25/400  {'evaluated': 13, 'too_few_instances': 9, 'too_frequent': 1, 'unreachable_target': 2}  2046s
+  50/400  {'evaluated': 26, 'too_few_instances': 19, 'too_frequent': 3, 'unreachable_target': 2}  2049s
+  75/400  {'evaluated': 37, 'too_few_instances': 31, 'too_frequent': 3, 'unreachable_target': 4}  2051s
+  100/400  {'evaluated': 52, 'too_few_instances': 39, 'too_frequent': 5, 'unreachable_target': 4}  2053s
+  125/400  {'evaluated': 68, 'too_few_instances': 47, 'too_frequent': 5, 'unreachable_target': 5}  2055s
+  150/400  {'evaluated': 80, 'too_few_instances': 54, 'too_frequent': 9, 'unreachable_target': 7}  2058s
+  175/400  {'evaluated': 93, 'too_few_instances': 66, 'too_frequent': 9, 'unreachable_target': 7}  2059s
+  200/400  {'evaluated': 105, 'too_few_instances': 78, 'too_frequent': 10, 'unreachable_target': 7}  2060s
+  225/400  {'evaluated': 116, 'too_few_instances': 92, 'too_frequent': 10, 'unreachable_target': 7}  2061s
+  250/400  {'evaluated': 127, 'too_few_instances': 104, 'too_frequent': 11, 'unreachable_target': 8}  2062s
+  275/400  {'evaluated': 141, 'too_few_instances': 115, 'too_frequent': 11, 'unreachable_target': 8}  2063s
+  300/400  {'evaluated': 153, 'too_few_instances': 126, 'too_frequent': 12, 'unreachable_target': 9}  2064s
+  325/400  {'evaluated': 164, 'too_few_instances': 139, 'too_frequent': 13, 'unreachable_target': 9}  2066s
+  350/400  {'evaluated': 173, 'too_few_instances': 151, 'too_frequent': 15, 'unreachable_target': 11}  2068s
+  375/400  {'evaluated': 182, 'too_few_instances': 166, 'too_frequent': 15, 'unreachable_target': 12}  2069s
+  400/400  {'evaluated': 193, 'too_few_instances': 177, 'too_frequent': 17, 'unreachable_target': 13}  2072s
+trial pool: +193 -> 193 cumulative
+
+screening outcomes: {'evaluated': 193, 'too_few_instances': 177, 'too_frequent': 17, 'unreachable_target': 13}
+generator yield: 193/400 = 48.2%
+
+top candidates by portfolio expectancy (NOT evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  a2b421da854c8b11 rs_momentum        1038     23  45.1x  +0.69    9%    +8,431
+  50b16be5dc464d73 ema_pullback        541     19  28.5x  +0.39   31%    +4,297
+  0c27a3a5754ce860 rs_momentum       13087    381  34.3x  +0.30   17%    +3,685
+  24c0b14ca86a4740 rs_momentum        6994    680  10.3x  +0.10    1%    +3,099
+  4cb737a6ea2addd3 turtle_soup          86     85   1.0x  +0.53    9%    +2,628
+  3affb068fc2b4280 vcp                  93     61   1.5x  +0.39   24%    +2,588
+  bd30135d145ab28b mean_reversion       48     42   1.1x  +0.82   17%    +2,565
+  ea6019e30add4aa8 ema_pullback       6249    348  18.0x  +0.25   14%    +2,178
+  e845d30a4f0ed110 rs_momentum       10520    272  38.7x  +0.25   31%    +1,969
+  a0a7b9d35cade96b stage2_breakout    4709    190  24.8x  +0.29   12%    +1,660

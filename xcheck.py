@@ -42,7 +42,28 @@ def main(n_specs=6, workers=6):
             only_s = sorted(ser_set - par_set)[:3]
             only_p = sorted(par_set - ser_set)[:3]
             print(f"     serial-only {only_s}   parallel-only {only_p}")
-    print("\nAGREE — parallel path is trustworthy" if ok else "\nDIVERGED — do not use psearch")
+
+        # L37: identical SIGNALS did not imply identical RANKINGS, because the
+        # L34 heat leak made portfolio_path order-dependent -- the same trades
+        # in a different order admitted a different subset. Signal equality is
+        # necessary and was never sufficient; compare what the gates actually
+        # read.
+        import backtest, engine
+        rebuilt = [(idx, corpus[sym],
+                    engine.Signal(sym, sp.get("setup", "gen"), e, st, tg,
+                                  sp.get("version", "v0")), q)
+                   for sym, idx, e, st, tg, q in par[i] if sym in corpus]
+        rebuilt.sort(key=lambda t: t[1].days[t[0]])
+        r_ser, _ = backtest.run(sp, corpus, bd, allowed=allowed)
+        r_par, _ = backtest.run(sp, corpus, bd, allowed=allowed, presignals=rebuilt)
+        for k in ("n_taken", "portfolio_expectancy", "capacity_ratio"):
+            a, b = r_ser.get(k), r_par.get(k)
+            match = (a == b) or (isinstance(a, float) and abs(a - b) < 1e-6)
+            ok &= match
+            if not match:
+                print(f"     RANK MISMATCH {k}: serial {a} vs parallel {b}")
+    print("\nAGREE on signals AND ranking — parallel path is trustworthy" if ok
+          else "\nDIVERGED — do not use psearch")
     return 0 if ok else 1
 
 

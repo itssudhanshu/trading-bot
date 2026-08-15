@@ -136,15 +136,29 @@ def portfolio_path(trades, equity0=1_000_000.0):
     have taken -- the realizable number is computed over `admitted`.
     """
     # Contested slots go to the highest-ranked signal, not the earliest-listed.
-    trades = sorted(trades, key=lambda t: (t.entry_day, -t.rank_score))
+    # `symbol` is a TIE-BREAKER, not decoration: entry_day and rank_score tie
+    # constantly (rank "none" scores every trade 0.0), and a stable sort then
+    # falls back on INPUT order -- which differs between the serial and parallel
+    # paths, and between any two symbol iteration orders. Without a total order
+    # the admitted subset is not reproducible, so neither is any gate that reads
+    # it. This is the real cause of the L37 ranking divergence; the L34 heat
+    # leak amplified it but was not it.
+    trades = sorted(trades, key=lambda t: (t.entry_day, -t.rank_score, t.symbol))
     equity, peak, max_dd, curve = equity0, equity0, 0.0, []
     open_risk, open_by_day = 0.0, {}
     held, admitted = set(), []
     for t in trades:
         for d in [d for d in open_by_day if d <= t.entry_day]:
-            r, sym = open_by_day.pop(d)
-            open_risk -= r
-            held.discard(sym)
+            # A LIST, not a single entry: several positions can share an exit
+            # day, and a dict keyed on that day silently discards all but the
+            # last. The lost position's risk is never returned to open_risk and
+            # its symbol never leaves `held`, so the heat budget leaks for the
+            # rest of the run and that symbol becomes permanently untradeable.
+            # A spec holding N bars enters several positions and time-exits them
+            # all on the same bar, so this is the common case, not an edge one.
+            for r, sym in open_by_day.pop(d):
+                open_risk -= r
+                held.discard(sym)
         # Ruin guard. Without it the sim keeps trading a negative account and
         # reports drawdowns above 100%, which cannot happen to a long-only book.
         if equity <= RUIN_FLOOR * equity0:
@@ -162,7 +176,7 @@ def portfolio_path(trades, equity0=1_000_000.0):
             continue                                  # would breach an invariant
         open_risk += risk_frac
         held.add(t.symbol)
-        open_by_day[t.exit_day] = (risk_frac, t.symbol)
+        open_by_day.setdefault(t.exit_day, []).append((risk_frac, t.symbol))
         # ponytail: net scaled linearly with qty; the fixed brokerage component
         # is not re-derived. Fine while scale stays near 1 -- revisit if a study
         # runs deep drawdowns where the fixed leg matters.
@@ -287,6 +301,18 @@ def _selftest():
     assert adm, "fixture must admit something or it tests nothing"
     assert adm[0].symbol == "HI", f"higher rank must win the first slot, got {adm[0].symbol}"
 
+    # ordering must be TOTAL: shuffling the input must not change the outcome
+    import random as _rnd
+    tied = [Trade(f"T{k:02d}", dd0, dd0, dd1, 100, 101, 100, 100.0, "target",
+                  1000, 10, 990, 0.01, 5, rank_score=0.0) for k in range(12)]
+    _, _, a1 = portfolio_path(list(tied), 1_000_000.0)
+    shuffled = list(tied)
+    _rnd.Random(7).shuffle(shuffled)
+    _, _, a2 = portfolio_path(shuffled, 1_000_000.0)
+    assert [t.symbol for t in a1] == [t.symbol for t in a2], (
+        f"admission depends on input order: {[t.symbol for t in a1]} vs "
+        f"{[t.symbol for t in a2]}")
+
     assert rank_score("rr", engine.Signal("X", "s", 100, 90, 130), None, 0) == 3.0
     assert rank_score("none", engine.Signal("X", "s", 100, 90, 130), None, 0) == 0.0
 
@@ -315,6 +341,22 @@ def _selftest():
     assert dd_r <= 1.0, f"drawdown above 100% is impossible, got {dd_r*100:.0f}%"
     assert len(adm_r) < len(ruinous), "ruin guard must stop trading"
     assert len(adm) < len(big), "heat ceiling must refuse some of 20 concurrent trades"
+
+    # REGRESSION (L34): positions sharing an exit day must each release their
+    # risk. The old fixture had all 20 exit on one day but only asserted that
+    # the heat ceiling binds on ENTRY -- nothing entered afterwards, so the book
+    # was never required to empty and the leak could not be observed.
+    d_entry, d_exit = date(2024, 1, 1), date(2024, 1, 10)
+    later = date(2024, 2, 1)
+    shared = [Trade(f"E{k}", d_entry, d_entry, d_exit, 100, 101, 100, 100.0,
+                    "time", 0, 0, 0.0, 0.0, 7) for k in range(4)]
+    after = [Trade(f"L{k}", later, later, later + timedelta(days=5), 100, 101, 100,
+                   100.0, "target", 500, 10, 490, 0.05, 5) for k in range(6)]
+    _, _, adm2 = portfolio_path(shared + after, 1_000_000.0)
+    admitted_later = [t for t in adm2 if t.symbol.startswith("L")]
+    assert len(admitted_later) == 6, (
+        f"closed positions sharing an exit day leaked heat: only "
+        f"{len(admitted_later)}/6 later trades admitted")
 
     # over-capacity: realizable expectancy is computed on the admitted subset
     r = summarise(big, dd, adm)

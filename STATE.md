@@ -25,7 +25,15 @@ Last updated: 2026-08-15 (epoch 3 recovered and verified; epoch 4 not yet run)
     epoch 1   data/judge_ledger.json          5/50 spent   FAIL x5              RETIRED
     epoch 2+  data/judge_ledger_epoch2.json   7/50 spent   FAIL, PASS, FAIL x5  CURRENT
 
-Best result so far, and why it still failed: `0c27a3a5754ce860` (rs_momentum,
+**All epoch 2-4 numbers are WITHDRAWN as measurements.** Two defects in
+`portfolio_path` -- a heat leak when positions shared an exit day (L34) and a
+non-total sort key that made admission depend on input order (L38) -- produced
+`n_taken`, `exp`, `dd`, `capacity` and everything `report.stats` hands the judge.
+Both are fixed with regression tests; epochs 3 and 4 are re-running. The 7
+consultations stay SPENT: those hypotheses met the holdout, and refunding budget
+for a computation bug would let any future error buy back trials.
+
+Historical, on the old code -- do not quote these figures: `0c27a3a5754ce860` (rs_momentum,
 epoch 3) returned +11.56% on the holdout with ALL FOUR blocks positive -- the
 only candidate ever to profit in every regime. PSR 0.9951, so significant on its
 own. It failed on DSR alone: SR 0.2475 against E[max SR] 0.3215 for N=193 trials.
@@ -171,6 +179,19 @@ conservatively; the expectancy figures move in no fixed direction.
 It is the operator's risk rule. It has not been changed. If it is ever changed,
 every prior result becomes incomparable and the ledger should start a new epoch
 with a fresh holdout.
+
+### If a comparison passes, check what it compared
+
+`xcheck.py` compared signal SETS, printed AGREE, and the RANKINGS disagreed. I
+cited it as proof the parallel path was trustworthy. It now compares n_taken,
+portfolio_expectancy and capacity_ratio as well, and only then says AGREE.
+
+Two failures worth carrying forward, both from this session:
+  - fixing the first bug found and assuming it explains the symptom is how the
+    second one survives (L38: the heat leak was real, and was not the cause)
+  - a test whose fixture cannot exhibit the bug will pass forever (L34: 20
+    positions shared an exit day and the assertion never required the book to
+    empty)
 
 ### Known traps
 

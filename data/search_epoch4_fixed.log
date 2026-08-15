@@ -1,0 +1,35 @@
+corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1, 2025-H1, 2026-H1)
+  signals generated in 1503s
+  25/400  {'evaluated': 11, 'too_few_instances': 13, 'too_frequent': 1}  1504s
+  50/400  {'evaluated': 22, 'too_few_instances': 24, 'too_frequent': 4}  1508s
+  75/400  {'evaluated': 36, 'too_few_instances': 33, 'too_frequent': 5, 'unreachable_target': 1}  1509s
+  100/400  {'evaluated': 47, 'too_few_instances': 47, 'too_frequent': 5, 'unreachable_target': 1}  1511s
+  125/400  {'evaluated': 61, 'too_few_instances': 58, 'too_frequent': 5, 'unreachable_target': 1}  1513s
+  150/400  {'evaluated': 76, 'too_few_instances': 67, 'too_frequent': 6, 'unreachable_target': 1}  1515s
+  175/400  {'evaluated': 85, 'too_few_instances': 81, 'too_frequent': 8, 'unreachable_target': 1}  1517s
+  200/400  {'evaluated': 95, 'too_few_instances': 95, 'too_frequent': 9, 'unreachable_target': 1}  1518s
+  225/400  {'evaluated': 113, 'too_few_instances': 100, 'too_frequent': 10, 'unreachable_target': 2}  1520s
+  250/400  {'evaluated': 127, 'too_few_instances': 109, 'too_frequent': 11, 'unreachable_target': 3}  1522s
+  275/400  {'evaluated': 142, 'too_few_instances': 118, 'too_frequent': 12, 'unreachable_target': 3}  1523s
+  300/400  {'evaluated': 153, 'too_few_instances': 130, 'too_frequent': 13, 'unreachable_target': 4}  1526s
+  325/400  {'evaluated': 170, 'too_few_instances': 138, 'too_frequent': 13, 'unreachable_target': 4}  1527s
+  350/400  {'evaluated': 181, 'too_few_instances': 150, 'too_frequent': 13, 'unreachable_target': 6}  1528s
+  375/400  {'evaluated': 192, 'too_few_instances': 162, 'too_frequent': 15, 'unreachable_target': 6}  1531s
+  400/400  {'evaluated': 202, 'too_few_instances': 174, 'too_frequent': 18, 'unreachable_target': 6}  1534s
+trial pool: +202 -> 395 cumulative
+
+screening outcomes: {'evaluated': 202, 'too_few_instances': 174, 'too_frequent': 18, 'unreachable_target': 6}
+generator yield: 202/400 = 50.5%
+
+top candidates by portfolio expectancy (NOT evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  b9475ce34533648b rs_momentum         689     26  26.5x  +0.65   14%    +7,111
+  fd4eba71ade6606c mean_reversion       50     39   1.3x  +2.56    2%    +4,171
+  73476b6e95c4e1b8 rs_momentum          47     38   1.2x  +0.60   38%    +2,845
+  fef9cfeb84e2bc2b ema_pullback         73     44   1.7x  +0.74   11%    +2,584
+  5e4aabbae05b6643 vcp                 141     65   2.2x  +0.39   10%    +2,409
+  59da450c146dd962 rs_momentum        5067    231  21.9x  -0.03    7%    +2,251
+  b2e6fb5a1bfc9f61 stage2_breakout   17367    222  78.2x  +0.16   15%    +2,210
+  1e6eb17ab7a41028 mean_reversion      307    167   1.8x  +0.36    3%    +2,016
+  142a1e1e171043f9 vcp                1309    217   6.0x  +0.32    8%    +1,946
+  700a8ef0c22cd0e3 vcp                8735    322  27.1x  +0.22   11%    +1,933
