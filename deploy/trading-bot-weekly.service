@@ -1,0 +1,12 @@
+[Unit]
+Description=NSE weekly research pass (search, validate, aggregate)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trading-bot
+ExecStart=/bin/sh -c './weekly.sh'
+# Research is CPU-bound for hours; keep it off the interactive cores.
+Nice=10
+StandardOutput=append:%h/trading-bot/data/weekly.log
+StandardError=append:%h/trading-bot/data/weekly.log

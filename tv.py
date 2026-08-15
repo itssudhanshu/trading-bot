@@ -9,11 +9,15 @@ Drawing IDs are recovered by diffing `draw list` before and after, because
 delete the user's own annotations along with ours.
 """
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-TV_CLI = Path.home() / "Documents" / "Repo" / "tradingview-mcp" / "src" / "cli" / "index.js"
+# Override on another machine with:  export TRADINGVIEW_MCP=/path/to/tradingview-mcp
+_MCP = os.environ.get("TRADINGVIEW_MCP")
+TV_CLI = (Path(_MCP) if _MCP else Path.home() / "Documents" / "Repo" / "tradingview-mcp") \
+    / "src" / "cli" / "index.js"
 
 ENTRY_COLOR = "#26a69a"   # teal
 STOP_COLOR = "#ef5350"    # red

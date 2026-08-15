@@ -1,0 +1,22 @@
+# Linux (systemd) equivalent of the launchd daily agent.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/trading-bot-daily.* ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now trading-bot-daily.timer
+#   loginctl enable-linger $USER      # so it runs without an active session
+#
+# Persistent=true on the timer is the systemd analogue of launchd's wake-up
+# catch-up: a run missed while the machine was off fires on next boot. cron has
+# no equivalent, and a missed session is a permanent hole in the point-in-time
+# surveillance record.
+[Unit]
+Description=NSE snapshot + paper runner
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trading-bot
+ExecStart=/bin/sh -c 'python3 snapshot.py && python3 snapshot.py --catchup && python3 runner.py'
+StandardOutput=append:%h/trading-bot/data/cron.log
+StandardError=append:%h/trading-bot/data/cron.log

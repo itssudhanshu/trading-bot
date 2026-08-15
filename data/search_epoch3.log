@@ -8,3 +8,15 @@ corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1
   70/400  {'evaluated': 33, 'too_few_instances': 30, 'too_frequent': 3, 'unreachable_target': 4}  1489s
   80/400  {'evaluated': 42, 'too_few_instances': 31, 'too_frequent': 3, 'unreachable_target': 4}  2020s
   90/400  {'evaluated': 48, 'too_few_instances': 33, 'too_frequent': 5, 'unreachable_target': 4}  2155s
+  100/400  {'evaluated': 52, 'too_few_instances': 39, 'too_frequent': 5, 'unreachable_target': 4}  2630s
+  110/400  {'evaluated': 59, 'too_few_instances': 41, 'too_frequent': 5, 'unreachable_target': 5}  2717s
+  120/400  {'evaluated': 65, 'too_few_instances': 45, 'too_frequent': 5, 'unreachable_target': 5}  3017s
+  130/400  {'evaluated': 70, 'too_few_instances': 49, 'too_frequent': 6, 'unreachable_target': 5}  3117s
+  140/400  {'evaluated': 74, 'too_few_instances': 52, 'too_frequent': 7, 'unreachable_target': 7}  3176s
+  150/400  {'evaluated': 80, 'too_few_instances': 54, 'too_frequent': 9, 'unreachable_target': 7}  3295s
+  160/400  {'evaluated': 86, 'too_few_instances': 58, 'too_frequent': 9, 'unreachable_target': 7}  3548s
+  170/400  {'evaluated': 90, 'too_few_instances': 64, 'too_frequent': 9, 'unreachable_target': 7}  3687s
+  180/400  {'evaluated': 95, 'too_few_instances': 69, 'too_frequent': 9, 'unreachable_target': 7}  3798s
+  190/400  {'evaluated': 101, 'too_few_instances': 73, 'too_frequent': 9, 'unreachable_target': 7}  4011s
+  200/400  {'evaluated': 105, 'too_few_instances': 78, 'too_frequent': 10, 'unreachable_target': 7}  4122s
+  210/400  {'evaluated': 110, 'too_few_instances': 83, 'too_frequent': 10, 'unreachable_target': 7}  4733s
