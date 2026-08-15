@@ -23,6 +23,7 @@ import features
 import spec as specmod
 
 MAX_HOLD = 30        # ~6 weeks of trading days, the persona's upper bound
+RUIN_FLOOR = 0.20    # stop trading below 20% of starting equity
 COSTS = engine.Costs()
 
 
@@ -53,9 +54,21 @@ class Trade:
     net: float
     r: float                 # realised R multiple, net of costs
     bars_held: int
+    rank_score: float = 0.0  # higher wins a contested slot
 
 
-def simulate(sig, s, i, qty, max_hold=MAX_HOLD):
+def rank_score(rule, sig, s, i):
+    """Preference among same-day signals. Higher is taken first."""
+    if rule == "rr":
+        return sig.rr
+    if rule == "turnover":
+        return s.turnover[i]
+    if rule == "deliv_pct":
+        return s.deliv_pct[i]
+    return 0.0
+
+
+def simulate(sig, s, i, qty, max_hold=MAX_HOLD, rank="none"):
     """Trade the signal from bar i. Entry attempted on i+1 only -- a stop order
     is good for the day; a signal that never triggers simply expires.
 
@@ -93,7 +106,8 @@ def simulate(sig, s, i, qty, max_hold=MAX_HOLD):
         cost = COSTS.charge(entry_px * qty, "BUY") + COSTS.charge(px * qty, "SELL")
         net = gross - cost
         return Trade(s.symbol, s.days[i], entry_day, s.days[k], entry_px, px, qty,
-                     risk, reason, gross, cost, net, net / (risk * qty), k - j + 1)
+                     risk, reason, gross, cost, net, net / (risk * qty), k - j + 1,
+                     rank_score(rank, sig, s, i))
     return None      # still open at the end of the corpus: not a realised trade
 
 
@@ -121,7 +135,8 @@ def portfolio_path(trades, equity0=1_000_000.0):
     has capacity for, unconstrained expectancy describes trades you could never
     have taken -- the realizable number is computed over `admitted`.
     """
-    trades = sorted(trades, key=lambda t: t.entry_day)
+    # Contested slots go to the highest-ranked signal, not the earliest-listed.
+    trades = sorted(trades, key=lambda t: (t.entry_day, -t.rank_score))
     equity, peak, max_dd, curve = equity0, equity0, 0.0, []
     open_risk, open_by_day = 0.0, {}
     held, admitted = set(), []
@@ -130,13 +145,28 @@ def portfolio_path(trades, equity0=1_000_000.0):
             r, sym = open_by_day.pop(d)
             open_risk -= r
             held.discard(sym)
-        risk_frac = (t.planned_risk * t.qty) / equity
+        # Ruin guard. Without it the sim keeps trading a negative account and
+        # reports drawdowns above 100%, which cannot happen to a long-only book.
+        if equity <= RUIN_FLOOR * equity0:
+            break
+
+        # Size against CURRENT equity, not the starting figure. Real risk budgets
+        # shrink as the account does; static sizing lets losses compound past
+        # ruin and overstates drawdown.
+        scale = equity / equity0
+        qty = int(t.qty * scale)
+        if qty < 1:
+            continue
+        risk_frac = (t.planned_risk * qty) / equity
         if t.symbol in held or open_risk + risk_frac > engine.MAX_PORTFOLIO_HEAT:
             continue                                  # would breach an invariant
         open_risk += risk_frac
         held.add(t.symbol)
         open_by_day[t.exit_day] = (risk_frac, t.symbol)
-        equity += t.net
+        # ponytail: net scaled linearly with qty; the fixed brokerage component
+        # is not re-derived. Fine while scale stays near 1 -- revisit if a study
+        # runs deep drawdowns where the fixed leg matters.
+        equity += t.net * (qty / t.qty)
         peak = max(peak, equity)
         max_dd = max(max_dd, (peak - equity) / peak)
         curve.append((t.exit_day, equity))
@@ -187,10 +217,13 @@ def walk_forward_folds(days, n_folds=4, purge=MAX_HOLD):
     return out
 
 
-def run(spec, corpus, breadth, equity=1_000_000.0):
+def run(spec, corpus, breadth, equity=1_000_000.0, allowed=None):
     sigs = generate(spec, corpus, breadth, equity)
+    if allowed is not None:
+        sigs = [(i, s, sg, q) for i, s, sg, q in sigs if s.days[i] in allowed]
     hold = spec.get("hold", {}).get("max_bars", MAX_HOLD)
-    trades = [t for t in (simulate(sig, s, i, q, hold) for i, s, sig, q in sigs) if t]
+    rank = spec.get("rank", {}).get("by", "none")
+    trades = [t for t in (simulate(sig, s, i, q, hold, rank) for i, s, sig, q in sigs) if t]
     curve, dd, admitted = portfolio_path(trades, equity)
     res = summarise(trades, dd, admitted)
     res["n_signals"] = len(sigs)
@@ -241,6 +274,19 @@ def _selftest():
     t5 = simulate(sig, series(flat), 0, 10)
     assert t5.exit_reason == "time" and t5.bars_held == MAX_HOLD, t5
 
+    # rank decides who gets a contested slot
+    dd0, dd1 = date(2024, 1, 1), date(2024, 1, 21)
+    hi = Trade("HI", dd0, dd0, dd1, 100, 101, 100, 100.0,
+               "target", 1000, 10, 990, 0.01, 5, rank_score=9.0)
+    lo = Trade("LO", dd0, dd0, dd1, 100, 101, 100, 100.0,
+               "target", 1000, 10, 990, 0.01, 5, rank_score=1.0)
+    _, _, adm = portfolio_path([lo, hi] * 12, 1_000_000.0)
+    assert adm, "fixture must admit something or it tests nothing"
+    assert adm[0].symbol == "HI", f"higher rank must win the first slot, got {adm[0].symbol}"
+
+    assert rank_score("rr", engine.Signal("X", "s", 100, 90, 130), None, 0) == 3.0
+    assert rank_score("none", engine.Signal("X", "s", 100, 90, 130), None, 0) == 0.0
+
     # purge removes the tail of each training block
     days = [date(2024, 1, 1) + timedelta(days=k) for k in range(500)]
     folds = walk_forward_folds(days, n_folds=4, purge=30)
@@ -257,6 +303,14 @@ def _selftest():
                  100.0, "target", 1000, 10, 990, 0.01, 5) for k in range(20)]
     _, dd, adm = portfolio_path(big, 1_000_000.0)
     assert dd >= 0.0
+
+    # drawdown can never exceed 100%: a long-only book cannot lose more than it has
+    ruinous = [Trade("R%d" % k, days[0], days[0] + timedelta(days=k),
+                     days[0] + timedelta(days=k + 1), 100, 1, 100, 100.0,
+                     "stop", -90_000, 100, -90_000, -9.0, 1) for k in range(200)]
+    _, dd_r, adm_r = portfolio_path(ruinous, 1_000_000.0)
+    assert dd_r <= 1.0, f"drawdown above 100% is impossible, got {dd_r*100:.0f}%"
+    assert len(adm_r) < len(ruinous), "ruin guard must stop trading"
     assert len(adm) < len(big), "heat ceiling must refuse some of 20 concurrent trades"
 
     # over-capacity: realizable expectancy is computed on the admitted subset

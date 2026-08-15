@@ -37,6 +37,7 @@ class Ctx:
     def vsma(self, n):  return self._get(("vsma", n), lambda: features.sma(self.s.volume, n))
     def dz(self, n):    return self._get(("dz", n), lambda: features.zscore(self.s.deliv_pct, n))
     def tsma(self, n):  return self._get(("tsma", n), lambda: features.sma(self.s.turnover, n))
+    def rsi(self, n):   return self._get(("rsi", n), lambda: features.rsi(self.s.close, n))
 
 
 # --- predicate vocabulary -------------------------------------------------
@@ -128,6 +129,53 @@ def _p_above_prior_close(c, i):
     return None if i < 1 else c.s.close[i] > c.s.close[i - 1]
 
 
+def _p_rs_rank_above(c, i, lookback, pct):
+    """Stock's trailing return is above `pct` percentile of the whole universe."""
+    series = c.s.rs.get(lookback)
+    if not series or series[i] is None:
+        return None
+    return series[i] > pct
+
+
+def _p_close_near_high(c, i, tol_pct):
+    """Closed in the top of its own range -- breakout quality, not just level."""
+    rng = c.s.high[i] - c.s.low[i]
+    if rng <= 0:
+        return None
+    return (c.s.high[i] - c.s.close[i]) / rng * 100 < tol_pct
+
+
+def _p_rsi_below(c, i, period, level):
+    v = c.rsi(period)[i]
+    return None if v is None else v < level
+
+
+def _p_pct_off_high(c, i, lookback, pct):
+    """Price has fallen at least `pct` from its recent high -- the setup context
+    for mean reversion, which the momentum-only vocabulary could not express."""
+    h = c.hmax(lookback)[i]
+    if h is None or not h:
+        return None
+    return (h - c.s.close[i]) / h * 100 > pct
+
+
+def _p_reclaim_prior_low(c, i, lookback):
+    """Broke the prior N-day low and closed back above it: the Turtle Soup /
+    false-breakdown pattern the persona named and the vocabulary lacked."""
+    if i < 1:
+        return None
+    prev_low = c.lmin(lookback)[i - 1]
+    if prev_low is None:
+        return None
+    return c.s.low[i] < prev_low <= c.s.close[i]
+
+
+def _p_down_days(c, i, n):
+    if i < n:
+        return None
+    return all(c.s.close[k] < c.s.close[k - 1] for k in range(i - n + 1, i + 1))
+
+
 def _p_surveillance_known(c, i):
     """Guard for live trading: refuse when point-in-time surveillance is absent."""
     return bool(c.s.surveillance_known[i])
@@ -149,12 +197,27 @@ PREDICATES = {
     "breadth_above":       (_p_breadth_above,     {"pct": (float, 0.0, 100.0)}),
     "above_prior_close":   (_p_above_prior_close, {}),
     "surveillance_known":  (_p_surveillance_known, {}),
+    "rs_rank_above":       (_p_rs_rank_above,     {"lookback": (int, 20, 250),
+                                                   "pct": (float, 50.0, 99.0)}),
+    "close_near_high":     (_p_close_near_high,   {"tol_pct": (float, 5.0, 50.0)}),
+    "rsi_below":           (_p_rsi_below,         {"period": (int, 5, 30),
+                                                   "level": (float, 10.0, 50.0)}),
+    "pct_off_high":        (_p_pct_off_high,      {"lookback": (int, 20, 250),
+                                                   "pct": (float, 5.0, 60.0)}),
+    "reclaim_prior_low":   (_p_reclaim_prior_low, {"lookback": (int, 5, 100)}),
+    "down_days":           (_p_down_days,         {"n": (int, 2, 6)}),
 }
+# rs_rank_above only has ranks for the lookbacks features.attach_rs precomputes.
+RS_LOOKBACKS = features.RS_LOOKBACKS
 
 HOLD_RANGE = (5, 60)          # trading days; 60 ~= 12 weeks
 ENTRY_RULES = {"prior_high", "close"}
 STOP_RULES = {"swing_low", "atr"}
 TARGET_RULES = {"r_multiple", "prior_swing_high"}
+# When more signals fire than the portfolio can hold, THIS decides which are
+# taken. Without it an over-subscribed spec is under-specified: the result
+# depends on chronological accident rather than on the strategy.
+RANK_RULES = {"rr", "turnover", "deliv_pct", "none"}
 
 
 class SpecError(ValueError):
@@ -184,6 +247,9 @@ def validate(spec: dict):
         rule = spec.get(key, {}).get("rule")
         if rule not in allowed:
             raise SpecError(f"{key}.rule {rule!r} not in {sorted(allowed)}")
+    rank = spec.get("rank", {}).get("by", "none")
+    if rank not in RANK_RULES:
+        raise SpecError(f"rank.by {rank!r} not in {sorted(RANK_RULES)}")
     hold = spec.get("hold", {}).get("max_bars")
     lo, hi = HOLD_RANGE
     if not isinstance(hold, int) or isinstance(hold, bool) or not (lo <= hold <= hi):
@@ -254,6 +320,7 @@ STAGE2_BREAKOUT = {
     "stop": {"rule": "swing_low", "lookback": 10, "atr_mult": 0.5},
     "target": {"rule": "r_multiple", "r": 3.0},
     "hold": {"max_bars": 30},
+    "rank": {"by": "rr"},
 }
 
 
@@ -270,6 +337,7 @@ def _selftest():
         ({**STAGE2_BREAKOUT, "conditions": []}, "empty conditions"),
         ({**STAGE2_BREAKOUT, "hold": {"max_bars": 500}}, "hold out of range"),
         ({**STAGE2_BREAKOUT, "hold": {"max_bars": 30.5}}, "hold not an int"),
+        ({**STAGE2_BREAKOUT, "rank": {"by": "vibes"}}, "unknown rank rule"),
     ]:
         try:
             validate(bad)

@@ -1,0 +1,37 @@
+{
+  "log": [
+    {
+      "at": "2026-08-14T20:19:04.579896+00:00",
+      "spec_hash": "750dec7c0f7f56a6",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-14T21:34:50.912226+00:00",
+      "spec_hash": "9d1de34f21f20744",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-14T21:34:54.300326+00:00",
+      "spec_hash": "836608213c569600",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-14T22:42:13.085352+00:00",
+      "spec_hash": "c4fbf480da7231fa",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-14T22:42:16.299462+00:00",
+      "spec_hash": "32ffca50a41a7f83",
+      "verdict": "FAIL"
+    }
+  ],
+  "spent": 5,
+  "verdicts": {
+    "32ffca50a41a7f83": "FAIL",
+    "750dec7c0f7f56a6": "FAIL",
+    "836608213c569600": "FAIL",
+    "9d1de34f21f20744": "FAIL",
+    "c4fbf480da7231fa": "FAIL"
+  }
+}

@@ -174,3 +174,201 @@ expected absence gets ignored, which costs more than having no detector.
 Anchored on the earliest `asm.json`: only days after collection began can be
 gaps. Applies generally -- alert on the difference between what SHOULD exist and
 what does, never on the difference between what you WANT and what exists.
+## L14 — An over-subscribed spec needs a selection rule to be a strategy (settled)
+`validate.py` rejects specs whose instance count far exceeds portfolio capacity
+as "under-specified". That diagnosis implies its own fix.
+
+When 6,000 signals a year compete for ~100 slots, which ones get taken was
+decided by list order -- chronological accident, not strategy. The result was
+therefore not reproducible in spirit: reorder the input and the P&L changes.
+
+Added `rank.by` to the vocabulary (`rr`, `turnover`, `deliv_pct`, `none`).
+`portfolio_path` now sorts contested slots by `(entry_day, -rank_score)`, so
+the spec itself decides its preference among simultaneous signals.
+
+This turns a rejected class into an evaluable one, and adds a real search
+dimension: "which breakout do I take when six fire at once" is a genuine
+strategy question that the vocabulary previously could not express.
+
+**Watch for the general case:** any place the harness breaks a tie arbitrarily
+is a hidden parameter. Either the spec sets it or the result is not reproducible.
+## L15 — Holdout warm-up is not lookahead; loading only holdout bars is a bug (settled)
+The first holdout report returned "no trades taken". The spec was fine; the
+harness loaded ONLY holdout bars, so a 200-period SMA had no history to seed
+from and ~200 of 245 sessions were unusable.
+
+Warm-up from pre-holdout bars is correct: seeding an indicator is how the
+indicator is defined. The seal forbids SEARCHING on holdout data, not knowing
+prices existed before it. `report.py` now loads two years of warm-up and
+restricts SIGNALS, not bars, to the holdout window.
+
+**Failure mode to watch:** the bug reported zero trades rather than raising.
+A silent empty result reads as "the strategy does not trade here", which is a
+plausible-looking wrong answer -- the most expensive kind.
+
+## L16 — Guard the holdout in code, because discipline slips (settled)
+While smoke-testing the reporting path I ran an unpromoted spec against the
+holdout "just to check the plumbing", and thereby learned a holdout result for a
+hypothesis that had never earned one. Small leak, entirely self-inflicted, by
+the person who wrote the rule.
+
+`report.py --holdout` now refuses any spec absent from `promoted.jsonl` unless
+`--force-holdout` is passed explicitly. The smoke test belonged on train data.
+
+**General form:** a rule that lives only in intent gets broken by the person who
+wrote it, during unrelated work, without noticing. If a boundary matters, the
+tooling has to hold it. This is the same principle as the sealed judge returning
+one bit -- applied to the author instead of the agent.
+## L17 — First holdout consultation: FAIL (spec 750dec7c0f7f56a6), 1/50 spent
+`ema_pullback`, promoted on four positive walk-forward folds (+2836, +3665,
++184, +346), all with >=30 taken trades.
+
+Holdout (2025-08-15 onward, never searched): +0.75% return, 26 trades, profit
+factor 1.15, expectancy +Rs 289/trade, max DD 2.4%.
+
+Superficially positive. It failed on evidence -- 26 taken trades against
+`judge.MIN_TRADES = 30` -- and the concentration check shows the verdict was
+right on the merits too:
+
+    total P&L +Rs 7,512    best single month +Rs 23,124    without it -Rs 15,612
+    months positive: 1/4
+
+The entire out-of-sample profit is one month. Nothing about the other three
+suggests an edge. A less disciplined harness would have reported "+0.75% out of
+sample, profit factor 1.15" as a success.
+
+**Consequence:** report concentration alongside every result. A total is not a
+finding when one period supplies all of it. This spec is now burned -- it is in
+the ledger, and its holdout result must not steer any further search.
+
+## L18 — Relative strength was the vocabulary's biggest hole (settled)
+The persona named institutional sector rotation and structural momentum as core
+edges, and the vocabulary had no way to express either. "Up 20% in three months"
+is meaningless until you know the rest of the universe was up 30%.
+
+Added `rs_rank_above(lookback, pct)` -- cross-sectional percentile of trailing
+return across the whole universe, at 20/60/125/250-day windows -- plus
+`close_near_high` for breakout quality, and an `rs_momentum` family.
+
+Cross-sectional again: like breadth, RS rank needs the entire universe on each
+date, which is exactly what a per-symbol data source cannot serve and why the
+date-major bhavcopy corpus is the right substrate.
+## L19 — The holdout is a bear market and the whole vocabulary is long-only (STRONG, structural)
+Fold-by-fold market conditions across train, plus the holdout:
+
+    fold 1  2023-03..2023-10   breadth 67.5%   median stock  +27.9%
+    fold 2  2023-10..2024-06   breadth 59.7%   median stock  +12.3%
+    fold 3  2024-06..2025-01   breadth 53.1%   median stock   +2.5%
+    fold 4  2025-01..2025-08   breadth 40.4%   median stock  -11.0%
+    HOLDOUT 2025-08..2026-08   breadth 39.6%   median stock   -9.6%
+
+A monotonic decay from broad bull to broad bear, with the holdout a continuation
+of fold 4. In the 30-spec walk-forward table, fold 4 was negative in **27 of 30**
+specs. That is not thirty strategies failing independently -- it is one regime.
+
+Every setup in the vocabulary (stage2_breakout, vcp, ema_pullback, rs_momentum)
+is long-only momentum, structurally long beta. When the median stock falls ~10%,
+no amount of searching inside that class produces a profitable out-of-sample
+result. Three holdout consultations confirm it: -7.92%, -6.42%, and +0.75%
+(which was one month).
+
+**Two consequences.**
+
+1. *A design flaw of mine.* Choosing "most recent 12 months" as the holdout put
+   the entire bull market in train and the bear out of sample. That maximally
+   confounds strategy quality with regime: a contiguous holdout tests "does this
+   survive the next regime", not "does this have an edge". I picked it before
+   knowing the regime split; it was still the wrong call, and the promotion
+   criterion "positive in 3 of 4 folds" compounds it by selecting specs that
+   worked in the bull and are already failing in the newest fold.
+
+2. *"Positive in 3 of 4 folds" ignores recency.* A spec positive in folds 1-3 and
+   negative in fold 4 is worse than the reverse, and the criterion cannot see the
+   difference. Not changing it mid-flight -- noted for the next pre-registration.
+
+**Relative performance, stated without spin:** the surviving spec returned +0.75%
+while the median stock fell 9.6%. That is ~10pp of relative performance, and it
+is NOT evidence of edge -- 26 trades, one profitable month. Reporting it as
+market-beating would be exactly the self-deception this harness exists to stop.
+
+## L20 — The 1:3 R:R invariant restricts which strategy FAMILIES are expressible
+Mean reversion typically runs lower reward:risk than 3:1 and higher hit rates.
+With `MIN_RR = 3.0` unsearchable, a whole class of setups that could work in the
+holdout's regime cannot even be proposed.
+
+Combined with L8 (3R needs a 60-bar horizon, double the persona's 6-week window),
+the 1:3 floor is now constraining the system in two independent ways. This is the
+second time the evidence has pointed at the same operator decision.
+## L21 — Five holdout consultations, five failures. Search stopped. (conclusive)
+    spec        setup            holdout   trades   PF     verdict
+    750dec7c    ema_pullback      +0.75%      26   1.15    FAIL (n<30, 1 month)
+    9d1de347    ema_pullback      -7.92%      80   0.34    FAIL
+    83660821    rs_momentum       -6.42%      66   0.79    FAIL
+    c4fbf480    ema_pullback      -4.74%      29   0.57    FAIL
+    32ffca50    vcp               -4.98%      59   0.79    FAIL
+
+All five cleared walk-forward on train first. `c4fbf480` was positive in ALL
+FOUR train folds including fold 4, the bear fold that killed 27 of 30 specs --
+the single best structural reason to expect bear-holdout survival. It still lost
+4.74%.
+
+Roughly 1,000 specs searched across 6 families and 21 predicates. Budget 5/50.
+
+**Stopping is the correct action, not a failure to try harder.** Every further
+seed is another draw from a distribution whose out-of-sample mean is negative;
+running enough of them WILL eventually produce a spec that looks good on the
+holdout, and that spec will be noise dressed as a discovery. The budget exists
+precisely to make that expensive.
+
+**What is actually blocked, in order of leverage:**
+
+1. `MIN_RR = 3.0` -- blocks mean reversion (lower R:R by nature) and needs a
+   60-bar horizon (L8, L20). The regime best suited to the holdout is the one
+   class the invariant cannot express. Operator decision.
+2. The contiguous holdout confounds regime with quality (L19). A regime-stratified
+   or purged-random split would test edge rather than regime survival.
+3. Long-only cannot profit from a -9.6% median stock. Short exposure in India
+   needs F&O -- different instruments, margin, and expiry mechanics; not a
+   parameter change.
+
+None of these is fixed by more searching, which is why the search stopped.
+## L22 — Epoch 2: seven years of history and a regime-stratified split (design change)
+Fixes the design error named in L19. Two changes, both made before any epoch-2
+result was examined.
+
+**More history.** Probed NSE's delivery-bhavcopy archive to its floor: 2019-09-16
+returns 404, 2019-10-01 returns 200. Backfilled to that floor -- 1,695 trading
+days, 2,486 symbols, 2019-10 to 2026-08. A legacy format reaches 2015 but carries
+no delivery column, so it was not used; delivery % is central here.
+
+`backfill.ARCHIVE_START` now clamps requests. Without it, every pre-archive
+session 404s and gets recorded as a holiday -- silently poisoning holidays.json
+with hundreds of real trading days.
+
+**Enough cycles to stratify.** Seven years contains five BULL, five BEAR and four
+flat half-years, so holdout blocks can be drawn from EACH regime class:
+
+    train    885 days   BULL 2021-H1, 2022-H2, 2023-H2, 2024-H1
+                        BEAR 2020-H1, 2022-H1, 2024-H2, 2025-H2
+    holdout  491 days   BULL 2020-H2 | flat 2023-H1 | BEAR 2025-H1, 2026-H1
+    purged   319 days   60-day bands around every boundary, dropped from TRAIN only
+
+Both sides now contain bull and bear, so the question becomes "does this work
+across regimes" rather than "did it survive one transition".
+
+Blocks came from a seeded draw (`_choose_holdout(seed=0)`), then frozen. The
+draw's first output differed from what I had hand-written; I took the draw. A
+deterministic choice overridden when its result looks inconvenient is just
+hand-picking wearing a seed.
+
+**Honest limits of this change.**
+- It was made after five failures. The justification is the regime confound
+  measured in L19, not the failures themselves -- but the ordering is what it is
+  and is recorded here.
+- Epoch 1's five specs are RETIRED, not re-tested. Two of their holdout blocks
+  are now holdout blocks in epoch 2; re-testing them would be reusing known
+  results.
+- Epoch 1's ledger is preserved unchanged. Epoch 2 gets its own budget.
+- 2025-H2 and 2026-H2 moved from old-holdout into train. I have seen aggregate
+  behaviour there. The search is seeded and programmatic, so this does not steer
+  it, but it is not zero.

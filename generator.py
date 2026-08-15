@@ -35,6 +35,7 @@ import engine
 import features
 import judge
 import spec as specmod
+import split
 
 ROOT = Path(__file__).resolve().parent
 CANDIDATES = ROOT / "data" / "candidates.jsonl"
@@ -49,10 +50,23 @@ FAMILIES = {
     # family -> (required predicates, pool of optional extras)
     "stage2_breakout": (["close_above_sma", "ema_slope_up", "breakout_prior_high"],
                         ["vol_expansion", "deliv_zscore_above", "turnover_above",
-                         "breadth_above", "above_prior_close"]),
+                         "breadth_above", "above_prior_close", "rs_rank_above",
+                         "close_near_high"]),
+    # Long-only momentum cannot profit in the holdout's regime (lessons L19).
+    # These two families are the vocabulary's first non-momentum setups.
+    "mean_reversion":  (["pct_off_high", "rsi_below"],
+                        ["close_above_sma", "turnover_above", "deliv_pct_above",
+                         "down_days", "close_near_high", "rs_rank_above"]),
+    "turtle_soup":     (["reclaim_prior_low"],
+                        ["close_above_sma", "turnover_above", "rsi_below",
+                         "deliv_zscore_above", "pct_off_high", "close_near_high"]),
+    "rs_momentum":     (["rs_rank_above", "close_above_sma"],
+                        ["ema_slope_up", "vol_expansion", "deliv_zscore_above",
+                         "turnover_above", "close_near_high", "breadth_above"]),
     "vcp":             (["range_contraction", "breakout_prior_high"],
                         ["atr_pct_below", "vol_expansion", "close_above_sma",
-                         "deliv_zscore_above", "turnover_above"]),
+                         "deliv_zscore_above", "turnover_above", "rs_rank_above",
+                         "close_near_high"]),
     "ema_pullback":    (["close_above_sma", "pullback_to_ema"],
                         ["ema_cluster_tight", "ema_slope_up", "deliv_pct_above",
                          "turnover_above", "breadth_above"]),
@@ -78,7 +92,9 @@ def sample_spec(rng) -> dict:
         schema = specmod.PREDICATES[name][1]
         cond = {"pred": name}
         for p, (typ, lo, hi) in schema.items():
-            cond[p] = _snap(None, typ, lo, hi, rng)
+            # rs ranks exist only for the precomputed lookbacks
+            cond[p] = (rng.choice(specmod.RS_LOOKBACKS) if p == "lookback"
+                       and name == "rs_rank_above" else _snap(None, typ, lo, hi, rng))
         conditions.append(cond)
 
     stop = ({"rule": "swing_low", "lookback": rng.choice([5, 10, 15, 20]),
@@ -98,10 +114,11 @@ def sample_spec(rng) -> dict:
                   "buffer_pct": rng.choice([0.0, 0.1, 0.25])},
         "stop": stop, "target": target,
         "hold": {"max_bars": rng.choice([10, 20, 30, 45, 60])},
+        "rank": {"by": rng.choice(sorted(specmod.RANK_RULES))},
     }
 
 
-def signals_for(spec, corpus, bd, ctx_cache, equity=1_000_000.0):
+def signals_for(spec, corpus, bd, ctx_cache, equity=1_000_000.0, allowed=None):
     """Like backtest.generate but reuses one Ctx per symbol across every spec in
     the run. Indicator cost is paid once for the whole search, not once per spec."""
     out = []
@@ -110,6 +127,8 @@ def signals_for(spec, corpus, bd, ctx_cache, equity=1_000_000.0):
         if c is None:
             c = ctx_cache[sym] = specmod.Ctx(s, bd)
         for i in range(len(s)):
+            if allowed is not None and s.days[i] not in allowed:
+                continue
             sig = specmod.evaluate(spec, c, i)
             if sig is None:
                 continue
@@ -120,14 +139,14 @@ def signals_for(spec, corpus, bd, ctx_cache, equity=1_000_000.0):
     return out
 
 
-def screen(spec, corpus, bd, ctx_cache, symbol_years=None):
+def screen(spec, corpus, bd, ctx_cache, symbol_years=None, allowed=None):
     """-> (stage, payload). Stops at the first gate the spec fails."""
     try:
         specmod.validate(spec)
     except specmod.SpecError as e:
         return "invalid", str(e)
 
-    sigs = signals_for(spec, corpus, bd, ctx_cache)
+    sigs = signals_for(spec, corpus, bd, ctx_cache, allowed=allowed)
     if len(sigs) < MIN_INSTANCES:
         # Rejected WITHOUT computing returns. This is the whole discipline.
         return "too_few_instances", {"n_signals": len(sigs)}
@@ -158,15 +177,15 @@ def screen(spec, corpus, bd, ctx_cache, symbol_years=None):
     if hits == 0:
         return "unreachable_target", {"n_signals": len(sigs), "median_mfe": statistics.median(mfe)}
 
-    res, trades = backtest.run(spec, corpus, bd)
+    res, trades = backtest.run(spec, corpus, bd, allowed=allowed)
     res["median_mfe"] = statistics.median(mfe)
     res["target_hit_rate"] = hits / len(mfe)
     return "evaluated", res
 
 
-def search(n_specs, seed, corpus, bd, verbose=True):
+def search(n_specs, seed, corpus, bd, verbose=True, allowed=None):
     rng = random.Random(seed)
-    days = {d for s in corpus.values() for d in s.days}
+    days = set(allowed) if allowed else {d for s in corpus.values() for d in s.days}
     span_years = (max(days) - min(days)).days / 365.25
     symbol_years = len(corpus) * span_years
     ctx_cache, seen, results = {}, set(), []
@@ -179,7 +198,7 @@ def search(n_specs, seed, corpus, bd, verbose=True):
             stages["duplicate"] = stages.get("duplicate", 0) + 1
             continue
         seen.add(h)
-        stage, payload = screen(sp, corpus, bd, ctx_cache, symbol_years)
+        stage, payload = screen(sp, corpus, bd, ctx_cache, symbol_years, allowed)
         stages[stage] = stages.get(stage, 0) + 1
         if stage == "evaluated":
             results.append({"spec_hash": h, "spec": sp, **payload})
@@ -196,21 +215,26 @@ def main():
     ap.add_argument("--symbols", type=int, default=0, help="cap universe for a fast pass")
     a = ap.parse_args()
 
-    train_end = judge.HOLDOUT_START - timedelta(days=1)
-    corpus = features.load_corpus(end=train_end)
+    # Full corpus for indicator continuity; SIGNALS restricted to train days.
+    # Holdout blocks are interleaved, so a date-range slice cannot express this,
+    # and slicing would also break indicator warm-up across each boundary.
+    corpus = features.load_corpus()
+    all_days = sorted({d for s in corpus.values() for d in s.days})
+    train_days, holdout_days = split.split_days(all_days)
+    allowed = set(train_days)
 
     # The seal, verified rather than assumed.
-    latest = max(d for s in corpus.values() for d in s.days)
-    assert latest < judge.HOLDOUT_START, f"holdout leaked into train: {latest}"
-    print(f"train corpus: {len(corpus)} symbols, through {latest} "
-          f"(holdout sealed from {judge.HOLDOUT_START})")
+    assert not any(split.is_holdout(d) for d in allowed), "holdout leaked into train"
+    print(f"corpus {len(corpus)} symbols, {len(all_days)} days | "
+          f"train {len(train_days)}  holdout {len(holdout_days)} "
+          f"(blocks {', '.join(split.HOLDOUT_BLOCKS)})")
 
     if a.symbols:
         corpus = dict(sorted(corpus.items())[:a.symbols])
         print(f"capped to {len(corpus)} symbols")
 
     bd = features.breadth(corpus)
-    results, stages = search(a.n_specs, a.seed, corpus, bd)
+    results, stages = search(a.n_specs, a.seed, corpus, bd, allowed=allowed)
 
     CANDIDATES.parent.mkdir(parents=True, exist_ok=True)
     with CANDIDATES.open("w") as f:

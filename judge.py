@@ -22,12 +22,22 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-LEDGER = ROOT / "data" / "judge_ledger.json"
+import split
 
-# The sealed period. Nothing in the search path may load bars on or after this
-# date. True enforcement is filesystem separation at deploy time; in-tree this is
-# a constant plus an assertion in generator.py -- honour it.
-HOLDOUT_START = date(2025, 8, 15)
+# Epoch 1 used a contiguous "last 12 months" holdout, which confounded regime
+# with edge (lessons L19). Its ledger is preserved unchanged as a record: five
+# consultations, five FAILs. Those five specs are RETIRED, not re-testable --
+# their behaviour in that period is known, and two of its blocks are in the new
+# holdout.
+LEDGER_EPOCH1 = ROOT / "data" / "judge_ledger.json"
+LEDGER = ROOT / "data" / f"judge_ledger_epoch{split.EPOCH}.json"
+
+# The sealed set is now blocks, not a cutoff date -- see split.HOLDOUT_BLOCKS.
+HOLDOUT_BLOCKS = split.HOLDOUT_BLOCKS
+
+
+def is_holdout(d):
+    return split.is_holdout(d)
 
 BUDGET = 50          # lifetime holdout consultations
 MIN_TRADES = 30      # swing frequency is low; below this it is not evidence

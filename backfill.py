@@ -21,6 +21,12 @@ from pathlib import Path
 
 from snapshot import RAW, SOURCES, bhavcopy_date, fetch
 
+# NSE's delivery bhavcopy archive starts here. Verified by probe: 2019-09-16
+# returns 404, 2019-10-01 returns 200. Requests before this date 404 for every
+# session, and fetch_day would record each one as a holiday -- silently poisoning
+# holidays.json with hundreds of real trading days and breaking gap detection.
+ARCHIVE_START = date(2019, 10, 1)
+
 HOLIDAYS = RAW.parent / "holidays.json"
 WORKERS = 6          # polite against nsearchives; it is a static file host
 _lock = threading.Lock()
@@ -70,6 +76,9 @@ def fetch_day(day: date) -> str:
 
 
 def backfill(start: date, end: date, workers=WORKERS) -> dict:
+    if start < ARCHIVE_START:
+        print(f"clamping start {start} -> {ARCHIVE_START} (archive floor)")
+        start = ARCHIVE_START
     holidays = _load_holidays()
     todo = [d for d in weekdays(start, end)
             if d.isoformat() not in holidays and not have(d)]
@@ -135,6 +144,15 @@ def _selftest():
             t2 = B.backfill(date(2025, 8, 13), date(2025, 8, 18), workers=2)
             assert len(calls) == n, "resume refetched existing days"
             assert t2["have"] == 2, t2
+
+            # requests before the archive floor must be clamped, never fetched --
+            # otherwise every pre-archive session is recorded as a holiday
+            before = len(calls)
+            B.backfill(date(2015, 1, 5), date(2015, 1, 9), workers=2)
+            assert len(calls) == before, "fetched below the archive floor"
+            hols = set(json.loads(B.HOLIDAYS.read_text()))
+            assert not any(h.startswith("2015") for h in hols), \
+                f"pre-archive dates poisoned the holiday cache: {hols}"
     finally:
         B.RAW, B.HOLIDAYS, B.fetch = original_raw, original_hol, fetch
     print("backfill selftest ok")

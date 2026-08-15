@@ -1,0 +1,57 @@
+train corpus: 2072 symbols, through 2025-08-14 (holdout sealed from 2025-08-15)
+  10/400  {'evaluated': 6, 'too_few_instances': 4}  55s
+  20/400  {'evaluated': 7, 'too_few_instances': 12, 'too_frequent': 1}  80s
+  30/400  {'evaluated': 12, 'too_few_instances': 15, 'too_frequent': 2, 'unreachable_target': 1}  141s
+  40/400  {'evaluated': 17, 'too_few_instances': 19, 'too_frequent': 3, 'unreachable_target': 1}  168s
+  50/400  {'evaluated': 24, 'too_few_instances': 22, 'too_frequent': 3, 'unreachable_target': 1}  274s
+  60/400  {'evaluated': 26, 'too_few_instances': 28, 'too_frequent': 4, 'unreachable_target': 2}  317s
+  70/400  {'evaluated': 30, 'too_few_instances': 34, 'too_frequent': 4, 'unreachable_target': 2}  358s
+  80/400  {'evaluated': 35, 'too_few_instances': 38, 'too_frequent': 5, 'unreachable_target': 2}  463s
+  90/400  {'evaluated': 40, 'too_few_instances': 40, 'too_frequent': 6, 'unreachable_target': 4}  507s
+  100/400  {'evaluated': 43, 'too_few_instances': 44, 'too_frequent': 9, 'unreachable_target': 4}  587s
+  110/400  {'evaluated': 46, 'too_few_instances': 50, 'too_frequent': 10, 'unreachable_target': 4}  817s
+  120/400  {'evaluated': 53, 'too_few_instances': 51, 'too_frequent': 11, 'unreachable_target': 5}  905s
+  130/400  {'evaluated': 59, 'too_few_instances': 54, 'too_frequent': 12, 'unreachable_target': 5}  1024s
+  140/400  {'evaluated': 64, 'too_few_instances': 59, 'too_frequent': 12, 'unreachable_target': 5}  1121s
+  150/400  {'evaluated': 69, 'too_few_instances': 61, 'too_frequent': 14, 'unreachable_target': 6}  1196s
+  160/400  {'evaluated': 72, 'too_few_instances': 65, 'too_frequent': 16, 'unreachable_target': 7}  1220s
+  170/400  {'evaluated': 76, 'too_few_instances': 70, 'too_frequent': 17, 'unreachable_target': 7}  1282s
+  180/400  {'evaluated': 78, 'too_few_instances': 77, 'too_frequent': 17, 'unreachable_target': 8}  1295s
+  190/400  {'evaluated': 83, 'too_few_instances': 81, 'too_frequent': 18, 'unreachable_target': 8}  1323s
+  200/400  {'evaluated': 91, 'too_few_instances': 83, 'too_frequent': 18, 'unreachable_target': 8}  1349s
+  210/400  {'evaluated': 97, 'too_few_instances': 84, 'too_frequent': 20, 'unreachable_target': 9}  1499s
+  220/400  {'evaluated': 101, 'too_few_instances': 89, 'too_frequent': 21, 'unreachable_target': 9}  1534s
+  230/400  {'evaluated': 107, 'too_few_instances': 93, 'too_frequent': 21, 'unreachable_target': 9}  1678s
+  240/400  {'evaluated': 109, 'too_few_instances': 99, 'too_frequent': 22, 'unreachable_target': 10}  1780s
+  250/400  {'evaluated': 114, 'too_few_instances': 104, 'too_frequent': 22, 'unreachable_target': 10}  2821s
+  260/400  {'evaluated': 118, 'too_few_instances': 107, 'too_frequent': 24, 'unreachable_target': 11}  2847s
+  270/400  {'evaluated': 120, 'too_few_instances': 114, 'too_frequent': 25, 'unreachable_target': 11}  2922s
+  280/400  {'evaluated': 125, 'too_few_instances': 118, 'too_frequent': 25, 'unreachable_target': 12}  3034s
+  290/400  {'evaluated': 129, 'too_few_instances': 124, 'too_frequent': 25, 'unreachable_target': 12}  3115s
+  300/400  {'evaluated': 135, 'too_few_instances': 128, 'too_frequent': 25, 'unreachable_target': 12}  3146s
+  310/400  {'evaluated': 138, 'too_few_instances': 134, 'too_frequent': 25, 'unreachable_target': 13}  3207s
+  320/400  {'evaluated': 141, 'too_few_instances': 140, 'too_frequent': 26, 'unreachable_target': 13}  3276s
+  330/400  {'evaluated': 148, 'too_few_instances': 143, 'too_frequent': 26, 'unreachable_target': 13}  3303s
+  340/400  {'evaluated': 151, 'too_few_instances': 149, 'too_frequent': 27, 'unreachable_target': 13}  3389s
+  350/400  {'evaluated': 156, 'too_few_instances': 153, 'too_frequent': 28, 'unreachable_target': 13}  3431s
+  360/400  {'evaluated': 159, 'too_few_instances': 158, 'too_frequent': 30, 'unreachable_target': 13}  3499s
+  370/400  {'evaluated': 163, 'too_few_instances': 163, 'too_frequent': 31, 'unreachable_target': 13}  3530s
+  380/400  {'evaluated': 170, 'too_few_instances': 166, 'too_frequent': 31, 'unreachable_target': 13}  3595s
+  390/400  {'evaluated': 175, 'too_few_instances': 170, 'too_frequent': 31, 'unreachable_target': 14}  3648s
+  400/400  {'evaluated': 179, 'too_few_instances': 174, 'too_frequent': 32, 'unreachable_target': 15}  3685s
+
+screening outcomes: {'evaluated': 179, 'too_few_instances': 174, 'too_frequent': 32, 'unreachable_target': 15}
+generator yield: 179/400 = 44.8%
+
+top candidates by portfolio expectancy (NOT evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  704186c962578cac rs_momentum        2917     82  35.6x  -0.04   11%    +5,228
+  f284c40f0cd12234 ema_pullback       6734     41 164.2x  -0.14    4%    +3,019
+  4f155e0e9f4a9a4e rs_momentum        2279    117  19.5x  +0.14   20%    +3,015
+  ec377f93867cf17d stage2_breakout    3749     31 120.9x  +0.16   12%    +2,313
+  5af989b501d23e65 rs_momentum       17586     71 247.7x  -0.27   20%    +2,218
+  d04e86e22deddc8a rs_momentum         148     59   2.5x  +0.21   22%    +2,091
+  62e6528ee9fa98a4 turtle_soup         151     50   3.0x  +0.31   20%    +2,053
+  c4fbf480da7231fa ema_pullback       2609     97  26.9x  +0.15   36%    +1,986
+  cd955e1177f2c42c stage2_breakout    3915     47  83.3x  +0.33   10%    +1,950
+  73a9b351392a2a70 ema_pullback       1945    101  19.3x  -0.13    4%    +1,928

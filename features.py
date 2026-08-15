@@ -32,6 +32,7 @@ class Series:
     turnover: list = field(default_factory=list)
     deliv_pct: list = field(default_factory=list)
     surveillance_known: list = field(default_factory=list)
+    rs: dict = field(default_factory=dict)      # lookback -> [percentile per bar]
 
     def __len__(self):
         return len(self.days)
@@ -67,7 +68,8 @@ def load_corpus(start=None, end=None, min_bars=200) -> dict:
             s.turnover.append(b.turnover)
             s.deliv_pct.append(b.deliv_pct)
             s.surveillance_known.append(b.surveillance_known)
-    return {k: v for k, v in out.items() if len(v) >= min_bars}
+    out = {k: v for k, v in out.items() if len(v) >= min_bars}
+    return attach_rs(out)
 
 
 # --- indicator primitives -------------------------------------------------
@@ -148,6 +150,26 @@ def zscore(xs, n):
     return out
 
 
+def rsi(closes, n=14):
+    """Wilder's RSI. None until seeded -- never 50 as a stand-in for unknown."""
+    out = [None] * len(closes)
+    if len(closes) <= n:
+        return out
+    gains = losses = 0.0
+    for i in range(1, n + 1):
+        ch = closes[i] - closes[i - 1]
+        gains += max(ch, 0.0)
+        losses += max(-ch, 0.0)
+    ag, al = gains / n, losses / n
+    out[n] = 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
+    for i in range(n + 1, len(closes)):
+        ch = closes[i] - closes[i - 1]
+        ag = (ag * (n - 1) + max(ch, 0.0)) / n
+        al = (al * (n - 1) + max(-ch, 0.0)) / n
+        out[i] = 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
+    return out
+
+
 def slope_up(xs, lookback):
     """True where xs[i] > xs[i-lookback]. None-safe."""
     out = [None] * len(xs)
@@ -155,6 +177,46 @@ def slope_up(xs, lookback):
         a, b = xs[i], xs[i - lookback]
         out[i] = (a > b) if (a is not None and b is not None) else None
     return out
+
+
+RS_LOOKBACKS = (20, 60, 125, 250)      # ~1m, 3m, 6m, 12m momentum windows
+
+
+def attach_rs(corpus, lookbacks=RS_LOOKBACKS):
+    """Attach cross-sectional relative-strength percentiles to each Series.
+
+    RS rank is the classic momentum input and the biggest gap in the vocabulary:
+    "up 20% in three months" means nothing until you know the other 2,299 names
+    were up 30%. Computed per date across the whole universe -- the same
+    cross-sectional access pattern breadth needs, and the reason a per-symbol
+    data source cannot serve this system.
+
+    Stored on the Series so no call site has to thread another argument through.
+    """
+    for lb in lookbacks:
+        by_day = {}
+        for s_ in corpus.values():
+            r = [None] * len(s_)
+            for i in range(lb, len(s_)):
+                prev = s_.close[i - lb]
+                if prev:
+                    r[i] = s_.close[i] / prev - 1.0
+            s_._ret = getattr(s_, "_ret", {})
+            s_._ret[lb] = r
+            for i, d in enumerate(s_.days):
+                if r[i] is not None:
+                    by_day.setdefault(d, []).append((r[i], s_.symbol))
+
+        ranks = {}
+        for d, pairs in by_day.items():
+            pairs.sort()
+            n = len(pairs)
+            ranks[d] = {sym: (k + 1) / n * 100 for k, (_, sym) in enumerate(pairs)}
+
+        for s_ in corpus.values():
+            s_.rs = getattr(s_, "rs", {})
+            s_.rs[lb] = [ranks.get(d, {}).get(s_.symbol) for d in s_.days]
+    return corpus
 
 
 def breadth(corpus, period=50) -> dict:
@@ -174,6 +236,7 @@ def breadth(corpus, period=50) -> dict:
 
 
 def _selftest():
+    from datetime import timedelta
     xs = [1, 2, 3, 4, 5, 6, 7, 8]
     assert sma(xs, 3)[:3] == [None, None, 2.0], sma(xs, 3)[:3]
     assert sma(xs, 3)[-1] == 7.0
@@ -197,6 +260,11 @@ def _selftest():
     z2 = zscore([1, 2, 3, 10], 4)
     assert z2[-1] > 1.0, z2
 
+    r = rsi([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], 14)
+    assert r[:14] == [None] * 14, "RSI must be None before it is seeded"
+    assert r[14] == 100.0, r[14]                       # all gains, no losses
+    down = rsi(list(range(30, 10, -1)), 14)
+    assert down[15] < 5.0, down[15]                    # all losses
     assert slope_up([1, 2, 3, 4], 2) == [None, None, True, True]
     assert slope_up([4, 3, 2, 1], 2)[-1] is False
 
@@ -212,6 +280,19 @@ def _selftest():
         s.high, s.low, s.open = s.close, s.close, s.close
     b = breadth({"UP": up, "DN": dn}, period=2)
     assert b[d2] == 0.5, b                                 # one of two above EMA
+
+    # RS rank: the stronger name must rank above the weaker one on the same date
+    days3 = [date(2024, 1, 1) + timedelta(days=k) for k in range(30)]
+    strong, weak = Series("STRONG", list(days3)), Series("WEAK", list(days3))
+    for k in range(30):
+        strong.close.append(100 + k * 5)
+        weak.close.append(100 + k * 0.1)
+    for s_ in (strong, weak):
+        s_.high, s_.low, s_.open = s_.close, s_.close, s_.close
+    attach_rs({"STRONG": strong, "WEAK": weak}, lookbacks=(20,))
+    assert strong.rs[20][-1] > weak.rs[20][-1], (strong.rs[20][-1], weak.rs[20][-1])
+    assert strong.rs[20][-1] == 100.0, strong.rs[20][-1]   # top of two
+    assert strong.rs[20][5] is None, "no rank before the lookback fills"
     print("features selftest ok")
 
 
