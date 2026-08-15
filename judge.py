@@ -43,6 +43,16 @@ BUDGET = 50          # lifetime holdout consultations
 MIN_TRADES = 30      # swing frequency is low; below this it is not evidence
 MAX_DD = 0.25
 
+# --- tightened 2026-08-15, pre-registered in lessons.md L28 ----------------
+# Epoch 2 produced a PASS (+6.31%, PF 1.51) whose entire profit came from one
+# BULL block while it lost in both BEAR blocks. The old criteria could not see
+# that: they tested size, sign and drawdown, never regime consistency or
+# statistical significance. Three additions, ALL STRICTLY TIGHTENING -- the only
+# safe direction to move a test after seeing a result it let through.
+MIN_POSITIVE_BLOCKS = 3   # of the 4 holdout blocks, by P&L
+MIN_PSR = 0.95            # significance before multiple-testing correction
+MIN_DSR = 0.95            # significance after deflating by the trial count
+
 
 def _load(path=None):
     p = path or LEDGER
@@ -63,11 +73,41 @@ def spec_hash(spec: dict) -> str:
         json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
 
 
-def _verdict(result: dict) -> bool:
-    """Deterministic. Never an LLM -- a judge that can be argued with is not a judge."""
-    return (result.get("n_trades", 0) >= MIN_TRADES
-            and result.get("expectancy_after_costs", 0) > 0
-            and result.get("max_dd", 1.0) <= MAX_DD)
+def _verdict(result: dict) -> tuple:
+    """-> (passed, [failed_criteria]). Deterministic; never an LLM -- a judge
+    that can be argued with is not a judge."""
+    import dsr as _dsr
+    fails = []
+    if result.get("n_trades", 0) < MIN_TRADES:
+        fails.append(f"n_trades<{MIN_TRADES}")
+    if result.get("expectancy_after_costs", 0) <= 0:
+        fails.append("expectancy<=0")
+    if result.get("max_dd", 1.0) > MAX_DD:
+        fails.append(f"max_dd>{MAX_DD}")
+
+    blocks = result.get("block_pnl") or {}
+    if blocks:
+        pos = sum(1 for v in blocks.values() if v > 0)
+        if pos < MIN_POSITIVE_BLOCKS:
+            fails.append(f"only {pos}/{len(blocks)} blocks positive")
+    else:
+        fails.append("no per-block P&L supplied")
+
+    rets = result.get("returns") or []
+    if len(rets) >= 4:
+        sr = _dsr.sharpe(rets)
+        sk, ku = _dsr.moments(rets)
+        if _dsr.psr(sr, 0.0, len(rets), sk, ku) <= MIN_PSR:
+            fails.append("PSR<=0.95")
+        trials = result.get("trial_sharpes") or []
+        if len(trials) >= 2:
+            if _dsr.deflated_sharpe(rets, trials)["dsr"] <= MIN_DSR:
+                fails.append("DSR<=0.95")
+        else:
+            fails.append("no trial Sharpes supplied (cannot deflate)")
+    else:
+        fails.append("too few returns for a significance test")
+    return (not fails), fails
 
 
 def consult(spec: dict, result: dict, ledger_path=None) -> dict:
@@ -84,10 +124,11 @@ def consult(spec: dict, result: dict, ledger_path=None) -> dict:
     if state["spent"] >= BUDGET:
         return {"verdict": "REFUSED", "budget_remaining": 0}
 
-    verdict = "PASS" if _verdict(result) else "FAIL"
+    passed, fails = _verdict(result)
+    verdict = "PASS" if passed else "FAIL"
     state["spent"] += 1
     state["verdicts"][h] = verdict
-    state["log"].append({"spec_hash": h, "verdict": verdict,
+    state["log"].append({"spec_hash": h, "verdict": verdict, "failed": fails,
                          "at": datetime.now(timezone.utc).isoformat()})
     _save(state, ledger_path)
     return {"verdict": verdict, "budget_remaining": BUDGET - state["spent"]}
@@ -95,9 +136,52 @@ def consult(spec: dict, result: dict, ledger_path=None) -> dict:
 
 def _selftest():
     import tempfile
-    passing = {"n_trades": 40, "expectancy_after_costs": 120.0, "max_dd": 0.10}
-    failing = {"n_trades": 40, "expectancy_after_costs": -50.0, "max_dd": 0.10}
-    thin = {"n_trades": 12, "expectancy_after_costs": 500.0, "max_dd": 0.05}
+    import random
+    rng = random.Random(1)
+    # Deterministic fixtures: a random draw can land anywhere, and a criteria
+    # test that depends on the seed is not a test of the criteria.
+    strong = [0.006 if i % 3 else 0.001 for i in range(120)]     # SR ~ 2.0
+    weakish = [0.001 if i % 2 == 0 else -0.0009 for i in range(120)]  # SR ~ 0.05
+    few_trials = [rng.gauss(0.0, 0.01) for _ in range(4)]
+    # Trial Sharpes must be spread widely enough that the best of 1,000 draws
+    # actually exceeds the candidate. With std 0.05 the max is only ~0.16, which
+    # a genuine SR of 1.8 rightly survives -- that is the code working, not a
+    # deflation failure.  std ~1.4 here => E[max SR] ~ 4.6.
+    many_trials = [(i % 5) - 2 for i in range(1000)]
+    good_blocks = {"a": 100.0, "b": 50.0, "c": 20.0, "d": -10.0}
+    one_block = {"a": 900.0, "b": -50.0, "c": -80.0, "d": -10.0}
+
+    passing = {"n_trades": 40, "expectancy_after_costs": 120.0, "max_dd": 0.10,
+               "block_pnl": good_blocks, "returns": strong,
+               "trial_sharpes": few_trials}
+    failing = {"n_trades": 40, "expectancy_after_costs": -50.0, "max_dd": 0.10,
+               "block_pnl": good_blocks, "returns": strong,
+               "trial_sharpes": few_trials}
+    thin = {"n_trades": 12, "expectancy_after_costs": 500.0, "max_dd": 0.05,
+            "block_pnl": good_blocks, "returns": strong, "trial_sharpes": few_trials}
+
+    # the epoch-2 shape: profitable overall, but from ONE block
+    concentrated = {"n_trades": 94, "expectancy_after_costs": 671.0, "max_dd": 0.04,
+                    "block_pnl": one_block, "returns": strong,
+                    "trial_sharpes": few_trials}
+    ok, why = _verdict(concentrated)
+    assert not ok and any("blocks positive" in f for f in why), why
+
+    # a marginal Sharpe must fail significance
+    marginal = {"n_trades": 94, "expectancy_after_costs": 10.0, "max_dd": 0.04,
+                "block_pnl": good_blocks, "returns": weakish,
+                "trial_sharpes": few_trials}
+    ok2, why2 = _verdict(marginal)
+    assert not ok2 and any("PSR" in f or "DSR" in f for f in why2), why2
+
+    # the same strong result must fail once deflated by 1,000 trials
+    deflated = {**passing, "trial_sharpes": many_trials}
+    ok3, why3 = _verdict(deflated)
+    assert not ok3 and any("DSR" in f for f in why3), why3
+
+    # omitting per-block data is a failure, never a silent pass
+    ok4, why4 = _verdict({k: v for k, v in passing.items() if k != "block_pnl"})
+    assert not ok4 and any("per-block" in f for f in why4), why4
 
     with tempfile.TemporaryDirectory() as td:
         led = Path(td) / "ledger.json"

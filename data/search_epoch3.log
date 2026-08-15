@@ -1,0 +1,10 @@
+corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1, 2025-H1, 2026-H1)
+  10/400  {'evaluated': 6, 'too_few_instances': 3, 'unreachable_target': 1}  206s
+  20/400  {'evaluated': 12, 'too_few_instances': 6, 'too_frequent': 1, 'unreachable_target': 1}  470s
+  30/400  {'evaluated': 16, 'too_few_instances': 9, 'too_frequent': 3, 'unreachable_target': 2}  647s
+  40/400  {'evaluated': 21, 'too_few_instances': 14, 'too_frequent': 3, 'unreachable_target': 2}  819s
+  50/400  {'evaluated': 26, 'too_few_instances': 19, 'too_frequent': 3, 'unreachable_target': 2}  1137s
+  60/400  {'evaluated': 30, 'too_few_instances': 23, 'too_frequent': 3, 'unreachable_target': 4}  1271s
+  70/400  {'evaluated': 33, 'too_few_instances': 30, 'too_frequent': 3, 'unreachable_target': 4}  1489s
+  80/400  {'evaluated': 42, 'too_few_instances': 31, 'too_frequent': 3, 'unreachable_target': 4}  2020s
+  90/400  {'evaluated': 48, 'too_few_instances': 33, 'too_frequent': 5, 'unreachable_target': 4}  2155s

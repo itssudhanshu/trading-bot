@@ -73,6 +73,42 @@ def plot_signal(signal, symbol=None) -> dict:
     return {"ok": not errors, "ids": created, "errors": errors}
 
 
+def editor_mounted() -> bool:
+    """True only if a RENDERED Pine editor exists.
+
+    TradingView keeps a 0x0 placeholder matching the same selector as the live
+    editor, so 'the panel reports open' is not evidence the editor is usable.
+    Check for non-zero dimensions -- the same rule as bhavcopy_date: verify the
+    thing itself, never the status of the request for it.
+    """
+    r = tv("ui", "eval", "--code",
+           "(function(){var a=document.querySelectorAll('.monaco-editor.pine-editor-monaco');"
+           "for(var i=0;i<a.length;i++){if(a[i].getBoundingClientRect().width>0)return 'yes';}"
+           "return 'no';})()")
+    return r.get("result") == "yes"
+
+
+def push_pine(spec, spec_hash="spec") -> dict:
+    """Render a spec to Pine and load it into the editor. -> {ok, lines, error}"""
+    import tempfile
+    import pine
+    if not connected():
+        return {"ok": False, "error": "CDP not connected"}
+    if not editor_mounted():
+        return {"ok": False, "error": "Pine editor not open -- open the panel in "
+                                      "TradingView, then retry"}
+    with tempfile.NamedTemporaryFile("w", suffix=".pine", delete=False) as f:
+        f.write(pine.render(spec, spec_hash))
+        path = f.name
+    r = tv("pine", "set", "--file", path)
+    if not r.get("success"):
+        return {"ok": False, "error": r.get("error")}
+    c = tv("pine", "compile")
+    return {"ok": True, "lines": r.get("lines_set"),
+            "compiled": c.get("success") and not c.get("has_errors"),
+            "errors": c.get("errors")}
+
+
 def erase(ids) -> int:
     """Remove only the given drawing IDs. Returns how many were removed."""
     return sum(1 for i in ids if tv("draw", "remove", "--id", i).get("removed"))
@@ -99,6 +135,8 @@ def _selftest():
             return {"removed": True}
         if a[:1] == ["symbol"]:
             return {"success": True}
+        if a[:2] == ["ui", "eval"]:
+            return {"success": True, "result": state.get("mounted", "yes")}
         return {"success": False}
 
     try:
@@ -109,6 +147,10 @@ def _selftest():
         assert r["ids"] == ["bot1", "bot2", "bot3"], r["ids"]
         assert "preexisting_user_drawing" not in r["ids"], "would delete user's drawing"
         assert erase(r["ids"]) == 3
+
+        # editor_mounted must reject the 0x0 placeholder, not just any match
+        state["mounted"] = "no"
+        assert editor_mounted() is False
         assert state["shapes"] == ["preexisting_user_drawing"], \
             f"user drawing must survive, got {state['shapes']}"
     finally:

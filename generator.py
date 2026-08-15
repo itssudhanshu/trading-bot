@@ -178,6 +178,12 @@ def screen(spec, corpus, bd, ctx_cache, symbol_years=None, allowed=None):
         return "unreachable_target", {"n_signals": len(sigs), "median_mfe": statistics.median(mfe)}
 
     res, trades = backtest.run(spec, corpus, bd, allowed=allowed)
+    # Trade-level Sharpe recorded for EVERY evaluated candidate, not just
+    # survivors. The DSR needs the variance of Sharpes across all trials; taking
+    # it from survivors understates the spread, understates E[max SR], and
+    # flatters exactly the number being deflated (lessons L25).
+    import dsr as _dsr
+    res["trade_sharpe"] = _dsr.sharpe([t.net / 1_000_000 for t in trades]) if trades else 0.0
     res["median_mfe"] = statistics.median(mfe)
     res["target_hit_rate"] = hits / len(mfe)
     return "evaluated", res

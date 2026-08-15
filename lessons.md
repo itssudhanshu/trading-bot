@@ -372,3 +372,173 @@ hand-picking wearing a seed.
 - 2025-H2 and 2026-H2 moved from old-holdout into train. I have seen aggregate
   behaviour there. The search is seeded and programmatic, so this does not steer
   it, but it is not zero.
+## L23 — The MCP bug was querySelector, and I misdiagnosed it three times (settled)
+`pine set` failed with "Could not open Pine Editor" while the editor was open
+and working. Three wrong diagnoses before the right one:
+
+  1. "selector mismatch"      -- a guess stated as a finding
+  2. "detached stub, editor lives in another CDP target" -- measured a 0x0
+     element WHILE THE PANEL WAS CLOSED and treated that as structural evidence
+  3. "the panel isn't really open" -- falsified when the user opened it and the
+     element still measured 0x0
+
+Actual cause: with the editor open, TradingView renders TWO nodes matching
+`.monaco-editor.pine-editor-monaco` -- a 0x0 placeholder and the live 520x693
+instance. `document.querySelector` returns the first. The MCP walked the
+placeholder, found no React fiber, and threw. On the live element the walk
+succeeds immediately (fiber depth 1, monacoEnv depth 11, 5 editors).
+
+Fixed by selecting the node with non-zero width. Local edit to a cloned repo;
+`tv update` will clobber it.
+
+**The pattern, again:** trusting a status instead of verifying the thing. The
+MCP trusted querySelector's first hit; I trusted `ui panel ... open` returning
+success. Same error as an HTTP 200 that is not the file you asked for (L-holiday)
+and a promotion criterion counting signals instead of trades (L12).
+`tv.editor_mounted()` now checks for a RENDERED editor, not a command's return.
+
+## L24 — Pine templates verified against the compiler, not against memory (settled)
+`pine.py`'s 21 translations were written from my own knowledge of Pine syntax --
+precisely where an LLM hallucinates deprecated or invented functions.
+
+With the MCP bridge working, TradingView's own compiler is available as ground
+truth, so `pine.verify_all()` now compiles a minimal script per predicate and
+reports real compiler errors. Result: **16/16 translatable templates compile
+clean on v6**, 5 are not expressible by design (delivery %, breadth, RS rank,
+surveillance -- data TradingView does not have).
+
+This is stronger than a syntax-validating helper: it is the actual compiler that
+will run the script, on the actual TradingView build installed here.
+
+**Where it still falls short:** the compiler says a construct is wrong, never
+what is right. For Pine features not yet used here (arrays, matrices,
+request.security, strategy()), a documentation source would genuinely help --
+the compile loop catches the error but cannot author the fix.
+## L25 — Deflated Sharpe Ratio implemented; the trial count is now priced in
+L7 warned in prose that "the ranking is the max of many trials". `dsr.py` now
+computes it, from Bailey & Lopez de Prado (2014), verified against two sources
+rather than written from memory (the first extraction garbled E[max SR] into a
+Cornish-Fisher expansion; it was not used):
+
+    E[max SR] ~= sqrt(V[SR]) * ((1-g)*Z^-1[1-1/N] + g*Z^-1[1-1/(N*e)])
+    DSR        = PSR evaluated at SR* = E[max SR]
+
+With unit variance across trials, the best Sharpe expected from pure noise is:
+
+    N=10 -> 1.58    N=100 -> 2.53    N=1000 -> 3.26    N=10000 -> 3.86
+
+This project has searched roughly 1,000 specs. **Any candidate whose Sharpe is
+not meaningfully above the N=1000 bar is indistinguishable from the luckiest
+coin flip.** That is now computable per candidate instead of being a caveat
+paragraph.
+
+Two implementation notes that decide whether the number is honest:
+- `trial_sharpes` must include EVERY candidate tested, not the survivors.
+  Passing survivors understates V[SR], understates E[max SR], and flatters
+  precisely the figure being deflated.
+- Sharpe is per-period, not annualised. Annualising one side of the comparison
+  inflates the DSR silently.
+
+## L26 — Reviewed external sources; CPCV is the one worth adopting
+`Bhala-Srinivash/nse-trading-skills` is real but is nine `SKILL.md` prompt
+frameworks (RSI divergence, Fibonacci, position sizing, multi-timeframe), not
+executable code. The techniques are largely already expressible in `spec.py` as
+testable predicates, and it uses yfinance/Groww for data, which cannot serve the
+cross-sectional access pattern this system needs. Nothing to adopt.
+
+The literature finding that matters: **Combinatorial Purged Cross-Validation
+(CPCV)** is reported to beat walk-forward on both Probability of Backtest
+Overfitting and DSR, by generating many train/test PATHS rather than one
+chronological sequence, each purged and embargoed.
+
+Relevant because `validate.py` currently runs a single expanding-window
+walk-forward -- exactly the method CPCV is reported to dominate. Epoch 2's block
+split is a step in that direction (multiple blocks, purged) but still evaluates
+one path. Candidate for epoch 3; not changing mid-epoch.
+## L27 — Epoch 2, first PASS: and the stratified holdout immediately earned itself
+`cfe9788decd6afc8`, turtle_soup (false-breakdown reclaim), hold 45, rank turnover.
+All four train folds positive with 36-64 taken trades each.
+
+    HOLDOUT total  +6.31%   94 trades   win 49%   PF 1.51   maxDD 4.0%
+    JUDGE: PASS   (epoch-2 budget 1/50)
+
+First PASS in the project. It is also not what it looks like, and the per-block
+breakdown is what shows it:
+
+    2020-H2  BULL   45 trades   +Rs 89,963
+    2023-H1  flat   21 trades   +Rs 12,225
+    2025-H1  BEAR   14 trades   -Rs 24,252
+    2026-H1  BEAR   13 trades   -Rs 13,366
+    ------------------------------------------
+    total                       +Rs 63,086
+    without the BULL block      -Rs 26,877
+
+Profits in rising and flat markets, loses in BOTH bear blocks. The entire result
+is one bull half-year. Epoch 1 would have reported "+6.31% out of sample, profit
+factor 1.51, max drawdown 4%" and that would have been a lie of omission --
+exactly the confound L19 was written to remove. **The stratified holdout paid for
+itself on its first use.**
+
+Statistically it does not survive either:
+
+    per-trade Sharpe 0.132 (n=94)   skew +1.58   kurt 6.01
+    PSR vs zero = 0.9204  -- below the 0.95 threshold BEFORE any deflation
+
+Deflating for ~1,000 trials can only lower it further.
+
+## L28 — The judge criteria are regime-blind and significance-blind (open, my error)
+`judge._verdict` tests: n_trades >= 30, expectancy > 0, max_dd <= 0.25. All three
+passed. None of them asks the two questions that actually mattered here:
+
+  1. Is the result consistent ACROSS regimes, or supplied by one block?
+  2. Is the Sharpe distinguishable from the best of N trials?
+
+I built a regime-stratified holdout in epoch 2 and then judged it with criteria
+written for epoch 1's contiguous holdout. The split got better; the test did not.
+
+Not changing the criteria mid-epoch -- that is the rule, and the PASS stands as
+the formal result of the pre-registered test. For epoch 3, pre-register:
+  - per-block expectancy positive in >= 3 of 4 holdout blocks
+  - PSR vs zero > 0.95, and DSR > 0.95 against the full trial count
+  - record each candidate's trade-level Sharpe at search time, so V[SR] across
+    trials is available -- it is not currently stored, which is why the DSR
+    above could only be illustrated, not computed
+## L29 — Epoch 3: same holdout, same budget, stricter test
+**The holdout blocks are UNCHANGED.** So this is not a new epoch in the sense
+that matters, and it does NOT get a fresh ledger. The budget limits total
+consultations against a given holdout; resetting it while reusing the same data
+would defeat its entire purpose. Epoch 3 continues from **2/50**.
+
+What changed is the test, per L28, pre-registered before this search:
+
+    MIN_POSITIVE_BLOCKS = 3   of 4 holdout blocks, by P&L
+    MIN_PSR = 0.95            significance before multiple-testing correction
+    MIN_DSR = 0.95            significance after deflating by the trial count
+
+All three TIGHTEN. That direction matters: tightening a test that let something
+through is defensible; loosening one that rejected a candidate is how this
+discipline dies. `judge._verdict` now also returns WHICH criteria failed, so a
+FAIL is diagnostic rather than a bare verdict.
+
+**Validated against the case that motivated it.** Re-running epoch 2's PASS
+through the new criteria (via `_verdict` directly, spending no budget):
+
+    old verdict: PASS
+    new verdict: FAIL
+      - only 2/4 blocks positive
+      - PSR<=0.95
+      - no trial Sharpes supplied (cannot deflate)
+
+The tightened test catches exactly what the old one missed, and for the reasons
+the per-block breakdown identified.
+
+Also: `generator` now records `trade_sharpe` for every evaluated candidate, so
+V[SR] across trials is finally available and the DSR can be computed rather than
+illustrated.
+
+**Two fixture bugs found while testing the new criteria**, both mine, both the
+same shape -- a test that depended on luck rather than on the thing being tested:
+  - a random "marginal" series happened to draw a high Sharpe and passed
+  - the deflation case used trial Sharpes with std 0.05, giving E[max SR] ~ 0.16,
+    which a genuine SR of 1.84 rightly survived. That was the code working.
+Both replaced with deterministic fixtures whose properties are asserted.
