@@ -217,9 +217,12 @@ def walk_forward_folds(days, n_folds=4, purge=MAX_HOLD):
     return out
 
 
-def run(spec, corpus, breadth, equity=1_000_000.0, allowed=None):
-    sigs = generate(spec, corpus, breadth, equity)
-    if allowed is not None:
+def run(spec, corpus, breadth, equity=1_000_000.0, allowed=None, presignals=None):
+    """`presignals` skips regeneration. Without it the parallel search would
+    generate every signal fast, then regenerate it serially inside the backtest
+    -- discarding the speedup it just paid for."""
+    sigs = presignals if presignals is not None else generate(spec, corpus, breadth, equity)
+    if allowed is not None and presignals is None:
         sigs = [(i, s, sg, q) for i, s, sg, q in sigs if s.days[i] in allowed]
     hold = spec.get("hold", {}).get("max_bars", MAX_HOLD)
     rank = spec.get("rank", {}).get("by", "none")

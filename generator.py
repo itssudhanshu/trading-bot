@@ -38,7 +38,7 @@ import spec as specmod
 import split
 
 ROOT = Path(__file__).resolve().parent
-CANDIDATES = ROOT / "data" / "candidates.jsonl"
+CANDIDATES = ROOT / "data" / "candidates.jsonl"        # latest run, for convenience
 
 MIN_INSTANCES = 100      # over the train span; ~30/fold, per lessons.md L4
 # ...and an upper bound. L4 asks for specs "loose enough to be testable while
@@ -139,14 +139,15 @@ def signals_for(spec, corpus, bd, ctx_cache, equity=1_000_000.0, allowed=None):
     return out
 
 
-def screen(spec, corpus, bd, ctx_cache, symbol_years=None, allowed=None):
+def screen(spec, corpus, bd, ctx_cache, symbol_years=None, allowed=None, presignals=None):
     """-> (stage, payload). Stops at the first gate the spec fails."""
     try:
         specmod.validate(spec)
     except specmod.SpecError as e:
         return "invalid", str(e)
 
-    sigs = signals_for(spec, corpus, bd, ctx_cache, allowed=allowed)
+    sigs = presignals if presignals is not None else \
+        signals_for(spec, corpus, bd, ctx_cache, allowed=allowed)
     if len(sigs) < MIN_INSTANCES:
         # Rejected WITHOUT computing returns. This is the whole discipline.
         return "too_few_instances", {"n_signals": len(sigs)}
@@ -177,7 +178,7 @@ def screen(spec, corpus, bd, ctx_cache, symbol_years=None, allowed=None):
     if hits == 0:
         return "unreachable_target", {"n_signals": len(sigs), "median_mfe": statistics.median(mfe)}
 
-    res, trades = backtest.run(spec, corpus, bd, allowed=allowed)
+    res, trades = backtest.run(spec, corpus, bd, allowed=allowed, presignals=sigs)
     # Trade-level Sharpe recorded for EVERY evaluated candidate, not just
     # survivors. The DSR needs the variance of Sharpes across all trials; taking
     # it from survivors understates the spread, understates E[max SR], and
@@ -187,6 +188,47 @@ def screen(spec, corpus, bd, ctx_cache, symbol_years=None, allowed=None):
     res["median_mfe"] = statistics.median(mfe)
     res["target_hit_rate"] = hits / len(mfe)
     return "evaluated", res
+
+
+def search_parallel(n_specs, seed, corpus, bd, allowed, workers=6, verbose=True):
+    """Same candidates as search(), signals generated in parallel.
+
+    Specs are sampled from the seeded RNG here, before distribution, so the
+    candidate set is identical to the serial path -- verified by xcheck.py.
+    """
+    import psearch
+    rng = random.Random(seed)
+    specs = [sample_spec(rng) for _ in range(n_specs)]
+    days = set(allowed)
+    span_years = (max(days) - min(days)).days / 365.25
+    symbol_years = len(corpus) * span_years
+
+    t0 = time.time()
+    raw = psearch.parallel_signals(specs, corpus, allowed, workers=workers)
+    if verbose:
+        print(f"  signals generated in {time.time()-t0:.0f}s", flush=True)
+
+    seen, results, stages = set(), [], {}
+    for i, sp in enumerate(specs):
+        h = judge.spec_hash(sp)
+        if h in seen:
+            stages["duplicate"] = stages.get("duplicate", 0) + 1
+            continue
+        seen.add(h)
+        # rebuild (index, series, Signal, qty) from the workers' plain tuples
+        sigs = [(idx, corpus[sym],
+                 engine.Signal(sym, sp.get("setup", "gen"), e, st, tg,
+                               sp.get("version", "v0")), q)
+                for sym, idx, e, st, tg, q in raw[i] if sym in corpus]
+        sigs.sort(key=lambda t: t[1].days[t[0]])
+        stage, payload = screen(sp, corpus, bd, {}, symbol_years, allowed, presignals=sigs)
+        stages[stage] = stages.get(stage, 0) + 1
+        if stage == "evaluated":
+            results.append({"spec_hash": h, "spec": sp, **payload})
+        if verbose and (i + 1) % 25 == 0:
+            print(f"  {i+1}/{n_specs}  {dict(sorted(stages.items()))}  "
+                  f"{time.time()-t0:.0f}s", flush=True)
+    return results, stages
 
 
 def search(n_specs, seed, corpus, bd, verbose=True, allowed=None):
@@ -219,6 +261,7 @@ def main():
     ap.add_argument("-n", "--n-specs", type=int, default=60)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--symbols", type=int, default=0, help="cap universe for a fast pass")
+    ap.add_argument("--parallel", type=int, default=0, help="workers; 0 = serial")
     a = ap.parse_args()
 
     # Full corpus for indicator continuity; SIGNALS restricted to train days.
@@ -240,12 +283,31 @@ def main():
         print(f"capped to {len(corpus)} symbols")
 
     bd = features.breadth(corpus)
-    results, stages = search(a.n_specs, a.seed, corpus, bd, allowed=allowed)
+    if a.parallel:
+        results, stages = search_parallel(a.n_specs, a.seed, corpus, bd, allowed,
+                                          workers=a.parallel)
+    else:
+        results, stages = search(a.n_specs, a.seed, corpus, bd, allowed=allowed)
 
     CANDIDATES.parent.mkdir(parents=True, exist_ok=True)
-    with CANDIDATES.open("w") as f:
-        for r in results:
-            f.write(json.dumps(r, default=str) + "\n")
+    # Per-seed archive as well as the convenience file: candidates.jsonl is
+    # overwritten every run, and a throwaway 8-spec test already destroyed a
+    # 400-spec run's trial Sharpes once. Anything feeding the multiple-testing
+    # correction must not live only in a file that the next run clobbers.
+    archive = CANDIDATES.parent / f"candidates_seed{a.seed}.jsonl"
+    for path in (CANDIDATES, archive):
+        with path.open("w") as f:
+            for r in results:
+                f.write(json.dumps(r, default=str) + "\n")
+
+    # Trial Sharpes accumulate across every search against this holdout. N for
+    # deflation is cumulative; resetting it per search would silently undo the
+    # correction, exactly as resetting the consultation budget per epoch would.
+    import dsr as _dsr
+    sharpes = [r["trade_sharpe"] for r in results if r.get("trade_sharpe") is not None]
+    if sharpes:
+        pool = _dsr.record_trials(sharpes)
+        print(f"trial pool: +{len(sharpes)} -> {len(pool)} cumulative")
 
     print(f"\nscreening outcomes: {dict(sorted(stages.items()))}")
     yielded = stages.get("evaluated", 0)

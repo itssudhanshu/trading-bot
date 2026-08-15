@@ -542,3 +542,78 @@ same shape -- a test that depended on luck rather than on the thing being tested
   - the deflation case used trial Sharpes with std 0.05, giving E[max SR] ~ 0.16,
     which a genuine SR of 1.84 rightly survived. That was the code working.
 Both replaced with deterministic fixtures whose properties are asserted.
+## L30 — PBO: a test of the SEARCH, not of any candidate (built, epoch 4)
+Everything else here judges a candidate. `cpcv.py` judges the procedure: across
+all combinations of train/test blocks, how often does the best-in-train spec
+land BELOW median out-of-sample?
+
+    omega  = rank/(N+1)   lambda = ln(omega/(1-omega))
+    PBO    = fraction of combinations with lambda < 0
+
+PBO > 0.5 means the selection process is fitting noise, and NO result from it is
+trustworthy however good that result's own numbers look. This is the missing
+diagnostic: DSR asks "is this candidate's Sharpe beyond the best of N draws";
+PBO asks "does my ranking procedure generalise at all". A search can produce a
+candidate with an acceptable DSR while still having PBO ~ 0.7, and that
+combination means the one good-looking spec was luck.
+
+Cheap because per-block P&L is computed once per spec; only the block accounting
+is combinatorial. Trades spanning a block boundary are PURGED, not attributed --
+a position opened in train and closed in test leaks across the split.
+
+Requested epoch 4 after I argued against running epochs mechanically. The
+concern was noted and overruled, which is the operator's call. It is worth doing
+IF the epoch differs in method rather than only in seed -- so epoch 4 adds PBO
+over the candidate set, and validates `psearch.py` against a serial run before
+letting it produce anything that spends budget.
+
+**The cost is real and should be stated:** every additional search raises the
+trial count N, and E[max SR] with it (3.26 at N=1000, 3.86 at N=10000). More
+searching makes the DSR bar higher, not lower. That is correct behaviour, not a
+bug, and it is why "run more epochs" is not a strategy for finding an edge.
+## L31 — N for deflation is cumulative across searches, not per search (settled)
+`dsr.deflated_sharpe` was being handed one search's trial Sharpes. That resets
+the multiple-testing correction every time a new search runs against the same
+holdout -- structurally identical to resetting the consultation budget per epoch,
+and with the same effect: unlimited hidden trials, reported honestly.
+
+Epochs 1-4 test roughly 1,800 specs against these four blocks. The correction
+must see all of them. `dsr.record_trials()` now appends to
+`data/trial_sharpes.json`, git-tracked for the same reason the ledger is.
+
+**The consequence is the point, not a side effect:** each additional search
+raises E[max SR] and makes every candidate harder to clear. Epoch 3's near miss
+(SR 0.248 against a bar of 0.3215, all four blocks positive) gets FURTHER from
+passing as epoch 4 runs. Searching more cannot rescue a candidate; only fresh
+out-of-sample data can, which means forward paper trading and the calendar.
+
+## L32 — A throwaway test run destroyed a 400-spec run's trial data (settled)
+An 8-spec parallel smoke test overwrote `data/candidates.jsonl`, deleting epoch
+3's 193 trial Sharpes. `generator.py` rewrites that file every run -- acceptable
+for a convenience snapshot, wrong for the only copy of anything feeding the
+multiple-testing correction.
+
+Recoverable only because the search is seeded and deterministic: re-running seed
+31 reproduces the identical candidate set. That property was designed in for
+reproducibility and paid for itself as disaster recovery.
+
+Fixed: every run now also writes `candidates_seed{N}.jsonl`, which nothing
+clobbers, and appends to the cumulative trial pool as it goes rather than
+depending on a later read of a mutable file.
+
+**General form:** if losing a file would cost hours of compute or corrupt a
+statistical correction, no routine operation may overwrite it. "The next run
+regenerates it" is only true when the run is deterministic AND cheap.
+
+## L33 — The parallel search path is verified, not assumed (settled)
+`psearch.py` is 3.8x faster and feeds a judge whose verdicts spend budget. A
+silent divergence -- one dropped symbol partition, a mis-merged spec index --
+would produce plausible results that are simply wrong.
+
+`xcheck.py` compares it against the serial path on a shared seed: identical
+candidate sets, then signal-for-signal set comparison per spec. Result: exact
+agreement across 6 specs including ones with 7,073 and 15,586 signals.
+
+Also fixed during integration: `backtest.run` regenerated every signal serially,
+discarding the speedup the parallel path had just paid for. It now accepts
+precomputed signals.

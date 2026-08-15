@@ -9,11 +9,66 @@
       "at": "2026-08-15T07:00:26.005687+00:00",
       "spec_hash": "187e3d97d33b9880",
       "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-15T10:08:37.131124+00:00",
+      "failed": [
+        "DSR<=0.95"
+      ],
+      "spec_hash": "0c27a3a5754ce860",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-15T10:08:39.561500+00:00",
+      "failed": [
+        "only 2/4 blocks positive",
+        "PSR<=0.95",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "de68c9273654b3db",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-15T10:08:42.889241+00:00",
+      "failed": [
+        "only 1/4 blocks positive",
+        "PSR<=0.95",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "e13211df526b2538",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-15T10:10:01.248814+00:00",
+      "failed": [
+        "expectancy<=0",
+        "only 1/4 blocks positive",
+        "PSR<=0.95",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "377be6ebcfd81776",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-15T10:10:10.070208+00:00",
+      "failed": [
+        "expectancy<=0",
+        "only 1/4 blocks positive",
+        "PSR<=0.95",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "25a0866f359cdc73",
+      "verdict": "FAIL"
     }
   ],
-  "spent": 2,
+  "spent": 7,
   "verdicts": {
+    "0c27a3a5754ce860": "FAIL",
     "187e3d97d33b9880": "FAIL",
-    "cfe9788decd6afc8": "PASS"
+    "25a0866f359cdc73": "FAIL",
+    "377be6ebcfd81776": "FAIL",
+    "cfe9788decd6afc8": "PASS",
+    "de68c9273654b3db": "FAIL",
+    "e13211df526b2538": "FAIL"
   }
 }

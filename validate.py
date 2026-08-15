@@ -18,6 +18,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import backtest
+import cpcv
 import features
 import generator
 import judge
@@ -56,11 +57,14 @@ MAX_CAPACITY_RATIO = 3.0
 SHORTLIST = 20                              # walk-forward only the train-ranked top N
 
 
-def fold_stats(spec, corpus, bd, ctx_cache, folds, allowed=None):
+def fold_stats(spec, corpus, bd, ctx_cache, folds, allowed=None, collect=None):
     sigs = generator.signals_for(spec, corpus, bd, ctx_cache, allowed=allowed)
     hold = spec.get("hold", {}).get("max_bars", backtest.MAX_HOLD)
-    trades = [t for t in (backtest.simulate(sig, s, i, q, hold)
+    rank = spec.get("rank", {}).get("by", "none")
+    trades = [t for t in (backtest.simulate(sig, s, i, q, hold, rank)
                           for i, s, sig, q in sigs) if t]
+    if collect is not None:
+        collect.append(trades)
     out = []
     for train, test in folds:
         lo, hi = test[0], test[-1]
@@ -122,9 +126,14 @@ def main(shortlist=SHORTLIST):
     ctx_cache = {}
 
     promoted = []
+    train_blocks = {lbl: days for lbl, days in split.blocks(sorted(allowed)).items()}
+    per_spec_blocks = {}
     print(f"  {'hash':16} {'setup':16} {'fold n/exp':>34} {'verdict'}")
     for r in rows:
-        fs = fold_stats(r["spec"], corpus, bd, ctx_cache, folds, allowed)
+        bucket = []
+        fs = fold_stats(r["spec"], corpus, bd, ctx_cache, folds, allowed, collect=bucket)
+        if bucket:
+            per_spec_blocks[r["spec_hash"]] = cpcv.block_pnl(bucket[0], train_blocks)
         ok, reasons = verdict(fs, r["spec"].get("rank", {}).get("by", "none"))
         cells = "  ".join(f"{f['n_taken']:>3}/{f['exp']:>+6.0f}" for f in fs)
         print(f"  {r['spec_hash']:16} {r['spec']['setup']:16} {cells}  "
@@ -133,6 +142,20 @@ def main(shortlist=SHORTLIST):
             promoted.append({**r, "folds": fs})
 
     PROMOTED.write_text("".join(json.dumps(p, default=str) + "\n" for p in promoted))
+
+    # PBO judges the SEARCH, not any candidate: across combinations of TRAIN
+    # blocks, does the best-in-sample spec generalise? Computed on train blocks
+    # only -- the holdout is not touched here.
+    if len(per_spec_blocks) >= 2:
+        r = cpcv.pbo(per_spec_blocks)
+        print(f"\nPBO (search-level, train blocks only)")
+        print(f"  specs {r['n_specs']}  blocks {r['n_blocks']}  paths {r['n_paths']}")
+        print(f"  PBO = {r['pbo']:.3f}   median lambda {r['median_lambda']:+.3f}")
+        print(f"  -> {r['verdict']}")
+        if r["pbo"] > 0.5:
+            print("  A candidate promoted by a procedure with PBO>0.5 is not")
+            print("  evidence, however good its own numbers look.")
+
     print(f"\npromoted: {len(promoted)}/{len(rows)}")
     if promoted:
         print("each promoted spec may now be consulted against the sealed holdout, "

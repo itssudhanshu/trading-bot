@@ -27,6 +27,9 @@ import sys
 EULER_MASCHERONI = 0.5772156649015329
 _N = statistics.NormalDist()
 
+from pathlib import Path as _Path
+_TRIAL_DEFAULT = _Path(__file__).resolve().parent / "data" / "trial_sharpes.json"
+
 
 def expected_max_sr(n_trials: int, sr_variance: float, sr_mean: float = 0.0) -> float:
     """Best Sharpe expected from `n_trials` draws of pure noise.
@@ -77,6 +80,35 @@ def moments(returns) -> tuple:
     s3 = sum((r - m) ** 3 for r in returns) / n / sd ** 3
     s4 = sum((r - m) ** 4 for r in returns) / n / sd ** 4
     return s3, s4
+
+
+TRIAL_POOL = _TRIAL_DEFAULT
+
+
+def record_trials(sharpes, path=None):
+    """Accumulate trial Sharpes ACROSS searches against the same holdout.
+
+    N for deflation is cumulative, not per-search. Epoch 1-3 tested ~1,400 specs
+    against these blocks; deflating epoch 4 by its own 400 would reset the
+    correction every time a new search runs -- the same error as resetting the
+    consultation budget per epoch, and with the same effect: unlimited hidden
+    trials. The pool is git-tracked for the same reason the ledger is.
+    """
+    import json as _json
+    from pathlib import Path as _P
+    p = _P(path) if path else TRIAL_POOL
+    pool = _json.loads(p.read_text()) if p.exists() else []
+    pool.extend(float(x) for x in sharpes)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(_json.dumps(pool))
+    return pool
+
+
+def load_trials(path=None):
+    import json as _json
+    from pathlib import Path as _P
+    p = _P(path) if path else TRIAL_POOL
+    return _json.loads(p.read_text()) if p.exists() else []
 
 
 def deflated_sharpe(returns, trial_sharpes) -> dict:
@@ -133,6 +165,18 @@ def _selftest():
     skewed = psr(0.15, 0.0, 500, -1.5, 3.0)
     fat = psr(0.15, 0.0, 500, 0.0, 9.0)
     assert skewed < base and fat < base, (base, skewed, fat)
+
+    # the trial pool must ACCUMULATE, never replace -- a per-search reset would
+    # silently undo the multiple-testing correction
+    import tempfile
+    from pathlib import Path as _P
+    with tempfile.TemporaryDirectory() as td:
+        pth = _P(td) / "pool.json"
+        assert load_trials(pth) == []
+        record_trials([0.1, 0.2], pth)
+        pool = record_trials([0.3], pth)
+        assert pool == [0.1, 0.2, 0.3], pool
+        assert len(load_trials(pth)) == 3
 
     # a good-looking Sharpe from many trials must not survive deflation
     import random

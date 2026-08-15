@@ -20,3 +20,38 @@ corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1
   190/400  {'evaluated': 101, 'too_few_instances': 73, 'too_frequent': 9, 'unreachable_target': 7}  4011s
   200/400  {'evaluated': 105, 'too_few_instances': 78, 'too_frequent': 10, 'unreachable_target': 7}  4122s
   210/400  {'evaluated': 110, 'too_few_instances': 83, 'too_frequent': 10, 'unreachable_target': 7}  4733s
+  220/400  {'evaluated': 115, 'too_few_instances': 88, 'too_frequent': 10, 'unreachable_target': 7}  4817s
+  230/400  {'evaluated': 117, 'too_few_instances': 95, 'too_frequent': 10, 'unreachable_target': 8}  5039s
+  240/400  {'evaluated': 123, 'too_few_instances': 99, 'too_frequent': 10, 'unreachable_target': 8}  5103s
+  250/400  {'evaluated': 127, 'too_few_instances': 104, 'too_frequent': 11, 'unreachable_target': 8}  5390s
+  260/400  {'evaluated': 133, 'too_few_instances': 108, 'too_frequent': 11, 'unreachable_target': 8}  5521s
+  270/400  {'evaluated': 138, 'too_few_instances': 113, 'too_frequent': 11, 'unreachable_target': 8}  5791s
+  280/400  {'evaluated': 144, 'too_few_instances': 117, 'too_frequent': 11, 'unreachable_target': 8}  5853s
+  290/400  {'evaluated': 148, 'too_few_instances': 122, 'too_frequent': 12, 'unreachable_target': 8}  5953s
+  300/400  {'evaluated': 153, 'too_few_instances': 126, 'too_frequent': 12, 'unreachable_target': 9}  6194s
+  310/400  {'evaluated': 157, 'too_few_instances': 132, 'too_frequent': 12, 'unreachable_target': 9}  7701s
+  320/400  {'evaluated': 162, 'too_few_instances': 137, 'too_frequent': 12, 'unreachable_target': 9}  7797s
+  330/400  {'evaluated': 168, 'too_few_instances': 140, 'too_frequent': 13, 'unreachable_target': 9}  8052s
+  340/400  {'evaluated': 170, 'too_few_instances': 145, 'too_frequent': 15, 'unreachable_target': 10}  8262s
+  350/400  {'evaluated': 173, 'too_few_instances': 151, 'too_frequent': 15, 'unreachable_target': 11}  8748s
+  360/400  {'evaluated': 176, 'too_few_instances': 157, 'too_frequent': 15, 'unreachable_target': 12}  8883s
+  370/400  {'evaluated': 178, 'too_few_instances': 165, 'too_frequent': 15, 'unreachable_target': 12}  8909s
+  380/400  {'evaluated': 184, 'too_few_instances': 169, 'too_frequent': 15, 'unreachable_target': 12}  9025s
+  390/400  {'evaluated': 188, 'too_few_instances': 175, 'too_frequent': 15, 'unreachable_target': 12}  9449s
+  400/400  {'evaluated': 193, 'too_few_instances': 177, 'too_frequent': 17, 'unreachable_target': 13}  9985s
+
+screening outcomes: {'evaluated': 193, 'too_few_instances': 177, 'too_frequent': 17, 'unreachable_target': 13}
+generator yield: 193/400 = 48.2%
+
+top candidates by portfolio expectancy (NOT evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  0c27a3a5754ce860 rs_momentum       13087    141  92.8x  +0.30   17%    +8,783
+  a2b421da854c8b11 rs_momentum        1038     17  61.1x  +0.69    9%    +4,763
+  bd30135d145ab28b mean_reversion       48     34   1.4x  +0.82   17%    +4,054
+  50b16be5dc464d73 ema_pullback        541     20  27.1x  +0.39   31%    +3,605
+  e845d30a4f0ed110 rs_momentum       10520     83 126.7x  +0.25   31%    +2,988
+  274f56031bd655ba turtle_soup        1554     93  16.7x  +0.44   17%    +2,843
+  ef48195f53ea8390 stage2_breakout    9052    103  87.9x  -0.01   38%    +2,648
+  3affb068fc2b4280 vcp                  93     57   1.6x  +0.39   24%    +2,580
+  808f4b86cc2a8d3a stage2_breakout    1484     73  20.3x  -0.37   30%    +2,556
+  de68c9273654b3db ema_pullback       6427     85  75.6x  +0.17    7%    +2,164
