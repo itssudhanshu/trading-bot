@@ -73,7 +73,11 @@ def send(text, chat_id=None):
 def cmd_status(_=None):
     import agent
     att = agent.attention()
-    out = [f"*trading-bot* {datetime.now():%d %b %H:%M}", ""]
+    ok, why = agent.health()
+    jobs = agent._jobs_loaded()
+    out = [f"*trading-bot* {datetime.now():%d %b %H:%M}", "",
+           f"*agent:* {'🟢' if ok else '🔴'} {why}",
+           f"*scheduled:* {', '.join(jobs) if jobs else 'NONE INSTALLED'}", ""]
     out.append("*needs attention*")
     out += [f"• {a}" for a in att] if att else ["• nothing"]
     out += ["", f"*due now:* {', '.join(agent.due()) or 'nothing'}",
@@ -122,6 +126,7 @@ def cmd_help(_=None):
             "/status – what needs attention, what is due\n"
             "/progress – corpus, budget, research cycles\n"
             "/paper – paper trading book\n"
+            "/health – is the agent actually running?\n"
             "/digest – full digest\n\n"
             "_read-only: I never start a search or spend holdout budget from here_")
 
@@ -133,7 +138,23 @@ def cmd_digest(_=None):
             else "no digest yet")
 
 
-COMMANDS = {"/status": cmd_status, "/progress": cmd_progress,
+def cmd_health(_=None):
+    import agent
+    ok, why = agent.health()
+    jobs = agent._jobs_loaded()
+    lines = [f"*health* {datetime.now():%d %b %H:%M}", "",
+             f"{'🟢' if ok else '🔴'} agent: {why}",
+             f"{'🟢' if jobs else '🔴'} scheduled: {', '.join(jobs) or 'NONE'}"]
+    import subprocess as _sp
+    for name, pat in (("telegram listener", "tg.py --listen"),
+                      ("search/validate", "generator.py|validate.py")):
+        r = _sp.run(["pgrep", "-f", pat], capture_output=True, text=True)
+        live = bool(r.stdout.strip())
+        lines.append(f"{'🟢' if live else '⚪'} {name}: {'running' if live else 'idle'}")
+    return "\n".join(lines)
+
+
+COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_health,
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
             "/digest": cmd_digest}
 

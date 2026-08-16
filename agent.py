@@ -114,6 +114,17 @@ def run_task(name, log=print):
     return rc == 0
 
 
+def _jobs_loaded():
+    """Are the launchd/systemd jobs actually registered? A plist sitting in the
+    repo is not a running agent, and that gap is invisible otherwise."""
+    try:
+        out = subprocess.run(["launchctl", "list"], capture_output=True,
+                             text=True, timeout=10).stdout
+        return [l.split()[-1] for l in out.splitlines() if "tradingbot" in l]
+    except Exception:
+        return []
+
+
 def attention():
     """Things a person should know about. Empty is the normal, good state.
 
@@ -124,6 +135,12 @@ def attention():
     out = []
     st = _state()
     today = date.today()
+
+    ok, why = health()
+    if not ok:
+        out.append(f"agent {why}")
+    if not _jobs_loaded():
+        out.append("no launchd job registered -- nothing runs on a schedule")
 
     # Surveillance is the one unrecoverable data stream: NSE serves the current
     # day only, so a gap is permanent and silent.
@@ -197,7 +214,44 @@ def digest():
     return DIGEST
 
 
+HEARTBEAT = ROOT / "data" / "agent_heartbeat.json"
+
+
+def beat():
+    """Written on EVERY run, including runs with nothing to do.
+
+    Without it there is no way to distinguish "the agent is running and nothing
+    was due" from "the agent has not run for a week". Those look identical from
+    the outside and only one of them is fine.
+    """
+    HEARTBEAT.parent.mkdir(parents=True, exist_ok=True)
+    HEARTBEAT.write_text(json.dumps({"at": datetime.now().isoformat()}))
+
+
+def last_beat():
+    if not HEARTBEAT.exists():
+        return None
+    try:
+        return datetime.fromisoformat(json.loads(HEARTBEAT.read_text())["at"])
+    except Exception:
+        return None
+
+
+def health():
+    """-> (alive: bool, human explanation). Expects an hourly timer."""
+    lb = last_beat()
+    if lb is None:
+        return False, "agent has NEVER run (timer not installed?)"
+    mins = (datetime.now() - lb).total_seconds() / 60
+    if mins < 90:
+        return True, f"alive, last ran {mins:.0f} min ago"
+    if mins < 60 * 24:
+        return False, f"STALE: last ran {mins/60:.1f} hours ago (expected hourly)"
+    return False, f"DEAD: last ran {mins/60/24:.1f} days ago"
+
+
 def once(log=print):
+    beat()
     todo = due()
     if not todo:
         log("nothing due")
@@ -306,6 +360,10 @@ if __name__ == "__main__":
         print(f"  due now         : {', '.join(due()) or 'nothing'}")
         print(f"  busy            : {'yes (job running)' if _busy() else 'no'}")
         st = _state()
+        ok, why = health()
+        print(f"  agent health    : {why}")
+        jobs = _jobs_loaded()
+        print(f"  scheduled jobs  : {', '.join(jobs) if jobs else 'NONE INSTALLED'}")
         for k in ("last_snapshot", "last_runner", "last_research"):
             print(f"  {k:<16}: {st.get(k, 'never')}")
         print()
