@@ -1,1 +1,35 @@
 corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1, 2025-H1, 2026-H1)
+  signals generated in 1547s
+  25/400  {'evaluated': 20, 'too_few_instances': 4, 'too_frequent': 1}  1551s
+  50/400  {'evaluated': 34, 'too_few_instances': 13, 'too_frequent': 2, 'unreachable_target': 1}  1552s
+  75/400  {'evaluated': 46, 'too_few_instances': 23, 'too_frequent': 5, 'unreachable_target': 1}  1556s
+  100/400  {'evaluated': 60, 'too_few_instances': 30, 'too_frequent': 5, 'unreachable_target': 5}  1558s
+  125/400  {'evaluated': 70, 'too_few_instances': 39, 'too_frequent': 9, 'unreachable_target': 7}  1561s
+  150/400  {'evaluated': 83, 'too_few_instances': 49, 'too_frequent': 9, 'unreachable_target': 9}  1563s
+  175/400  {'evaluated': 97, 'too_few_instances': 59, 'too_frequent': 10, 'unreachable_target': 9}  1566s
+  200/400  {'evaluated': 109, 'too_few_instances': 70, 'too_frequent': 11, 'unreachable_target': 10}  1568s
+  225/400  {'evaluated': 121, 'too_few_instances': 80, 'too_frequent': 12, 'unreachable_target': 12}  1570s
+  250/400  {'evaluated': 136, 'too_few_instances': 88, 'too_frequent': 13, 'unreachable_target': 13}  1572s
+  275/400  {'evaluated': 149, 'too_few_instances': 98, 'too_frequent': 14, 'unreachable_target': 14}  1573s
+  300/400  {'evaluated': 162, 'too_few_instances': 109, 'too_frequent': 15, 'unreachable_target': 14}  1576s
+  325/400  {'evaluated': 174, 'too_few_instances': 120, 'too_frequent': 17, 'unreachable_target': 14}  1578s
+  350/400  {'evaluated': 188, 'too_few_instances': 129, 'too_frequent': 18, 'unreachable_target': 15}  1579s
+  375/400  {'evaluated': 199, 'too_few_instances': 140, 'too_frequent': 20, 'unreachable_target': 16}  1581s
+  400/400  {'evaluated': 215, 'too_few_instances': 149, 'too_frequent': 20, 'unreachable_target': 16}  1583s
+trial pool: +215 -> 2101 cumulative
+
+screening outcomes: {'evaluated': 215, 'too_few_instances': 149, 'too_frequent': 20, 'unreachable_target': 16}
+generator yield: 215/400 = 53.8%
+
+top candidates by WORST-BLOCK P&L (L46; not evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  e7ea0e9a6b4f7465 rs_momentum         517     22  23.5x  +0.18    1%    +1,086
+  952607cd749bc143 stage2_breakout     298     16  18.6x  +0.93   24%    +6,806
+  44b57234ab04e9f5 ema_pullback         90     65   1.4x  +0.34   21%    +1,085
+  903ffdb1eeb467b8 vcp                  76     75   1.0x  -0.04    3%       +13
+  ff0c2210b262f4e0 stage2_breakout     206     12  17.2x  +0.31    0%    +3,020
+  ffb447f4b499498b vcp                 189    139   1.4x  +0.13    2%      +682
+  5e04ba52d09f7784 quality_momentum    149     28   5.3x  +0.37   14%    +1,927
+  645d38b228284aec vcp                 330    185   1.8x  +0.05    0%      +188
+  cb36cfb53ae42ed9 mean_reversion     1579    455   3.5x  +0.15    0%      -131
+  3cb243e8e4f9140a vcp                 406    236   1.7x  +0.00    0%      -151

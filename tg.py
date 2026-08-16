@@ -204,10 +204,14 @@ def _selftest():
     src = Path(__file__).read_text()
     # the owner check is the whole security model
     assert 'if chat != owner:' in src, "bot would answer strangers"
-    # no command may mutate state
-    for name in ("generator", "pipeline.py", "--consult", "consult("):
-        assert name not in src.split("COMMANDS =")[0].split("def cmd_status")[1], \
-            f"a command can trigger {name}"
+    # No handler may EXECUTE anything or spend budget. Asserted precisely: a
+    # pgrep PATTERN mentioning "generator.py" is read-only and must not trip
+    # this, while subprocess.run([sys.executable, ...]) or judge.consult must.
+    handlers = src.split("COMMANDS =")[0].split("def cmd_status")[1]
+    for forbidden in ("judge.consult", "--consult", "run([sys.executable",
+                      "os.remove", ".unlink("):
+        assert forbidden not in handlers, f"a command can trigger {forbidden}"
+    assert "pgrep" in handlers, "health must observe processes, not start them"
     # errors must never echo the URL (it carries the token)
     assert 'f"{type(e).__name__}"' in src, "error text could leak the token"
 
@@ -225,12 +229,23 @@ if __name__ == "__main__":
     elif "--status" in sys.argv:
         print(json.dumps(send(cmd_status()).get("ok")))
     elif "--listen" in sys.argv:
-        print("listening for commands (ctrl-c to stop)", flush=True)
+        _self = Path(__file__)
+        _mtime = _self.stat().st_mtime
+        print(f"listening (pid {__import__('os').getpid()}, "
+              f"{len(COMMANDS)} commands)", flush=True)
         while True:
             try:
                 poll_once()
+                # Restart on our own source changing. A poller that keeps
+                # serving stale code answers the wrong thing and looks healthy
+                # while doing it.
+                if _self.stat().st_mtime != _mtime:
+                    print("tg.py changed on disk -- exiting for restart", flush=True)
+                    sys.exit(0)
             except KeyboardInterrupt:
                 break
+            except SystemExit:
+                raise
             except Exception as e:
                 print(f"poll error: {type(e).__name__}", flush=True)
     else:

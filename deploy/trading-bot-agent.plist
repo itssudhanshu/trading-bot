@@ -23,7 +23,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string><string>-lc</string>
-    <string>/usr/local/bin/python3 agent.py --once</string>
+    <string>/usr/local/bin/python3 agent.py --once --telegram</string>
   </array>
   <key>StartInterval</key><integer>3600</integer>
   <key>RunAtLoad</key><true/>

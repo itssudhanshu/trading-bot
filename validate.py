@@ -17,6 +17,8 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
+from datetime import datetime
+
 import backtest
 import cpcv
 import features
@@ -144,7 +146,15 @@ def main(shortlist=SHORTLIST):
         if ok:
             promoted.append({**r, "folds": fs})
 
+    # Per-run archive as well as the convenience file. promoted.jsonl is
+    # rewritten every validate, so five cycles' promotions collapsed to the
+    # last one's -- the same overwrite that destroyed a 400-spec trial set
+    # earlier (L32). Anything that took an hour to produce gets a keeping copy.
     PROMOTED.write_text("".join(json.dumps(p, default=str) + "\n" for p in promoted))
+    if promoted:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        (PROMOTED.parent / f"promoted_{stamp}.jsonl").write_text(
+            "".join(json.dumps(p, default=str) + "\n" for p in promoted))
 
     # PBO judges the SEARCH, not any candidate: across combinations of TRAIN
     # blocks, does the best-in-sample spec generalise? Computed on train blocks

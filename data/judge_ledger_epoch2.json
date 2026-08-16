@@ -80,16 +80,60 @@
       ],
       "spec_hash": "461866b74b492310",
       "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-16T09:41:27.219229+00:00",
+      "failed": [
+        "PSR<=0.95",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "c18d74c21b166df1",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-16T09:41:30.981293+00:00",
+      "failed": [
+        "expectancy<=0",
+        "only 1/4 blocks positive",
+        "PSR<=0.95",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "3c6ab91097b23b54",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-16T09:41:33.552139+00:00",
+      "failed": [
+        "only 2/4 blocks positive",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "6e5ff05a9be29a29",
+      "verdict": "FAIL"
+    },
+    {
+      "at": "2026-08-16T09:41:40.910140+00:00",
+      "failed": [
+        "expectancy<=0",
+        "only 2/4 blocks positive",
+        "PSR<=0.95",
+        "DSR<=0.95"
+      ],
+      "spec_hash": "b5a8099d15739183",
+      "verdict": "FAIL"
     }
   ],
-  "spent": 9,
+  "spent": 13,
   "verdicts": {
     "0c27a3a5754ce860": "FAIL",
     "185ea8de25d8e4d8": "FAIL",
     "187e3d97d33b9880": "FAIL",
     "25a0866f359cdc73": "FAIL",
     "377be6ebcfd81776": "FAIL",
+    "3c6ab91097b23b54": "FAIL",
     "461866b74b492310": "FAIL",
+    "6e5ff05a9be29a29": "FAIL",
+    "b5a8099d15739183": "FAIL",
+    "c18d74c21b166df1": "FAIL",
     "cfe9788decd6afc8": "PASS",
     "de68c9273654b3db": "FAIL",
     "e13211df526b2538": "FAIL"

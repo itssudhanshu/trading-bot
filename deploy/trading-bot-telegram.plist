@@ -1,22 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Telegram listener. KeepAlive because it long-polls: if it dies, launchd
-  restarts it, otherwise commands silently stop being answered and you would
-  not know until you asked something and got nothing back.
+  Telegram listener.
 
-    cp deploy/trading-bot-telegram.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/trading-bot-telegram.plist
+  Uses the RESOLVED interpreter path, not the /usr/local/bin/python3 symlink:
+  launchd refused to exec through the symlink with EX_CONFIG (78) and an empty
+  log -- the program never started, so nothing explained why. The agent job
+  survived the same plist shape only because its Program is /bin/zsh, a real
+  system binary.
+
+  Invokes python DIRECTLY, no `zsh -lc` wrapper: under launchd a login shell
+  sources the user profile in a minimal environment and can exit 78 (EX_CONFIG)
+  before python ever starts, which produces an empty log and no clue. Fewer
+  moving parts is worth more here than shell convenience.
+
+  No WorkingDirectory, absolute script path: launchd failed the spawn with
+  EX_CONFIG (78) and an EMPTY log because it could not chdir into ~/Documents,
+  which is TCC-protected. The program never started, so nothing said why.
+  tg.py derives its paths from __file__, so it never needed a cwd.
+
+  KeepAlive restarts it if it dies -- including the deliberate exit tg.py makes
+  when its own source changes, so an edit picks up automatically.
+  ThrottleInterval stops a crash-loop from spinning.
 -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.sudhanshu.tradingbot.telegram</string>
-  <key>WorkingDirectory</key>
-  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot</string>
   <key>ProgramArguments</key>
-  <array><string>/bin/zsh</string><string>-lc</string>
-    <string>/usr/local/bin/python3 tg.py --listen</string></array>
+  <array>
+    <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+    <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/tg.py</string>
+    <string>--listen</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
   <key>KeepAlive</key><true/>
   <key>RunAtLoad</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
   <key>StandardOutPath</key>
   <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/telegram.log</string>
   <key>StandardErrorPath</key>

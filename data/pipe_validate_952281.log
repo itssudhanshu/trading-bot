@@ -1,0 +1,43 @@
+walk-forward on top 30 of the train ranking (shortlisting is itself selection -- the holdout is the real test)
+
+  hash             setup                                    fold n/exp verdict
+  e7ea0e9a6b4f7465 rs_momentum       22/ +1086    0/    +0    0/    +0    0/    +0  4/4 folds under 30 taken trades
+  952607cd749bc143 stage2_breakout   16/ +6806    0/    +0    0/    +0    0/    +0  4/4 folds under 30 taken trades
+  44b57234ab04e9f5 ema_pullback      18/ +3656   25/  -961   10/  +836   11/ +1151  4/4 folds under 30 taken trades
+  903ffdb1eeb467b8 vcp               15/ +3190    6/ -3749   26/ -2261   25/  +613  4/4 folds under 30 taken trades
+  ff0c2210b262f4e0 stage2_breakout   12/ +3020    0/    +0    0/    +0    0/    +0  4/4 folds under 30 taken trades
+  ffb447f4b499498b vcp               20/ +2267   10/ -3386   65/ +2364   42/ -1545  2/4 folds under 30 taken trades
+  5e04ba52d09f7784 quality_momentum   2/  +916    3/ +3276    9/ +4613   13/  -335  4/4 folds under 30 taken trades
+  645d38b228284aec vcp               35/ +1180   10/ -1275   68/  -118   75/   -11  1/4 folds under 30 taken trades
+  cb36cfb53ae42ed9 mean_reversion    62/   -67   67/   -86   98/  +510  128/  -280  only 1/4 folds positive (need 3)
+  3cb243e8e4f9140a vcp               56/  +321   19/ -1826   85/  +190   74/  -719  1/4 folds under 30 taken trades
+  85309534e2dad4a6 rs_momentum        0/    +0    0/    +0   65/  +206   58/  -738  2/4 folds under 30 taken trades
+  1fc9ae05b1a6b86e mean_reversion     5/  -545   23/   -59    9/  -241   24/  +346  4/4 folds under 30 taken trades
+  913c3265ab5abcab turtle_soup       11/ +1151   32/  -538   27/  -544   31/ +1584  2/4 folds under 30 taken trades
+  7d570d2a1d3d7ec4 quality_momentum  31/ -1172   14/ -1069   95/  +735  103/   -98  1/4 folds under 30 taken trades
+  125e9f2f41575a06 quality_momentum  20/ -1362   15/ -2132   17/ +1513   36/  -674  3/4 folds under 30 taken trades
+  4e7e383814b0ab09 stage2_breakout    0/    +0    0/    +0   50/  +389   40/  -641  2/4 folds under 30 taken trades
+  191fde2f7d76764c turtle_soup        3/ +8065   22/ +1215    6/ +8341   22/  +128  4/4 folds under 30 taken trades
+  71db1b8ac11ee8f2 mean_reversion    70/  +115  100/  -529   76/ +1422  106/  -568  only 2/4 folds positive (need 3)
+  831088ac707cafbd vcp               33/ +3992   27/ -1399   46/  -534   46/  -185  1/4 folds under 30 taken trades
+  32d75d153fdeae0b vcp               60/  +407   62/  -317   55/   +13   75/  -896  only 2/4 folds positive (need 3)
+  889b43bbce40cad9 rs_momentum        8/ +2022   56/  +905   38/  -511   51/  +704  1/4 folds under 30 taken trades
+  29ac8b6c74e41336 turtle_soup       49/  -437   30/  -236   52/  +242   56/  -968  only 1/4 folds positive (need 3)
+  ce856c17d0cbfe92 ema_pullback      97/ +2446   78/  -267  139/  +850  110/  +349  PROMOTED
+  d66c1dbf7e28a92d ema_pullback      14/ +2682   27/ -1209   43/ +1338   41/  +876  2/4 folds under 30 taken trades
+  f18ccfccd8045f5c mean_reversion    20/ +3895   12/   -76   27/ +2915   18/ -1913  4/4 folds under 30 taken trades
+  aa9edcd9c9b881cb quality_momentum  27/  -557   18/ -1003   12/ +2119   52/   +73  3/4 folds under 30 taken trades
+  be08fd98e3b9f0da vcp              139/   -91   78/  -470  215/   +56  182/  -356  only 1/4 folds positive (need 3)
+  565044c7716f7a7a stage2_breakout   85/  +359   39/ -1677  104/ +2418  100/  +145  PROMOTED
+  cee5ff5556a8bec8 stage2_breakout   29/ -5591   26/ -4200   53/ +1113   45/ -1087  2/4 folds under 30 taken trades
+  d2d2a4c57dc18a86 vcp              136/  +384  163/  -350  175/  +359  214/   -36  only 2/4 folds positive (need 3)
+
+PBO (search-level, train blocks only, scorer=min)
+  specs 30  blocks 10  paths 252
+  PBO = 0.560   median lambda -0.194
+  -> SEARCH IS OVERFITTING
+  A candidate promoted by a procedure with PBO>0.5 is not
+  evidence, however good its own numbers look.
+
+promoted: 2/30
+each promoted spec may now be consulted against the sealed holdout, at one budget unit each (9/50 spent)

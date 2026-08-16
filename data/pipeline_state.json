@@ -17,10 +17,30 @@
       "n_candidates": 226,
       "promoted": 2,
       "stop": "2 promoted; consultation is a deliberate act"
+    },
+    {
+      "seed": 952281,
+      "at": "20260816-1343",
+      "stage": "validate",
+      "pbo": 0.36507936507936506,
+      "n_candidates": 215,
+      "promoted": 2,
+      "stop": "2 promoted; consultation is a deliberate act"
+    },
+    {
+      "seed": 185577,
+      "at": "20260816-1421",
+      "stage": "validate",
+      "pbo": 0.15873015873015872,
+      "n_candidates": 221,
+      "promoted": 4,
+      "stop": "4 promoted; consultation is a deliberate act"
     }
   ],
   "seeds_used": [
     905832,
-    763846
+    763846,
+    952281,
+    185577
   ]
 }
