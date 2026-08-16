@@ -1,0 +1,41 @@
+clusters=('micro', 'small')  ranking=pooled  cut=0.67  Rs 300,000
+
+  2026-07-09  QUEUE  PGHL         small
+  2026-07-10  FILL   PGHL         @ 6,615.50
+  2026-07-15  QUEUE  MANGLMCEM    small
+  2026-07-16  FILL   MANGLMCEM    @ 1,008.95
+  2026-07-16  QUEUE  GRINDWELL    small
+  2026-07-17  FILL   GRINDWELL    @ 2,400.00
+  2026-07-20  EXIT   GRINDWELL    stop    Rs -5,733
+  2026-07-20  QUEUE  JSFB         small
+  2026-07-21  FILL   JSFB         @ 535.75
+  2026-07-27  QUEUE  HAPPYFORGE   small
+  2026-07-27  QUEUE  SGMART       small
+  2026-07-28  FILL   HAPPYFORGE   @ 1,666.00
+  2026-07-28  FILL   SGMART       @ 715.15
+  2026-07-31  EXIT   PGHL         time    Rs -217
+  2026-07-31  QUEUE  PRUDENT      small
+  2026-08-03  FILL   PRUDENT      @ 3,319.80
+  2026-08-06  EXIT   MANGLMCEM    time    Rs -3,212
+  2026-08-07  QUEUE  3IINFOLTD    micro
+  2026-08-10  FILL   3IINFOLTD    @ 25.75
+  2026-08-11  EXIT   JSFB         time    Rs -921
+  2026-08-11  QUEUE  HCG          small
+  2026-08-12  FILL   HCG          @ 735.00
+  2026-08-12  EXIT   HAPPYFORGE   target  Rs +8,495
+  2026-08-13  FILL   HAPPYFORGE   @ 2,040.00
+  1 legitimate re-entry(ies) after exit
+
+  30 sessions: queued 10 · filled 10 · closed 5
+  equity Rs 298,412  realised Rs -1,588
+  open 5, pending 0
+  invariants: no duplicate symbol, no same-day fill, no unknown cluster
+  findings: 5 trades, {'small': {'n': 5, 'total': -1.51, 'avg': -0.302, 'wins': 1}}
+  /wallet     575 chars
+  /trades     282 chars
+  /stocks     401 chars
+  /findings   131 chars
+  /bucket     document
+  /overview   1202 chars
+
+REHEARSAL COMPLETE
