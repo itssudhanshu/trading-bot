@@ -7,8 +7,8 @@
          (the universe splits into THREE terciles; the top third is not traded.
           A 50/50 split would put Nestle and Titan into "small" and redefine
           every result ever measured.)
-      -> POOLED rank across every eligible stock + 200-DMA gate
-      -> bucket = the best 5 outright (clusters gate eligibility only)
+      -> rank within cluster: score + 200-DMA gate -> top 20 each
+      -> bucket = 3 micro + 2 small = 5 stocks
       -> breakout trigger, filled at the NEXT open
       -> Rs 3,00,000 capital, max 75% deployed (Rs 45k/stock)
          open risk 7.5% at a full book, ~4.6% typical (occupancy averages 3.09/5)
@@ -66,6 +66,71 @@ Then verify the command actually works before reporting it as fixed.
   ranking instead of after moved the result by 4 CAGR points, because the book
   reached deeper down the list to fill its five stocks. Rank first, trigger
   second, cash third.
+
+## Fundamentals: tested, no signal
+
+40,775 XBRL filings, 94% coverage of the tradeable clusters, dated by
+`broadCastDate` so a filing is invisible until published. Four company-momentum
+features measured on 1,049 RANDOMLY sampled trades:
+
+| feature | spread | std err | t | verdict |
+|---|---|---|---|---|
+| rev_growth | -0.23% | 0.65% | -0.35 | indistinguishable from 0 |
+| profit_growth | +0.44% | 0.65% | +0.67 | indistinguishable from 0 |
+| margin | -0.58% | 0.66% | -0.89 | indistinguishable from 0 |
+| margin_change | +0.17% | 0.66% | +0.27 | indistinguishable from 0 |
+
+Every confidence interval straddles zero. Fundamentals are kept as data
+(`fundamentals.py`, `features_asof`) but must not be given a weight in the
+score without new evidence.
+
+**The same test undercut an earlier claim.** On 2,337 sampled trades the price
+features read: rs +1.40% (t=3.07), off_high -1.39% (t=-3.05), deliv +0.93%
+(t=2.05), liq -0.61% (t=-1.33, not significant). An earlier run on 954 samples
+had put rs at ~zero and deliv strongest, and the deliv 1.5 weight was set on
+that. With ~0.46% standard error, only effects above roughly 0.9% are
+resolvable -- much of what this project has called a finding sits inside that
+band.
+
+**But the t-statistics did not transfer.** Weighting rs up to 1.5, despite it
+having the highest t, produced the WORST book of five variants (+8.93% against
++13.57%). rs is already captured by the 200-DMA gate and the breakout trigger,
+so more of it is redundant while crowding out deliv, which is orthogonal.
+Univariate significance is not marginal portfolio value. Weights unchanged.
+
+## Every design decision was re-checked with error bars
+
+A CAGR gap between two backtests is not evidence unless the per-trade edge
+behind it clears its own noise. Checked at current settings:
+
+| decision | CAGR gap | edge per trade | std err | t | verdict |
+|---|---|---|---|---|---|
+| adopted the breakout trigger | +2.91 | +0.05% | 2.22% | 0.02 | inside the noise |
+| chose 3 micro / 2 small | -4.47 | -0.57% | 1.51% | -0.37 | inside the noise |
+| raised deliv to 1.5 | +2.98 | +0.53% | 1.58% | 0.33 | inside the noise |
+
+**None of them clears it.** Per-trade returns have a standard deviation near
+16%, so with ~220 trades nothing under about 3 points per trade is resolvable.
+The CAGR gaps are real arithmetic on one path; they are not proof that one rule
+picks better trades than another.
+
+**The one claim that DOES survive is the important one.** Rank depth predicts
+return: regressing 1,068 trades across six disjoint cohorts gives -0.90% per
+cohort step (std err 0.35%, t = -2.56, CI [-1.59, -0.21]), and the top cohort
+beats the deepest by +6.41% +/- 1.89% per trade (t = 3.39). So the SCORE works;
+the knobs around it are noise. That is the right way round -- it means the edge
+lives in stock selection, not in parameter choices that a search would overfit.
+
+This does not mean the rules are worthless -- CAGR also moves with trade count
+and sequencing, which a per-trade mean cannot see. It means the RANKING of
+these variants is not established, and re-deciding them on a fresh backtest is
+not progress.
+
+**3/2 vs 2/3 flipped when the settings moved.** It was chosen when the book ran
+Rs 5L at 60% deployment with no impact model; at Rs 3L, 75% and c=1.0, the 2/3
+mix leads by 4.47 points instead of trailing by 1.19. Neither gap is
+significant. Left at 3/2 because re-choosing on a number that is inside the
+noise would just be churn.
 
 ## Reporting
 

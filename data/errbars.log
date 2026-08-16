@@ -1,0 +1,18 @@
+  variant                  CAGR  ret/trade  std err     n
+  breakout trigger      +13.57%     +3.07%    1.09%   217
+  no trigger            +10.65%     +3.02%    1.93%   225
+  3 micro / 2 small     +13.57%     +3.07%    1.09%   217
+  2 micro / 3 small     +18.03%     +3.64%    1.05%   232
+  deliv 1.5             +13.57%     +3.07%    1.09%   217
+  neutral weights       +10.59%     +2.55%    1.14%   223
+
+  decision                            gap/trade  std err      t  verdict
+  adopted breakout                       +0.05%    2.22%   0.02  inside the noise
+    CAGR gap was +2.91 points
+  chose 3/2 over 2/3                     -0.57%    1.51%  -0.37  inside the noise
+    CAGR gap was -4.47 points
+  raised deliv to 1.5                    +0.53%    1.58%   0.33  inside the noise
+    CAGR gap was +2.98 points
+
+  A CAGR gap can look large while the per-trade edge behind it is
+  indistinguishable from zero. Those are the decisions to distrust.

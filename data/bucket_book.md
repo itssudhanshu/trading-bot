@@ -1,6 +1,6 @@
 # Bucket Book
 
-Generated 2026-08-16 22:09 · selection as of **2026-08-14**
+Generated 2026-08-16 23:39 · selection as of **2026-08-14**
 
 ---
 
@@ -86,14 +86,14 @@ Deployed **₹43,882** of ₹300,000 (14.6%) — cash **₹256,118**
 
 | stock | cluster | triggered? | why |
 |---|---|---|---|
-| SUNDRMFAST | small | no | top-30% in delivery %, near its high, relative strength (above 200-DMA, else excluded) |
 | HCG | small | no | top-30% in delivery %, near its high, liquidity, relative strength (above 200-DMA, else excluded) |
-| KOVAI | small | no | top-30% in relative strength, delivery %, near its high; weak on liquidity (above 200-DMA, else excluded) |
 | TAKE | micro | no | top-30% in near its high, delivery %, relative strength (above 200-DMA, else excluded) |
-| RPEL | small | yes | top-30% in relative strength, near its high, liquidity, delivery % (above 200-DMA, else excluded) |
-| GMMPFAUDLR | small | yes | top-30% in near its high, delivery %, liquidity (above 200-DMA, else excluded) |
+| SUNDRMFAST | small | no | top-30% in delivery %, near its high, relative strength (above 200-DMA, else excluded) |
 | YUKEN | micro | no | top-30% in near its high, liquidity, delivery %, relative strength (above 200-DMA, else excluded) |
-| KAPSTON | micro | no | top-30% in near its high, relative strength, liquidity; weak on delivery % (above 200-DMA, else excluded) |
+| RPEL | small | yes | top-30% in relative strength, near its high, liquidity, delivery % (above 200-DMA, else excluded) |
+| KRISHIVAL | micro | no | top-30% in delivery %, relative strength, near its high (above 200-DMA, else excluded) |
+| GMMPFAUDLR | small | yes | top-30% in near its high, delivery %, liquidity (above 200-DMA, else excluded) |
+| THELEELA | small | no | top-30% in near its high, liquidity, delivery % (above 200-DMA, else excluded) |
 
 ---
 

@@ -466,3 +466,52 @@ if __name__ == "__main__":
             bc = _dt(m.get("broadCastDate"))
             print(f"  {m['fromDate']} -> {m['toDate']}  broadcast {bc}  "
                   f"lag {(bc - _dt(m['toDate'])).days}d  {m.get('consolidated','')}")
+
+
+# ---------------------------------------------------------------- as-of features
+def features_asof(rows, day_iso):
+    """-> company-momentum features visible on `day_iso`, or {} if not enough.
+
+    Only filings whose `visible_from` has passed are used. A quarter that ended
+    before this date but had not been PUBLISHED is invisible -- median lag is 42
+    days, p90 is 71, so using quarter_end here would hand the backtest results
+    it could not have read. That single distinction is the difference between a
+    fundamentals test and a lookahead test.
+    """
+    seen = [r for r in rows if r.get("visible_from") and r["visible_from"] <= day_iso]
+    if len(seen) < 5:
+        return {}                       # need this quarter and the year-ago one
+    seen.sort(key=lambda r: r["visible_from"])
+    cur, yr = seen[-1], seen[-5]        # 4 quarters back
+    out = {}
+
+    def growth(a, b):
+        if a is None or b is None or b == 0:
+            return None
+        return (a - b) / abs(b) * 100
+
+    out["rev_growth"] = growth(cur.get("revenue"), yr.get("revenue"))
+    out["profit_growth"] = growth(cur.get("net_profit"), yr.get("net_profit"))
+    rev, np_ = cur.get("revenue"), cur.get("net_profit")
+    out["margin"] = (np_ / rev * 100) if rev and np_ is not None and rev != 0 else None
+    prev_rev, prev_np = yr.get("revenue"), yr.get("net_profit")
+    prev_margin = ((prev_np / prev_rev * 100)
+                   if prev_rev and prev_np is not None and prev_rev != 0 else None)
+    out["margin_change"] = (out["margin"] - prev_margin
+                            if out["margin"] is not None and prev_margin is not None
+                            else None)
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _selftest_features():
+    rows = [{"visible_from": f"2024-0{i}-01", "quarter_end": f"2023-0{i}-01",
+             "revenue": 1000.0 * i, "net_profit": 100.0 * i} for i in range(1, 6)]
+    f = features_asof(rows, "2024-06-01")
+    assert abs(f["rev_growth"] - 400.0) < 1e-6, f      # 5000 vs 1000
+    assert abs(f["margin"] - 10.0) < 1e-6, f
+    assert abs(f["margin_change"]) < 1e-6, f           # margin flat at 10%
+    # a filing not yet published must be invisible
+    assert features_asof(rows, "2024-01-15") == {}, "used an unpublished filing"
+    later = features_asof(rows, "2024-04-15")
+    assert later == {}, "needs 5 visible filings, only 4 by then"
+    print("fundamentals.features_asof selftest ok")

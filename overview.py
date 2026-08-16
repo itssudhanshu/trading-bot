@@ -73,13 +73,27 @@ def gates(s):
           f"{s['days']} sessions {s['span'][0]}..{s['span'][1]}, "
           f"{len(s['gaps'])} unexplained gaps")]
     g.append(("Ranking predicts return", "PASS",
-              "rank cohorts: shallow +6.17% vs deep -4.37% over 6 disjoint books"))
+              "trend across 6 rank cohorts, 1068 trades: -0.90% per step "
+              "(std err 0.35, t -2.56); top vs deepest +6.41% +/- 1.89, t 3.39"))
     g.append(("Costs modelled realistically", "PASS",
               "brokerage, STT, exchange, SEBI, GST, stamp, DP charges, 20% STCG"))
     g.append(("Market impact modelled", "PASS",
               "sqrt(participation) x volatility on both sides; baseline "
               "+10.85% at c=1.0 (was +13.97% assuming free fills)"))
     b = s["book"]
+    # How long until forward trades can settle anything, at the book's own
+    # turnover. Roughly 3 positions on 15-day holds is ~52 trades a year.
+    try:
+        import analysis, portfolio
+        occ = (analysis.load_occupancy() or {}).get("mean", 3.0)
+        per_yr = occ * (250 / portfolio.HOLD_DAYS)
+        need = analysis.trades_needed(analysis.BACKTEST_EDGE)
+        g.append(("Enough trades to judge", "PENDING",
+                  f"{need} trades needed at the backtest's "
+                  f"{analysis.BACKTEST_EDGE:.1f}% edge; ~{per_yr:.0f}/year, "
+                  f"so ~{need / per_yr:.1f} years"))
+    except Exception:
+        pass
     g.append(("Forward paper evidence",
               "PENDING" if b["closed"] == 0 else "MEASURING",
               f"{b['closed']} closed, {b['open']} open, {b['pending']} queued, "

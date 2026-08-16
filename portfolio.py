@@ -134,7 +134,16 @@ def _why(r):
 # Better return and better risk-adjusted return, worse tail. Worst-block
 # ranking is the one that has generalised in this project, so this is a
 # deliberate trade, not a free win.
-RANKING = "pooled"
+# "pooled" ranks every eligible stock against every other and takes the best
+# five outright; "per_cluster" ranks inside each band and fills a 3/2 quota.
+#
+# Pooled was tried and REVERTED. It wins on headline return (+16.61% vs
+# +13.57%) and on CAGR-per-drawdown (0.553 vs 0.471), and loses on everything
+# else: worst half-year -119.4% vs -83.6%, best single symbol 15.4% of all
+# gains vs 7.6%, 119 symbols traded vs 136, 2.54 stocks held vs 3.09, and
+# -1,588 vs +5,349 replaying the last 30 sessions. Two wins out of seven, both
+# of them the measure a best-of-N search inflates by construction.
+RANKING = "per_cluster"
 
 TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
 
@@ -266,8 +275,8 @@ def allocate(rows, take_per_cluster=None, offset=0):
     # the clustering would silently redefine both -- but no position is taken
     # from it. Attribution over 57 mid trades: -149.9% total, -2.63% per trade,
     # 35% win, the only negative cluster. All three no-mid mixes beat all three
-    # with-mid mixes, and the controlled pair (2/2/0 vs 2/2/1) puts the mid slot
-    # alone at -1.32 points of CAGR.
+    # with-mid mixes, and the controlled pair (2/2/0 vs 2/2/1) puts the mid
+    # position alone at -1.32 points of CAGR.
     if RANKING == "pooled" and take_per_cluster is None:
         # Pooled ranking with a per-cluster quota would be neither one thing
         # nor the other: take the best five outright, whatever band they are in.
@@ -302,7 +311,7 @@ def allocate(rows, take_per_cluster=None, offset=0):
             if d < len(per[b]):
                 out.append(per[b][d])
     # Trigger LAST, after the interleave. Dropping untriggered names earlier
-    # changes which cluster supplies each slot, because the round-robin walks
+    # changes which cluster supplies each position, because the round-robin
     # shortened lists -- same rules, different book (+9.05% vs +11.45%). The
     # trigger must remove candidates from the final order, never reorder it.
     ok = [r for r in out if r.get("triggered", True)]

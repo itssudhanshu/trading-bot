@@ -326,3 +326,61 @@ listening (pid 90293, 18 commands)
 ./run_listener.sh: line 9: 90293 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 90365, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 91655, 18 commands)
+./run_listener.sh: line 9: 91655 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 91728, 18 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 91758, 18 commands)
+./run_listener.sh: line 9: 91758 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 91790, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 92935, 18 commands)
+changed on disk: pine.py, tv.py -- restarting
+listener exited, restarting in 3s
+listening (pid 93017, 18 commands)
+./run_listener.sh: line 9: 93017 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 93110, 18 commands)
+changed on disk: fundamentals.py -- restarting
+listener exited, restarting in 3s
+listening (pid 93205, 18 commands)
+./run_listener.sh: line 9: 93205 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 93382, 18 commands)
+./run_listener.sh: line 9: 93382 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 93557, 18 commands)
+changed on disk: analysis.py -- restarting
+listener exited, restarting in 3s
+listening (pid 93670, 18 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 93686, 18 commands)
+changed on disk: analysis.py, overview.py -- restarting
+listener exited, restarting in 3s
+listening (pid 93735, 18 commands)
+changed on disk: overview.py -- restarting
+listener exited, restarting in 3s
+listening (pid 93875, 18 commands)
+./run_listener.sh: line 9: 93875 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 93881, 18 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 94017, 10 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 94053, 10 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 94095, 10 commands)
+poll error: TypeError
+./run_listener.sh: line 9: 94095 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 94192, 10 commands)

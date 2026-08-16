@@ -1,0 +1,13 @@
+1049 randomly-sampled trades with fundamentals visible
+
+  feature             spread       n   reading
+  rev_growth          -0.23%    1046   NO SIGNAL
+  profit_growth       +0.44%    1049   NO SIGNAL
+  margin              -0.58%    1042   low half does better
+  margin_change       +0.17%    1040   NO SIGNAL
+
+  For scale, the price features measured the same way:
+    deliv +1.22%   liq -1.09%   off_high +0.30%   rs -0.03%
+
+  VERDICT: margin is the strongest at -0.58%. Worth a
+  simulation before it earns a weight.

@@ -12,9 +12,8 @@ Last updated: 2026-08-16 — approach finalised, repo reduced to the single trac
     NSE equities, point-in-time
       -> rank the whole universe by turnover, keep the least-liquid 67%
          (clusters.TRADEABLE_PCT), split that into micro and small
-      -> POOLED ranking: every eligible stock ranked against every other,
-         the book takes the best 5 outright. Clusters decide eligibility,
-         not allocation.
+      -> rank WITHIN each cluster, take the top 20 of each
+      -> bucket = 3 micro + 2 small = 5 stocks
       -> rank within cluster, keep the top 20 of each
       -> bucket = 3 micro + 2 small = 5 stocks
       -> entry: breakout trigger, filled at the NEXT session open
@@ -47,7 +46,7 @@ There is no TDS on resident equity delivery.
 
 ## Historical baseline
 
-**+16.61% CAGR, 30.0% max drawdown, 215 trades** over 1695 sessions
+**+13.57% CAGR, 28.8% max drawdown, 217 trades** over 1695 sessions
 (2019-10-01 to 2026-08-14), with impact at c=1.0. It is a BACKTEST. It is not
 evidence the approach works forward.
 
@@ -80,6 +79,7 @@ Do not re-add these without evidence that addresses the stated reason.
 | participation cap on ADV | non-monotonic | 2% cap gave HIGHER max impact than no cap |
 | mid cluster in the bucket | -149.9% over 57 trades | the only negative cluster |
 | widening/narrowing the tradeable universe | 33%: +4.81, 50%: +10.61, 85%: +5.11, 100%: +6.07 | inverted U peaking at the current 67% |
+| pooled ranking (all stocks in one pool) | +16.61% CAGR, 0.553 CAGR/DD | wins headline return, loses tail (-119.4%), concentration (15.4% in one name), breadth (119 vs 136 symbols) and the recent 30-session replay |
 
 Five consecutive negative results. The design is at a local optimum; further
 parameter search mostly inflates selection bias. Trial count is ~40 on this

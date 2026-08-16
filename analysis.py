@@ -134,6 +134,8 @@ def record(label, trades, extra=None):
                               "avg": round(v["avg"], 3), "wins": v["wins"]}
                           for k, v in per_cluster(trades).items()},
            "concentration": {k: round(v, 2) for k, v in c.items()},
+           "stats": {k: (round(v, 3) if isinstance(v, float) else v)
+                     for k, v in stats(trades).items()},
            "occupancy_baseline": (load_occupancy() or {}).get("mean"),
            "top": [{"symbol": r["symbol"], "n": r["n"], "total": round(r["total"], 2)}
                    for r in per_stock(trades)[:5]],
@@ -180,3 +182,63 @@ def load_occupancy():
     d = json.loads(OCC_BASELINE.read_text())
     d["dist"] = {int(k): v for k, v in d["dist"].items()}
     return d
+
+
+# ------------------------------------------------------------------ error bars
+# Mean return per trade in the historical baseline, and the spread around it.
+# The reference point for "how many trades before this means anything".
+BACKTEST_EDGE = 3.07
+TRADE_SD = 16.0
+
+
+def stats(trades):
+    """-> mean return per trade, its standard error, 95% CI, t, n.
+
+    A result without an error bar is a number, not a finding. Re-checking this
+    project's own design decisions showed all three were inside their noise
+    while looking like 3-point CAGR gaps, so live results get the error bar
+    from the first trade rather than after someone asks.
+    """
+    import math
+    import statistics as st
+    rets = [t["ret"] for t in trades if t.get("ret") is not None]
+    n = len(rets)
+    if n < 2:
+        return {"n": n, "mean": rets[0] if rets else 0.0, "se": None,
+                "lo": None, "hi": None, "t": None, "significant": False}
+    m = st.fmean(rets)
+    se = st.pstdev(rets) / math.sqrt(n)
+    t = m / se if se else 0.0
+    return {"n": n, "mean": m, "se": se, "lo": m - 1.96 * se, "hi": m + 1.96 * se,
+            "t": t, "significant": abs(t) > 1.96}
+
+
+def trades_needed(edge_pct, sd_pct=TRADE_SD):
+    """-> how many trades before an edge of `edge_pct` per trade is detectable.
+
+    16% is the measured standard deviation of trade returns in this book. The
+    answer is large and that is the point: a handful of good weeks proves
+    nothing, and knowing the number up front stops us reading one.
+    """
+    if not edge_pct:
+        return None
+    return int((1.96 * sd_pct / abs(edge_pct)) ** 2) + 1
+
+
+def verdict(trades, sd_pct=TRADE_SD):
+    """-> one plain sentence about what the results so far can support."""
+    s = stats(trades)
+    if s["n"] < 2:
+        return f"{s['n']} trade so far. Nothing can be concluded."
+    if s["significant"]:
+        d = "profitable" if s["mean"] > 0 else "losing"
+        return (f"{s['n']} trades, {s['mean']:+.2f}% each "
+                f"[{s['lo']:+.2f}, {s['hi']:+.2f}] — measurably {d}.")
+    # Quote the sample size against the BACKTEST's edge, not the observed one.
+    # A lucky first five trades averaging +6.6% would otherwise report "23
+    # trades to tell", which flatters exactly the sample that needs caution.
+    need = trades_needed(BACKTEST_EDGE, sd_pct)
+    tail = (f" At the backtest's {BACKTEST_EDGE:.1f}% edge it takes about "
+            f"{need} trades to tell.")
+    return (f"{s['n']} trades, {s['mean']:+.2f}% each "
+            f"[{s['lo']:+.2f}, {s['hi']:+.2f}] — inside the noise.{tail}")

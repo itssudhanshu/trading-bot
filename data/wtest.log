@@ -1,0 +1,8 @@
+  weights                    CAGR   maxDD   win     n  worst blk  CAGR/DD
+  neutral (all 1.0)       +10.59%   37.5%   49%   223    -111.0%    0.283
+  deliv 1.5 (current)     +13.57%   28.8%   49%   217     -83.6%    0.471  <- live
+  rs 1.5                   +8.93%   35.3%   50%   212     -83.8%    0.253
+  rs+deliv 1.5            +16.31%   32.8%   49%   228    -100.6%    0.497
+  by t-stat               +13.20%   31.9%   46%   231    -115.8%    0.414
+
+  beating the live weights on BOTH: none
