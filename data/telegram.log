@@ -384,3 +384,30 @@ poll error: TypeError
 ./run_listener.sh: line 9: 94095 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 94192, 10 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 94975, 14 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 95051, 14 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 95199, 13 commands)
+changed on disk: bucketbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 95228, 13 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 95304, 13 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 95385, 14 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 95401, 14 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 95425, 14 commands)
+./run_listener.sh: line 9: 95425 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 95472, 14 commands)

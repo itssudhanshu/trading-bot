@@ -117,6 +117,7 @@ def send(text, chat_id=None):
     _parts = text.split("```")
     _outside = "".join(_parts[i] for i in range(0, len(_parts), 2))
     _outside = _re.sub(r"`[^`]*`", "", _outside)      # inline code is literal too
+    _outside = _re.sub(r"\\.", "", _outside)           # backslash-escaped markers are literal
     for _ch in ("*", "_"):
         if _outside.count(_ch) % 2:
             _i = _outside.rfind(_ch)
@@ -143,161 +144,200 @@ def _title(name, sub=""):
     return f"*{name}*" + (f" — {sub}" if sub else "")
 
 
-# ============================================================ THE BOOK
-def cmd_book(_=None):
-    """Positions, cash, and profit. The single answer to 'where is my money'."""
+def _px_now(corpus, sym, day):
+    s = corpus.get(sym)
+    i = s.index_of(day) if s else None
+    return s.close[i] if i is not None else None
+
+
+# ============================================================ MONEY
+def cmd_wallet(_=None):
+    """Cash, holdings, profit."""
     import analysis, features, pbook, portfolio
     s = pbook.summary()
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
-    deployed = unreal = 0.0
-    lines = []
+    invested = unreal = 0.0
     for r in s["rows"]:
         if r["status"] not in ("open", "pending"):
             continue
-        ser = corpus.get(r["symbol"])
-        i = ser.index_of(days[-1]) if ser else None
-        px = ser.close[i] if i is not None else (r["entry_px"] or 0)
-        val = (r["qty"] or 0) * px
-        deployed += val
+        px = _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"] or 0
+        invested += (r["qty"] or 0) * px
         if r["status"] == "open" and r["entry_px"]:
-            u = val - r["qty"] * r["entry_px"]
-            unreal += u
-            lines.append(f"  {r['symbol']} ({r['cluster']}) {_rs(val)}  {u:+,.0f}")
-        else:
-            lines.append(f"  {r['symbol']} ({r['cluster']}) {_rs(val)}  _queued_")
-    cash = portfolio.CAPITAL + s["realised"] - deployed
-    out = [_title("BOOK"), "",
-           f"*Value*     {_rs(cash + deployed)}",
-           f"*Cash*      {_rs(cash)}",
-           f"*Invested*  {_rs(deployed)}  ({deployed / portfolio.CAPITAL * 100:.0f}% of capital)",
-           "",
-           f"*Realised*    Rs {s['realised']:+,.0f}  ({s['closed']} closed)",
-           f"*Unrealised*  Rs {unreal:+,.0f}  ({s['open']} open)", ""]
-    out += (["*Holdings*"] + lines) if lines else ["_No positions. All cash._"]
-
-    held = s["open"] + s["pending"]
+            unreal += r["qty"] * (px - r["entry_px"])
+    cash = portfolio.CAPITAL + s["realised"] - invested
+    out = [_title("WALLET"), "",
+           f"*Total value*  {_rs(cash + invested)}",
+           f"*Cash*         {_rs(cash)}",
+           f"*Invested*     {_rs(invested)}  "
+           f"({invested / portfolio.CAPITAL * 100:.0f}% of capital)", "",
+           f"*Profit realised*    Rs {s['realised']:+,.0f}   ({s['closed']} closed)",
+           f"*Profit on paper*    Rs {unreal:+,.0f}   ({s['open']} running)", "",
+           f"*Started with*  {_rs(portfolio.CAPITAL)}",
+           f"*Change*        Rs {cash + invested - portfolio.CAPITAL:+,.0f}  "
+           f"({(cash + invested) / portfolio.CAPITAL * 100 - 100:+.2f}%)"]
     base = analysis.load_occupancy()
+    held = s["open"] + s["pending"]
     if base:
-        pct = base["dist"].get(held, 0.0)
-        out += ["", f"_Holding {held} of {portfolio.MAX_POSITIONS}. "
-                    f"Normal — {pct:.0f}% of sessions hold exactly this many, "
-                    f"typical is {base['mean']:.2f}._"]
+        out += ["", f"_Holding {held} of {portfolio.MAX_POSITIONS}. Typical is "
+                    f"{base['mean']:.2f}; {base['dist'].get(held, 0):.0f}% of "
+                    f"sessions hold exactly this many._"]
     return "\n".join(out)
 
 
-def cmd_trades(_=None):
-    """Closed trades, with the error bar that says whether they mean anything."""
-    import analysis, pbook
-    from collections import defaultdict
-    s = pbook.summary()
-    done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
-    if not done:
-        return (_title("TRADES") + "\nNothing closed yet. Only forward trades "
-                "count here — nothing is copied in from a backtest.")
-    rets = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100} for r in done]
-    by = defaultdict(list)
-    for r in done:
-        by[r["cluster"]].append(r["net"] or 0.0)
-    out = [_title("TRADES", f"{len(done)} closed"), ""]
-    for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
-        pct = (r["exit_px"] / r["entry_px"] - 1) * 100
-        out.append(f"{r['symbol']} ({r['cluster']}) {r['exit_reason']} "
-                   f"Rs {r['net']:+,.0f}  {pct:+.1f}%")
-    out += ["", "*By cluster*"]
-    for c, v in sorted(by.items()):
-        w = sum(1 for x in v if x > 0)
-        out.append(f"  {c}: {len(v)} trades, Rs {sum(v):+,.0f}, {w} won")
-    out += ["", f"*Realised* Rs {s['realised']:+,.0f}",
-            "", "_" + analysis.verdict(rets) + "_"]
-    return "\n".join(out)
-
-
-def cmd_stocks(_=None):
-    """Which names made or lost the money, and how concentrated that is."""
-    import analysis, pbook
-    s = pbook.summary()
-    done = [{"sym": r["symbol"], "clu": r["cluster"],
-             "ret": (r["exit_px"] / r["entry_px"] - 1) * 100}
-            for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
-    if not done:
-        return (_title("STOCKS") + "\nNothing closed yet.\n\n_Per-stock numbers "
-                "are for reading, never for choosing: one or two trades per name "
-                "cannot predict anything._")
-    c = analysis.concentration(done)
-    out = [_title("STOCKS", f"{len(done)} trades, {c['n_symbols']} names"), "",
-           "_" + analysis.verdict(done) + "_", "",
-           f"Best single name is *{c['top1']:.0f}%* of all gains, best three "
-           f"*{c['top3']:.0f}%*.", "", "*By cluster*"]
-    for cl, v in sorted(analysis.per_cluster(done).items()):
-        out.append(f"  {cl}: {v['n']} trades, {v['total']:+.1f}%, "
-                   f"{v['wins']} won")
-    rows = analysis.per_stock(done)
-    out += ["", "*Best*"] + [f"  {r['symbol']} {r['total']:+.1f}% ({r['n']})"
-                             for r in rows[:5]]
-    out += ["", "*Worst*"] + [f"  {r['symbol']} {r['total']:+.1f}% ({r['n']})"
-                              for r in rows[-5:]]
-    return "\n".join(out)
-
-
-# ============================================================ THE APPROACH
-def cmd_bucket(_=None):
-    """The full written record: clusters, scoring, entry logic, and why."""
-    import bucketbook
-    p = bucketbook.generate()
-    r = send_document(p, caption="Bucket Book — the clusters, the scoring, the "
-                                "entry rule, and why each stock was picked.")
-    if r.get("ok"):
-        return None
-    txt = p.read_text()
-    cut = txt.find("## 3. Entry logic")
-    return _title("BUCKET BOOK", "upload failed, showing entry logic") + "\n\n" + txt[cut:cut + 3200]
-
-
+# ============================================================ THE PIPELINE
 def cmd_clusters(_=None):
-    """The stocks currently eligible, by cluster."""
+    """The two clusters and their top 5 stocks."""
     import clusters, features, portfolio
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
     picks = clusters.pick(corpus, as_of)
     rows = portfolio.build(corpus, as_of)
-    chosen = {r["symbol"] for r in portfolio.allocate(rows)}
     trig = {r["symbol"] for r in rows if r.get("triggered")}
-    out = [_title("CLUSTERS", f"as of {as_of}"), ""]
+    chosen = {r["symbol"] for r in portfolio.allocate(rows)}
+    out = [_title("CLUSTERS", f"as of {as_of}"),
+           f"_The least-liquid {clusters.TRADEABLE_PCT * 100:.0f}% of NSE, split "
+           f"in two by turnover._", ""]
     for c in clusters.CLUSTERS:
         take = portfolio.TAKE_PER_CLUSTER.get(c, 0)
-        out.append(f"*{c}* — top {take} are taken")
-        for sym, sc in picks.get(c, [])[:6]:
-            mark = "🟢" if sym in chosen else ("•" if sym in trig else "·")
-            out.append(f"  {mark} {sym} {sc:.0f}")
+        out.append(f"*{c.upper()}*  — the bucket takes {take}")
+        for n, (sym, sc) in enumerate(picks.get(c, [])[:5], 1):
+            mark = "🟢" if sym in chosen else ("🔸" if sym in trig else "▫️")
+            out.append(f"  {n}. {mark} {sym}  score {sc:.0f}")
         out.append("")
-    out.append("_🟢 in the bucket · • triggered · · ranked only_")
+    out.append("_🟢 in the bucket · 🔸 breaking out but ranked too low · ▫️ ranked only_")
     return "\n".join(out)
 
 
-def cmd_overview(_=None):
-    """Where the whole thing stands, and whether it is working."""
-    import overview
-    st = overview.state()
-    verdict, why = overview.direction(st)
-    b = st["book"]
-    mix = " / ".join(f"{v} {k}" for k, v in st["mix"].items())
-    out = [_title("OVERVIEW", verdict), "",
-           f"*Bucket*  {mix} = {sum(st['mix'].values())} stocks",
-           f"*Entry*   {st['trigger']} → next open",
-           f"*Exit*    −{st['stop']:.0f}% / +{st['target']:.0f}% / {st['hold']} days",
-           f"*Money*   {_rs(st['capital'])}, up to {st['deploy']:.0f}% invested",
-           f"*Book*    {b['pending']} queued, {b['open']} open, {b['closed']} closed",
-           "", "*Checks*"]
-    mark = {"PASS": "✅", "FAIL": "❌", "PENDING": "⏳", "GAPS": "⚠️", "MEASURING": "📈"}
-    for name, vd, ev in overview.gates(st):
-        out.append(f"{mark.get(vd, '·')} {name}")
-        out.append(f"   _{ev}_")
-    out += ["", "*Why*"] + [f"• {w}" for w in why]
+def cmd_bucket(_=None):
+    """The 5 stocks chosen to trade, and what happened to each."""
+    import clusters, features, portfolio, pbook
+    corpus = features.load_corpus()
+    days = sorted({d for s in corpus.values() for d in s.days})
+    as_of = days[-1]
+    rows = portfolio.build(corpus, as_of)
+    book = {r["symbol"]: r["status"] for r in pbook.summary()["rows"]}
+    mix = portfolio.TAKE_PER_CLUSTER
+    out = [_title("BUCKET", f"{' + '.join(f'{v} {k}' for k, v in mix.items())}"),
+           f"_The top {sum(mix.values())} by score. Each is bought only when it "
+           f"breaks out; otherwise that money stays in cash._", ""]
+    n = 0
+    for c, k in mix.items():
+        for r in [x for x in rows if x["cluster"] == c][:k]:
+            n += 1
+            st = book.get(r["symbol"])
+            state = ("🟢 running" if st == "open" else
+                     "🟡 order placed" if st == "pending" else
+                     "⚪ waiting for breakout")
+            out.append(f"*{n}. {r['symbol']}* ({c})  {state}")
+            out.append(f"    score {r['score']:.0f} · {r['why']}")
+    if not n:
+        out.append("_No candidates today._")
+    out += ["", f"_{sum(1 for v in book.values() if v in ('open', 'pending'))} of "
+                f"{sum(mix.values())} are live. The rest have not broken out._"]
     return "\n".join(out)
 
 
+def cmd_next_orders(_=None):
+    """Stocks queued and waiting for the market to open."""
+    import features, pbook
+    s = pbook.summary()
+    pend = [r for r in s["rows"] if r["status"] == "pending"]
+    if not pend:
+        return (_title("NEXT ORDERS") + "\nNothing waiting. No stock in the "
+                "bucket has broken out, so the money stays in cash.")
+    corpus = features.load_corpus()
+    days = sorted({d for x in corpus.values() for d in x.days})
+    out = [_title("NEXT ORDERS", f"{len(pend)} waiting"),
+           "_These enter at the next session's open._", ""]
+    total = 0.0
+    for r in pend:
+        px = _px_now(corpus, r["symbol"], days[-1]) or 0
+        val = (r["qty"] or 0) * px
+        total += val
+        out.append(f"*{r['symbol']}* ({r['cluster']})")
+        out.append(f"   buy {r['qty']} at about {px:,.2f}   = {_rs(val)}")
+        out.append(f"   stop {r['stop']:,.2f}  (−10%)")
+        out.append(f"   target {r['target']:,.2f}  (+20%)")
+        out.append(f"   risk {_rs(val * 0.10)}")
+        out.append("")
+    out.append(f"*Total to invest*  {_rs(total)}")
+    out.append(f"*Total at risk*    {_rs(total * 0.10)}")
+    return "\n".join(out)
+
+
+def cmd_open_orders(_=None):
+    """Trades that are live in the market right now."""
+    import features, pbook, portfolio
+    s = pbook.summary()
+    live = [r for r in s["rows"] if r["status"] == "open"]
+    if not live:
+        pend = s["pending"]
+        return (_title("OPEN ORDERS") + "\nNo trades are live yet."
+                + (f"\n\n{pend} waiting to enter — see /next\\_orders."
+                   if pend else ""))
+    corpus = features.load_corpus()
+    days = sorted({d for x in corpus.values() for d in x.days})
+    out = [_title("OPEN ORDERS", f"{len(live)} live"), ""]
+    tot_val = tot_pl = 0.0
+    for r in live:
+        px = _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"]
+        val = r["qty"] * px
+        pl = r["qty"] * (px - r["entry_px"])
+        pct = (px / r["entry_px"] - 1) * 100
+        tot_val += val
+        tot_pl += pl
+        held = (days[-1] - __import__("datetime").date.fromisoformat(
+            str(r["entry_day"]))).days if r["entry_day"] else 0
+        out.append(f"*{r['symbol']}* ({r['cluster']})  {pct:+.1f}%")
+        out.append(f"   in at {r['entry_px']:,.2f} → now {px:,.2f}")
+        out.append(f"   value {_rs(val)}   P/L Rs {pl:+,.0f}")
+        out.append(f"   stop {r['stop']:,.2f} · target {r['target']:,.2f} · "
+                   f"day {held} of {portfolio.HOLD_DAYS}")
+        out.append("")
+    out.append(f"*Total value*  {_rs(tot_val)}")
+    out.append(f"*Total P/L*    Rs {tot_pl:+,.0f}  "
+               f"({tot_pl / (tot_val - tot_pl) * 100 if tot_val != tot_pl else 0:+.1f}%)")
+    return "\n".join(out)
+
+
+def cmd_closed_orders(_=None):
+    """Finished trades and what they made or lost."""
+    import analysis, pbook
+    from collections import defaultdict
+    s = pbook.summary()
+    done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
+    if not done:
+        return (_title("CLOSED ORDERS") + "\nNothing has closed yet. Only real "
+                "forward trades appear here — nothing is copied from a backtest.")
+    rets = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100,
+             "sym": r["symbol"], "clu": r["cluster"]} for r in done]
+    out = [_title("CLOSED ORDERS", f"{len(done)} finished"), ""]
+    for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
+        pct = (r["exit_px"] / r["entry_px"] - 1) * 100
+        icon = "✅" if (r["net"] or 0) > 0 else "❌"
+        out.append(f"{icon} *{r['symbol']}* ({r['cluster']})  {pct:+.1f}%  "
+                   f"Rs {r['net']:+,.0f}")
+        out.append(f"    {r['entry_px']:,.2f} → {r['exit_px']:,.2f} · "
+                   f"{r['exit_reason']} · {r['exit_day']}")
+    won = sum(1 for r in done if (r["net"] or 0) > 0)
+    out += ["", f"*Won* {won}   *Lost* {len(done) - won}   "
+                f"*Hit rate* {won / len(done) * 100:.0f}%",
+            f"*Total* Rs {s['realised']:+,.0f}", "", "*By cluster*"]
+    by = defaultdict(list)
+    for r in done:
+        by[r["cluster"]].append(r["net"] or 0.0)
+    for c, v in sorted(by.items()):
+        out.append(f"  {c}: {len(v)} trades, Rs {sum(v):+,.0f}, "
+                   f"{sum(1 for x in v if x > 0)} won")
+    conc = analysis.concentration(rets)
+    out += ["", f"_Best single name is {conc['top1']:.0f}% of all gains._",
+            "_" + analysis.verdict(rets) + "_"]
+    return "\n".join(out)
+
+
+# ============================================================ EVIDENCE
 def cmd_findings(_=None):
     """What has been recorded, newest first."""
     import analysis
@@ -321,14 +361,13 @@ def cmd_findings(_=None):
     return "\n".join(out)
 
 
-# ============================================================ THE SYSTEM
+# ============================================================ SYSTEM
 def cmd_health(_=None):
     """Is everything actually running?"""
     import json
     import subprocess
     from datetime import datetime as _dt
     out = [_title("HEALTH"), ""]
-
     hb = ROOT / "data" / "agent_heartbeat.json"
     if hb.exists():
         at = _dt.fromisoformat(json.loads(hb.read_text())["at"])
@@ -337,28 +376,23 @@ def cmd_health(_=None):
                    f" agent — last ran {mins:.0f} min ago")
     else:
         out.append("❌ agent — never ran")
-
     try:
         r = subprocess.run(["pgrep", "-f", "tg.py --listen"],
                            capture_output=True, timeout=5)
         out.append(("✅" if r.stdout.strip() else "❌") + " telegram listener")
     except Exception:
         out.append("· telegram listener — cannot tell")
-
     raw = ROOT / "data" / "raw"
     if raw.exists():
-        latest = max(p.name for p in raw.iterdir() if p.is_dir())
         bh = sorted(p.name for p in raw.iterdir()
                     if (p / "bhavcopy_delivery.csv").exists())
         out.append(f"✅ data — {len(bh)} trading days, newest {bh[-1] if bh else '?'}")
-        out.append(f"   (snapshot folder newest: {latest})")
-
     try:
         import agent
         due = agent.due()
         att = agent.attention()
-        out += ["", f"*Due now*  {', '.join(due) if due else 'nothing'}"]
-        out += ["*Attention*  " + ("; ".join(att) if att else "nothing")]
+        out += ["", f"*Due now*  {', '.join(due) if due else 'nothing'}",
+                f"*Attention*  " + ("; ".join(att) if att else "nothing")]
     except Exception as e:
         out.append(f"· agent state unavailable ({type(e).__name__})")
     return "\n".join(out)
@@ -366,25 +400,41 @@ def cmd_health(_=None):
 
 def cmd_help(_=None):
     return ("*COMMANDS*\n\n"
-            "*Your money*\n"
-            "/book — cash, holdings, profit\n"
-            "/trades — closed trades and what they prove\n"
-            "/stocks — which names won and lost\n\n"
-            "*The approach*\n"
-            "/bucket — the full written record, as a file\n"
-            "/clusters — eligible stocks right now\n"
-            "/overview — where we stand, and is it working\n"
+            "*Money*\n"
+            "/wallet — cash, holdings, profit\n\n"
+            "*The pipeline*, in order\n"
+            "/clusters — the two clusters, top 5 each\n"
+            "/bucket — the 5 stocks chosen to trade\n"
+            "/next\\_orders — waiting to enter, with entry, stop, target, value\n"
+            "/open\\_orders — trades live in the market now\n"
+            "/closed\\_orders — finished trades and their profit or loss\n\n"
+            "*Evidence*\n"
             "/findings — what has been recorded\n\n"
-            "*The system*\n"
+            "*System*\n"
             "/health — is everything running\n\n"
-            "_Read-only. I never place a trade, start a job, or change a "
-            "setting from here._")
+            "_Hyphens work too: /next-orders, /open-orders, /closed-orders._\n"
+            "_Read-only. I never place a trade or change a setting from here._")
 
 
-COMMANDS = {"/book": cmd_book, "/trades": cmd_trades, "/stocks": cmd_stocks,
-            "/bucket": cmd_bucket, "/clusters": cmd_clusters,
-            "/overview": cmd_overview, "/findings": cmd_findings,
-            "/health": cmd_health, "/help": cmd_help, "/start": cmd_help}
+# Telegram only autocompletes underscores, but the hyphen spellings are
+# what was asked for and arrive intact as plain text, so both are bound.
+COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
+            "/bucket": cmd_bucket,
+            "/next_orders": cmd_next_orders, "/next-orders": cmd_next_orders,
+            "/open_orders": cmd_open_orders, "/open-orders": cmd_open_orders,
+            # /portfolio was the earlier name for the live trades; kept so it
+            # does not silently stop working.
+            "/portfolio": cmd_open_orders,
+            "/closed_orders": cmd_closed_orders,
+            "/closed-orders": cmd_closed_orders,
+            "/findings": cmd_findings, "/health": cmd_health,
+            "/help": cmd_help, "/start": cmd_help}
+
+# Spellings that work but are deliberately not advertised: the hyphen forms
+# (Telegram only autocompletes underscores) and older names kept alive so they
+# do not silently break. Everything else must appear in /help.
+ALIASES = {"/start", "/help", "/portfolio",
+           "/next-orders", "/open-orders", "/closed-orders"}
 
 
 
@@ -436,7 +486,7 @@ def _selftest():
     # No handler may EXECUTE anything or spend budget. Asserted precisely: a
     # pgrep PATTERN mentioning "generator.py" is read-only and must not trip
     # this, while subprocess.run([sys.executable, ...]) or judge.consult must.
-    handlers = src.split("COMMANDS =")[0].split("def cmd_book")[1]
+    handlers = src.split("COMMANDS =")[0].split("def cmd_wallet")[1]
     for forbidden in ("judge.consult", "--consult", "run([sys.executable",
                       "os.remove", ".unlink("):
         assert forbidden not in handlers, f"a command can trigger {forbidden}"
@@ -447,8 +497,12 @@ def _selftest():
     for fn in (cmd_help,):
         assert isinstance(fn(None), str) and fn(None)
     # every advertised command must exist, and every command must be advertised
-    listed = {w.strip(" \n") for w in cmd_help(None).split() if w.startswith("/")}
-    have = set(COMMANDS) - {"/start", "/help"}   # meta, not listed in itself
+    import re as _re
+    listed = {m for m in _re.findall(r"/[a-z][a-z_-]*", cmd_help(None).replace("\\", ""))
+              if "-" not in m}
+    have = set(COMMANDS) - ALIASES
+    for a in ALIASES:
+        assert a in COMMANDS, f"{a} is listed as an alias but is not bound"
     assert listed == have, (sorted(listed ^ have),
                             "help and COMMANDS disagree")
 
@@ -459,7 +513,8 @@ def _selftest():
     try:
         _pb.summary = lambda *a, **k: {"pending": 0, "open": 0, "closed": 0,
                                        "realised": 0.0, "equity": 0.0, "rows": []}
-        for name in ("/book", "/trades", "/stocks", "/findings"):
+        for name in ("/wallet", "/portfolio", "/open_orders",
+                     "/closed_orders", "/findings"):
             out = COMMANDS[name](None)
             assert isinstance(out, str) and out, name
     finally:
