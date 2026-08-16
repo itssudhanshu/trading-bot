@@ -42,6 +42,7 @@ class Costs:
     sebi_turnover: float = 1e-6    # Rs 10 per crore
     gst: float = 0.18              # on brokerage + txn + sebi
     stamp_buy: float = 0.00015     # buy side only
+    dp_sell: float = 15.93         # depository charge per SELL scrip, incl GST
 
     def charge(self, value: float, side: str) -> float:
         brok = self.brokerage_per_order
@@ -50,7 +51,8 @@ class Costs:
         sebi = value * self.sebi_turnover
         gst = self.gst * (brok + txn + sebi)
         stamp = value * self.stamp_buy if side == "BUY" else 0.0
-        return brok + stt + txn + sebi + gst + stamp
+        dp = 0.0 if side == "BUY" else self.dp_sell
+        return brok + stt + txn + sebi + gst + stamp + dp
 
 
 DEFAULT_COSTS = None          # set below, once Costs is defined

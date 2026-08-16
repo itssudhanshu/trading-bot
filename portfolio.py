@@ -42,6 +42,13 @@ TARGET_PCT = 20.0
 HOLD_DAYS = 15
 MAX_POSITIONS = 5
 
+# Cash is a position. A fully-invested book has no capacity to add when a
+# better setup appears mid-cycle, and no buffer when five correlated names gap
+# down together. Deploying 60% of Rs 5L caps any single name at Rs 60k, which
+# at a 10% stop puts total open risk at 6% -- exactly engine.MAX_PORTFOLIO_HEAT,
+# arrived at independently.
+DEPLOY_PCT = 60.0
+
 
 def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT):
     """-> (qty, rupees_at_risk). Risk-based, then capped so one name cannot
@@ -51,14 +58,56 @@ def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT):
     if risk_per_share <= 0:
         return 0, 0.0
     qty = int(risk_rupees / risk_per_share)
-    cap_value = capital / MAX_POSITIONS
+    cap_value = capital * DEPLOY_PCT / 100 / MAX_POSITIONS
     qty = min(qty, int(cap_value / entry))
     return qty, qty * risk_per_share
 
 
-def build(corpus, as_of, capital=CAPITAL):
-    """-> list of candidate positions, best-scored first, across clusters."""
+# Percentile bands for prose. A rank is only meaningful against its cluster --
+# "85th percentile on delivery" means among names of comparable turnover, not
+# against the whole market.
+def _why(r):
+    """-> plain-language reason this name ranked where it did."""
+    if not r:
+        return "no rank detail"
+    label = {"rs": "relative strength", "deliv": "delivery %",
+             "liq": "liquidity", "near_high": "near its high"}
+    strong = [label[f] for f, v in sorted(r.items(), key=lambda kv: -kv[1]) if v >= 70]
+    weak = [label[f] for f, v in r.items() if v <= 30]
+    parts = []
+    if strong:
+        parts.append("top-30% in " + ", ".join(strong))
+    if weak:
+        parts.append("weak on " + ", ".join(weak))
+    if not parts:
+        parts.append("mid-pack on every feature")
+    return "; ".join(parts) + " (above 200-DMA, else excluded)"
+
+
+TRIGGER = "breakout"    # see trigger_test: near-identical CAGR to no trigger
+                        # (+11.45 vs +12.53) but worst block -83.1% vs -120.5%.
+                        # Ranked on worst block, which is the ranking that has
+                        # generalised here, the control is LAST of seven.
+
+
+def build(corpus, as_of, capital=CAPITAL, trigger=None):
+    """-> list of candidate positions, best-scored first, across clusters.
+
+    `trigger` gates WHETHER to buy today; the score only says what to buy.
+    """
+    import entry
+    fn = entry.TRIGGERS[trigger or TRIGGER]
+    # MARK, do not filter. Filtering here would drop untriggered names before
+    # ranking, so allocate() would reach further down the list to fill its five
+    # slots -- buying a worse name because it happened to trigger. Measured:
+    # that variant returns +7.48% / 37.9% DD against +11.45% / 23.8% for
+    # marking. Rank first, then require the trigger, then hold cash if the best
+    # names are not ready.
     picks = clusters.pick(corpus, as_of, per_cluster=20)
+    ranks = {}
+    for b, syms in clusters.size_buckets(corpus, as_of,
+                                         names=clusters.BUCKET_NAMES).items():
+        ranks.update(clusters.score(corpus, syms, as_of, with_ranks=True)[1])
     rows = []
     for bucket, lst in picks.items():
         for sym, score in lst:
@@ -79,6 +128,9 @@ def build(corpus, as_of, capital=CAPITAL):
                 "qty": qty, "value": round(qty * ref),
                 "risk": round(risk),
                 "exit_by": f"{HOLD_DAYS} trading days",
+                "triggered": bool(fn(s, i)),
+                "why": _why(ranks.get(sym, {})),
+                "ranks": ranks.get(sym, {}),
             })
     rows.sort(key=lambda r: -r["score"])
     return rows
@@ -99,22 +151,37 @@ def allocate(rows, per_bucket=None):
     # never reached small or mid -- the book traded 178 micro / 28 small / 3 mid
     # against a 2/2/1 design. Interleaving means any prefix of the result is
     # still spread across clusters.
+    if rows and not (set(per_bucket) & {r["bucket"] for r in rows}):
+        raise ValueError(f"per_bucket {sorted(per_bucket)} matches none of the "
+                         f"buckets present {sorted({r['bucket'] for r in rows})} "
+                         "-- this would silently allocate nothing")
     per = {b: [r for r in rows if r["bucket"] == b][:k] for b, k in per_bucket.items()}
     out, depth = [], max(per_bucket.values())
     for d in range(depth):
         for b in per_bucket:
             if d < len(per[b]):
                 out.append(per[b][d])
-    return out
+    # Trigger LAST, after the interleave. Dropping untriggered names earlier
+    # changes which bucket supplies each slot, because the round-robin walks
+    # shortened lists -- same rules, different book (+9.05% vs +11.45%). The
+    # trigger must remove candidates from the final order, never reorder it.
+    return [r for r in out if r.get("triggered", True)]
 
 
 def _selftest():
     q, risk = position_size(500_000, 100.0)
-    # 2% of 5L = 10,000 risked; 10% stop on a Rs 100 share = Rs 10 per share
-    assert q == 1000 and abs(risk - 10_000) < 1, (q, risk)
-    # per-name cap binds on cheap shares: 5L/5 = 1L max value
+    # The DEPLOY_PCT cap binds before the risk rule at default parameters:
+    # 60% of 5L over 5 names = Rs 60k, i.e. 600 shares at Rs 100, risking
+    # Rs 6,000. The 2% risk rule would have allowed Rs 1L / 1,000 shares, so
+    # risk_pct is currently DORMANT -- it only starts binding above a ~16.7%
+    # stop. Kept deliberately: it is the backstop if stops ever widen.
+    assert q == 600 and abs(risk - 6_000) < 1, (q, risk)
+    cap = 500_000 * DEPLOY_PCT / 100 / MAX_POSITIONS
+    assert abs(q * 100.0 - cap) < 100, (q * 100.0, cap)
+    # a full book must leave cash on the table
+    assert cap * MAX_POSITIONS <= 500_000 * 0.75, "book must not be fully invested"
     q2, _ = position_size(500_000, 10.0)
-    assert q2 * 10.0 <= 100_000 + 1, q2 * 10.0
+    assert q2 * 10.0 <= cap + 1, q2 * 10.0
     assert position_size(500_000, 0)[0] == 0
     # a wider stop must reduce size, never increase it
     a, _ = position_size(500_000, 100.0, stop_pct=10.0)

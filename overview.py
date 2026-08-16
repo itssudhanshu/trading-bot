@@ -27,9 +27,29 @@ def state():
     """-> dict of every measured fact. No interpretation."""
     s = {}
 
+    # Count TRADING days, not snapshot directories. Weekends and holidays get a
+    # directory (surveillance files are fetched daily) but no bhavcopy, so the
+    # directory count overstates sessions -- it read 1697 against 1695 real
+    # sessions, and the gap grows by two every week.
     snaps = sorted(p.name for p in (D / "raw").iterdir() if p.is_dir()) if (D / "raw").exists() else []
-    s["days"] = len(snaps)
-    s["span"] = (snaps[0], snaps[-1]) if snaps else (None, None)
+    s["snapshot_dirs"] = len(snaps)
+    try:
+        import features
+        days = sorted({d for x in features.load_corpus().values() for d in x.days})
+        s["days"] = len(days)
+        s["span"] = (str(days[0]), str(days[-1]))
+    except Exception:
+        s["days"] = len(snaps)
+        s["span"] = (snaps[0], snaps[-1]) if snaps else (None, None)
+
+    # A holiday list that has run out silently turns every future holiday into
+    # an unexplained missing snapshot.
+    try:
+        h = json.loads((D / "holidays.json").read_text())
+        hs = sorted(str(x) for x in (h if isinstance(h, list) else h.get("holidays", list(h))))
+        s["holidays_to"] = hs[-1] if hs else None
+    except Exception:
+        s["holidays_to"] = None
 
     led = json.loads((D / "judge_ledger.json").read_text()) if (D / "judge_ledger.json").exists() else {}
     v = list(led.get("verdicts", {}).values())
@@ -85,7 +105,7 @@ def gates(s):
     """
     g = []
     g.append(("Point-in-time data", "PASS" if s["days"] > 1000 else "THIN",
-              f"{s['days']} session snapshots, {s['span'][0]} to {s['span'][1]}, "
+              f"{s['days']} trading sessions, {s['span'][0]} to {s['span'][1]}, "
               f"universe rebuilt per date"))
 
     g.append(("[B] Strategy cleared sealed holdout",
@@ -146,7 +166,9 @@ def render(s=None):
     L.append(f"OVERVIEW  {date.today()}")
     L.append("=" * 62)
     L.append("")
-    L.append(f"SHARED DATA   {s['days']} sessions, {s['span'][0]} -> {s['span'][1]}")
+    L.append(f"SHARED DATA   {s['days']} trading sessions, {s['span'][0]} -> {s['span'][1]}")
+    if s.get("holidays_to") and s["holidays_to"] < str(date.today()):
+        L.append(f"  WARNING: holiday list ends {s['holidays_to']} -- stale")
     L.append("")
     b = s["book"]
     L.append("TRACK A -- Rs 5L CLUSTER BOOK  (your 20/20/20 design)")

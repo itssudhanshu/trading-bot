@@ -2757,3 +2757,5 @@
 {"rs": 0.09104046242774566, "deliv": 50.0, "liq": 1000000000.0, "off_high": 0.6578947368421052, "near_high": -0.6578947368421052, "rsi": null, "ret": 5.0, "net": 5000, "exit": "target", "symbol": "T", "source": "forward"}
 {"rs": 0.0, "deliv": 50.0, "liq": 1000000000.0, "off_high": 0.0, "near_high": -0.0, "rsi": null, "ret": 19.999999999999996, "net": 1956.0, "exit": "target", "symbol": "T", "bucket": "mid", "date": "2024-07-30", "source": "portfolio"}
 {"rs": 0.0, "deliv": 50.0, "liq": 1000000000.0, "off_high": 0.0, "near_high": -0.0, "rsi": null, "ret": 19.999999999999996, "net": 1956.0, "exit": "target", "symbol": "T", "bucket": "mid", "date": "2024-07-30", "source": "portfolio"}
+{"rs": 0.0, "deliv": 50.0, "liq": 1000000000.0, "off_high": 0.0, "near_high": -0.0, "rsi": null, "ret": 19.999999999999996, "net": 1912.573028, "exit": "target", "symbol": "T", "bucket": "mid", "date": "2024-07-30", "source": "portfolio"}
+{"rs": 0.0, "deliv": 50.0, "liq": 1000000000.0, "off_high": 0.0, "near_high": -0.0, "rsi": null, "ret": 19.999999999999996, "net": 1912.573028, "exit": "target", "symbol": "T", "bucket": "mid", "date": "2024-07-30", "source": "portfolio"}

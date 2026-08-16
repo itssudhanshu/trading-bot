@@ -58,8 +58,48 @@ def _call(method, params, timeout=30):
         return {"ok": False, "error": f"{type(e).__name__}"}
 
 
+def send_document(path, caption="", chat_id=None):
+    """Upload a file. Multipart by hand -- stdlib has no multipart encoder and
+    a dependency for one would be the only third-party import in the project."""
+    import uuid
+    token = env("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return {"ok": False, "error": "TELEGRAM_BOT_TOKEN not set in .env"}
+    p = __import__("pathlib").Path(path)
+    if not p.exists():
+        return {"ok": False, "error": "file not found"}
+    b = uuid.uuid4().hex
+    parts = []
+    for k, v in (("chat_id", str(chat_id or env("TELEGRAM_CHAT_ID"))),
+                 ("caption", caption[:1000])):
+        parts.append(f"--{b}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n"
+                     .encode())
+    parts.append(f"--{b}\r\nContent-Disposition: form-data; name=\"document\"; "
+                 f"filename=\"{p.name}\"\r\nContent-Type: text/markdown\r\n\r\n".encode())
+    parts.append(p.read_bytes())
+    parts.append(f"\r\n--{b}--\r\n".encode())
+    body = b"".join(parts)
+    req = urllib.request.Request(
+        API.format(token=token, method="sendDocument"), data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={b}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}"}
+
+
 def send(text, chat_id=None):
-    """Telegram caps messages at 4096 chars."""
+    """Telegram caps messages at 4096 chars.
+
+    '%%' is escaped-percent from format-string habit and renders literally
+    here -- these are plain strings, never %-formatted. It has reached the
+    user twice ("20%% STCG"), so it is now a hard error rather than a typo
+    that only shows up on their phone.
+    """
+    if "%%" in text:
+        raise ValueError("literal '%%' in message -- use a single % "
+                         f"(near: ...{text[max(0, text.find('%%') - 40):text.find('%%') + 4]!r})")
     return _call("sendMessage", {
         "chat_id": chat_id or env("TELEGRAM_CHAT_ID"),
         "text": text[:4000],
@@ -318,9 +358,100 @@ def cmd_strategies(_=None):
     return "\n".join(out)
 
 
+def cmd_bucket(_=None):
+    """The bucket book: clusters, stocks, entry logic, and why."""
+    import bucketbook
+    p = bucketbook.generate()
+    r = send_document(p, caption="Bucket Book — clusters, entry logic, and why "
+                                "each stock was picked.")
+    if r.get("ok"):
+        return None            # the document IS the reply
+    # Upload failed: fall back to the sections that answer "why".
+    txt = p.read_text()
+    cut = txt.find("## 3. Entry logic")
+    return ("*bucket book* (upload failed, showing entry logic)\n\n"
+            + txt[cut:cut + 3200])
+
+
+def cmd_wallet(_=None):
+    """Where the money is right now."""
+    import features, pbook, portfolio
+    s = pbook.summary()
+    corpus = features.load_corpus()
+    days = sorted({d for x in corpus.values() for d in x.days})
+    last = days[-1]
+    deployed = unreal = 0.0
+    lines = []
+    for r in s["rows"]:
+        if r["status"] not in ("open", "pending"):
+            continue
+        sym = r["symbol"]
+        ser = corpus.get(sym)
+        i = ser.index_of(last) if ser else None
+        px = ser.close[i] if i is not None else (r["entry_px"] or 0)
+        val = (r["qty"] or 0) * px
+        deployed += val
+        if r["status"] == "open" and r["entry_px"]:
+            u = val - r["qty"] * r["entry_px"]
+            unreal += u
+            lines.append(f"  {sym} ({r['bucket']}) ₹{val:,.0f}  {u:+,.0f}")
+        else:
+            lines.append(f"  {sym} ({r['bucket']}) ₹{val:,.0f}  _queued_")
+    cash = portfolio.CAPITAL + s["realised"] - deployed
+    total = cash + deployed + 0.0
+    out = [f"*wallet* {datetime.now():%d %b %H:%M}", "",
+           f"*Starting capital*  ₹{portfolio.CAPITAL:,}",
+           f"*Cash*              ₹{cash:,.0f}",
+           f"*Deployed*          ₹{deployed:,.0f}  "
+           f"({deployed / portfolio.CAPITAL * 100:.1f}%)",
+           f"*Total value*       ₹{total:,.0f}", "",
+           f"*Realised P&L*      ₹{s['realised']:+,.0f}  ({s['closed']} closed)",
+           f"*Unrealised P&L*    ₹{unreal:+,.0f}  ({s['open']} open)", ""]
+    if lines:
+        out.append("*Positions*")
+        out += lines
+    else:
+        out.append("_No positions. Fully in cash._")
+    out.append("")
+    out.append(f"_Cap: {portfolio.DEPLOY_PCT:.0f}% deployable "
+               f"(₹{portfolio.CAPITAL * portfolio.DEPLOY_PCT / 100:,.0f}), "
+               f"₹{portfolio.CAPITAL * portfolio.DEPLOY_PCT / 100 / portfolio.MAX_POSITIONS:,.0f} "
+               f"per name._")
+    return "\n".join(out)
+
+
+def cmd_trades(_=None):
+    """Closed trades with their cluster and P&L."""
+    import pbook
+    from collections import defaultdict
+    s = pbook.summary()
+    done = [r for r in s["rows"] if r["status"] == "closed"]
+    if not done:
+        return ("*trades*\nNo closed trades yet. The book is forward-testing "
+                "only — nothing here is backfilled from a backtest.")
+    by = defaultdict(list)
+    for r in done:
+        by[r["bucket"]].append(r["net"] or 0.0)
+    out = [f"*closed trades* ({len(done)})", ""]
+    for r in sorted(done, key=lambda x: x["exit_day"] or "")[-12:]:
+        pct = ((r["exit_px"] / r["entry_px"] - 1) * 100) if r["entry_px"] else 0
+        out.append(f"{r['symbol']} ({r['bucket']}) {r['exit_reason']} "
+                   f"₹{r['net']:+,.0f} ({pct:+.1f}%)")
+    out += ["", "*By cluster*"]
+    for b, v in sorted(by.items()):
+        w = sum(1 for x in v if x > 0)
+        out.append(f"  {b}: {len(v)} trades, ₹{sum(v):+,.0f}, {w}/{len(v)} won")
+    out.append("")
+    out.append(f"*Total realised* ₹{s['realised']:+,.0f}")
+    return "\n".join(out)
+
+
 def cmd_help(_=None):
     return ("*commands*\n"
             "/overview – where are we? is this working?\n"
+            "/wallet – cash, deployed, realised and unrealised P&L\n"
+            "/bucket – the bucket book: clusters, entry logic, why\n"
+            "/trades – closed trades with cluster and P&L\n"
             "/status – what needs attention, what is due\n"
             "/progress – corpus, budget, research cycles\n"
             "/paper – paper trading book\n"
@@ -362,7 +493,8 @@ COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_hea
             "/clusters": cmd_clusters,
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
             "/digest": cmd_digest, "/overview": cmd_overview,
-            "/strategies": cmd_strategies}
+            "/strategies": cmd_strategies, "/wallet": cmd_wallet,
+            "/bucket": cmd_bucket, "/trades": cmd_trades}
 
 
 def _offset(new=None):

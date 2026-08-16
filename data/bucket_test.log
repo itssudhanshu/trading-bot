@@ -1,0 +1,19 @@
+2486 symbols, 1695 sessions -> 6 buckets (~414 each), running in parallel
+
+  bucket       CAGR   maxDD   win     n  avg/trade  worst blk    neg
+  nano      +28.86%   29.7%   42%   278     +3.79%     -87.1%   5/12
+  micro     +15.24%   31.5%   43%   230     +2.23%    -135.2%   3/11
+  small     +10.87%   37.8%   48%   387     +0.97%    -193.4%   5/13
+  mid        +3.67%   33.2%   50%   359     +0.49%     -64.7%   6/13
+  smid       -2.43%   42.4%   48%   330     -0.00%    -139.7%   7/13
+  large      -2.82%   32.2%   49%   371     -0.13%     -90.8%   8/13
+
+  ranked by WORST block (the ranking that generalises here):
+    mid      worst    -64.7%   CAGR   +3.67%
+    nano     worst    -87.1%   CAGR  +28.86%
+    large    worst    -90.8%   CAGR   -2.82%
+    micro    worst   -135.2%   CAGR  +15.24%
+    smid     worst   -139.7%   CAGR   -2.43%
+    small    worst   -193.4%   CAGR  +10.87%
+
+  3 of 6 cleared the promotion bar and were stored

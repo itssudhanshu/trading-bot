@@ -14,15 +14,24 @@ import clusters
 import features
 import portfolio
 
-COST = 0.4          # % round trip
+# Real charges, not a flat percentage. A single round-trip number cannot be
+# right for both a Rs 1L position and a Rs 5,000 one: brokerage and DP charges
+# are FIXED, so their percentage cost explodes as size falls -- which is
+# exactly the small-cap end where the measured edge lives.
+COSTS = __import__("engine").Costs()
+STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
+                    # is always short term. Applied per financial year on NET
+                    # realised gains, so losses offset -- taxing each winning
+                    # trade in isolation would overstate the bill badly.
 
 
 def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
-        capital=500_000, per_bucket=None, refresh=5, sector_cap=None,
-        start_idx=300):
+        capital=500_000, per_bucket=None, refresh=5, bucket_cap=None,
+        start_idx=300, trigger="none"):
     equity = peak = capital
     maxdd = 0.0
     open_pos, closed = [], []
+    fy_net, taxed = {}, set()
     for di in range(start_idx, len(days)):
         day = days[di]
         still = []
@@ -43,12 +52,21 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                 px, why = s.close[i], "time"
             if px is None:
                 still.append(p); continue
-            gross = (px - p["entry"]) * p["qty"]
-            cost = (p["entry"] + px) * p["qty"] * COST / 200
-            equity += gross - cost
-            closed.append({"ret": (px / p["entry"] - 1) * 100 - COST, "why": why,
-                           "bkt": p["bkt"], "day": day, "sym": p["sym"]})
+            buy_val, sell_val = p["entry"] * p["qty"], px * p["qty"]
+            cost = COSTS.charge(buy_val, "BUY") + COSTS.charge(sell_val, "SELL")
+            net = (sell_val - buy_val) - cost
+            equity += net
+            fy = day.year if day.month > 3 else day.year - 1   # India FY: Apr-Mar
+            fy_net[fy] = fy_net.get(fy, 0.0) + net
+            closed.append({"ret": net / buy_val * 100, "why": why,
+                           "bkt": p["bkt"], "day": day, "sym": p["sym"],
+                           "cost_pct": cost / buy_val * 100})
         open_pos = still
+        # Settle the previous year's tax after 31 March, on net gains only.
+        fy = day.year if day.month > 3 else day.year - 1
+        for y in [k for k in fy_net if k < fy and k not in taxed]:
+            equity -= max(fy_net[y], 0.0) * STCG
+            taxed.add(y)
         peak = max(peak, equity)
         maxdd = max(maxdd, (peak - equity) / peak)
 
@@ -59,13 +77,16 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
             for p in open_pos:
                 held_bkts[p["bkt"]] += 1
             rows = portfolio.allocate(
-                portfolio.build(corpus, day, capital=equity), per_bucket)
+                portfolio.build(corpus, day, capital=equity, trigger=trigger),
+                per_bucket)
             for r in rows:
                 if room <= 0:
                     break
                 if r["symbol"] in held_syms:
                     continue
-                if sector_cap and held_bkts[r["bucket"]] >= sector_cap:
+                # Caps positions per SIZE BUCKET. There is no sector rule in
+                # this system -- the corpus carries no industry classification.
+                if bucket_cap and held_bkts[r["bucket"]] >= bucket_cap:
                     continue
                 s = corpus[r["symbol"]]
                 i = s.index_of(day)
@@ -83,6 +104,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                                  "entry_day": days[di + 1]})
                 held_bkts[r["bucket"]] += 1
                 room -= 1
+    equity -= sum(max(v, 0.0) for k, v in fy_net.items() if k not in taxed) * STCG
     yrs = (days[-1] - days[start_idx]).days / 365.25
     return {"equity": equity, "capital": capital, "years": yrs,
             "total_pct": (equity / capital - 1) * 100,
@@ -266,7 +288,7 @@ if __name__ == "__main__":
     report("3 positions", run(corpus, days, max_pos=3))
     report("8 positions", run(corpus, days, max_pos=8,
                               per_bucket={"micro": 3, "small": 3, "mid": 2}))
-    report("cap 2/bucket", run(corpus, days, sector_cap=2))
+    report("cap 2/bucket", run(corpus, days, bucket_cap=2))
     report("small+mid only", run(corpus, days,
                                  per_bucket={"small": 3, "mid": 2}))
 

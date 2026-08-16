@@ -29,7 +29,9 @@ DB = ROOT / "data" / "pbook.db"
 
 CAPITAL = 500_000
 STOP_PCT, TARGET_PCT, HOLD_DAYS = 10.0, 20.0, 15
-COST_PCT = 0.4          # round-trip: brokerage + STT + GST + slippage
+# Same charge model as the simulation. A paper book that costs differently
+# from the backtest cannot validate it -- any divergence would be unreadable.
+COSTS = __import__("engine").Costs()
 
 
 def db():
@@ -75,6 +77,12 @@ def step(corpus, day, conn=None):
         i = s.index_of(day) if s else None
         if i is None:
             continue
+        # A signal built from a day's CLOSE cannot be filled at that same day's
+        # OPEN. Without this, a step re-run on the queue date (which happens
+        # whenever the next bhavcopy is late and days[-1] has not advanced)
+        # buys in the past at a price the signal already knew.
+        if p["queued_on"] and str(day) <= str(p["queued_on"]):
+            continue
         px = s.open[i]
         if not px:
             continue
@@ -101,9 +109,9 @@ def step(corpus, day, conn=None):
             px, why = s.close[i], "time"
         if px is None:
             continue
-        gross = (px - p["entry_px"]) * p["qty"]
-        cost = (p["entry_px"] * p["qty"] + px * p["qty"]) * COST_PCT / 200
-        net = gross - cost
+        buy_val, sell_val = p["entry_px"] * p["qty"], px * p["qty"]
+        cost = COSTS.charge(buy_val, "BUY") + COSTS.charge(sell_val, "SELL")
+        net = (sell_val - buy_val) - cost
         c.execute("UPDATE pos SET status='closed', exit_day=?, exit_px=?,"
                   " exit_reason=?, net=? WHERE id=?", (str(day), px, why, net, p["id"]))
         closed.append((p["symbol"], why, net))

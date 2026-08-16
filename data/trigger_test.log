@@ -1,0 +1,12 @@
+7 triggers x 1695 sessions, in parallel
+
+  trigger             CAGR   maxDD   win     n  worst blk
+  none             +12.53%   22.0%   52%   225    -120.5%  <- control
+  breakout         +11.45%   23.8%   49%   240     -83.1%
+  not_overbought    +3.12%   18.0%   50%   293    -110.2%
+  vol+breakout      +1.73%   16.8%   46%   144     -71.5%
+  rsi_band          -0.18%   25.3%   47%   325    -110.2%
+  pullback          -0.50%   11.9%   48%   187     -99.0%
+  volume            -3.77%   30.0%   44%   214    -114.8%
+
+  2 of 7 cleared the promotion bar

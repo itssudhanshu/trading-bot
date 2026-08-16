@@ -26,11 +26,21 @@ from datetime import date
 import features
 
 BUCKETS = ("micro", "small", "mid")
+# Overridable: widening this re-buckets every downstream reader (pick, build,
+# allocate). Ascending turnover -- first name is the smallest.
+BUCKET_NAMES = BUCKETS
 PER_CLUSTER = 20
 
 
-def size_buckets(corpus, as_of=None, window=250):
-    """-> {bucket: [symbols]} by median daily turnover up to `as_of`."""
+def size_buckets(corpus, as_of=None, window=250, names=None):
+    """-> {bucket: [symbols]} by median daily turnover up to `as_of`.
+
+    `names` sets the number of quantiles: three gives the original
+    micro/small/mid terciles, six gives finer size resolution. Module-level
+    BUCKET_NAMES is the default so a caller can widen the split for every
+    downstream reader at once.
+    """
+    names = names or BUCKET_NAMES
     rows = []
     for sym, s in corpus.items():
         idx = len(s) - 1 if as_of is None else (s.index_of(as_of) or -1)
@@ -40,10 +50,9 @@ def size_buckets(corpus, as_of=None, window=250):
         if len(t) > 100:
             rows.append((statistics.median(t), sym))
     rows.sort()
-    n = len(rows)
-    return {"micro": [s for _, s in rows[:n // 3]],
-            "small": [s for _, s in rows[n // 3:2 * n // 3]],
-            "mid":   [s for _, s in rows[2 * n // 3:]]}
+    n, k = len(rows), len(names)
+    return {nm: [s for _, s in rows[i * n // k:(i + 1) * n // k]]
+            for i, nm in enumerate(names)}
 
 
 def _pct_rank(vals):
@@ -72,7 +81,7 @@ def _weights():
         return {}, set()
 
 
-def score(corpus, symbols, as_of):
+def score(corpus, symbols, as_of, with_ranks=False):
     """Composite 0-100 per symbol, from data available on `as_of` only."""
     raw = {}
     for sym in symbols:
@@ -107,7 +116,7 @@ def score(corpus, symbols, as_of):
     # information; a feature that stops predicting loses influence rather than
     # staying in the score because it was in the original design.
     W, INVERTED = _weights()
-    out = {}
+    out, detail = {}, {}
     for sym, v in raw.items():
         # Trend is a gate, not a score: a stock below its 200-day average is
         # excluded outright rather than compensated for by a high momentum rank.
@@ -122,12 +131,14 @@ def score(corpus, symbols, as_of):
             tot += r * w
             wsum += w
         out[sym] = tot / (wsum or 1.0)
-    return out
+        detail[sym] = {f: round(ranks[f][sym], 1)
+                       for f in ("rs", "deliv", "liq", "near_high")}
+    return (out, detail) if with_ranks else out
 
 
 def pick(corpus, as_of, per_cluster=PER_CLUSTER):
     """-> {bucket: [(symbol, score)]}, best `per_cluster` in each."""
-    buckets = size_buckets(corpus, as_of)
+    buckets = size_buckets(corpus, as_of, names=BUCKET_NAMES)
     out = {}
     for b, syms in buckets.items():
         sc = score(corpus, syms, as_of)
