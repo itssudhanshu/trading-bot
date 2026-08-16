@@ -230,27 +230,18 @@ def _selftest():
     assert as_of(fil, _d(2025, 1, 15))["xbrl"] == "a", "Q3 leaked before broadcast"
     assert as_of(fil, _d(2025, 1, 16))["xbrl"] == "b"
     assert as_of([], _d(2025, 1, 1)) is None
+
+    # visible(): the as-of rule again, plus lookback measured in QUARTERS
+    rows = [{"visible_from": "2024-01-20", "quarter_end": "2023-12-31", "revenue": 100.0},
+            {"visible_from": "2024-04-25", "quarter_end": "2024-03-31", "revenue": 110.0},
+            {"visible_from": "2025-01-18", "quarter_end": "2024-12-31", "revenue": 130.0}]
+    assert visible(rows, "2024-01-19") is None, "filing seen before it was broadcast"
+    assert visible(rows, "2024-01-20")["revenue"] == 100.0
+    assert visible(rows, "2025-01-17")["revenue"] == 110.0, "future filing leaked"
+    assert visible(rows, "2025-01-18")["revenue"] == 130.0
+    assert visible(rows, "2025-01-18", back=1)["revenue"] == 110.0
+    assert visible(rows, "2024-01-20", back=1) is None, "history does not reach back"
     print("fundamentals selftest ok")
-
-
-if __name__ == "__main__":
-    if "--selftest" in sys.argv:
-        _selftest()
-    elif "--backfill" in sys.argv:
-        import features
-        from datetime import date
-        corpus = features.load_corpus()
-        syms = sorted(corpus)
-        print(f"backfilling fundamentals for {len(syms)} symbols")
-        backfill(syms, start=date(2019, 1, 1), end=date.today())
-    else:
-        sym = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
-        idx = fetch_index(sym)
-        print(f"{sym}: {len(idx)} quarterly filings")
-        for m in idx[:3]:
-            bc = _dt(m.get("broadCastDate"))
-            print(f"  {m['fromDate']} -> {m['toDate']}  broadcast {bc}  "
-                  f"lag {(bc - _dt(m['toDate'])).days}d  {m.get('consolidated','')}")
 
 
 # --- bulk backfill ---------------------------------------------------------
@@ -325,3 +316,84 @@ def backfill(symbols, start=None, end=None, workers=6, log=print):
         list(pool.map(do_xbrl, jobs))
     log(f"  done: {tally}")
     return tally
+
+
+# --- parsed cache + as-of timeline ----------------------------------------
+
+PARSED = RAW / "parsed"
+
+
+def build_parsed(symbol, force=False) -> list:
+    """-> [{visible_from, quarter_end, revenue, net_profit, ...}] by visibility.
+
+    XBRL is 57 KB of XML per filing and there are ~90,000 of them; parsing on
+    demand would dominate every backtest. Parsed once into a compact cache.
+    """
+    out = PARSED / f"{symbol}.json"
+    if out.exists() and not force:
+        return json.loads(out.read_text())
+    rows = []
+    for entry in build_asof(symbol):
+        p = _xbrl_path(symbol, entry["quarter_end"])
+        if not p.exists():
+            continue
+        idx = fetch_index(symbol)
+        m = next((x for x in idx
+                  if _dt(x.get("toDate")) == entry["quarter_end"]), None)
+        if not m:
+            continue
+        fig = quarter_figures(m, p.read_bytes())
+        if not fig:
+            continue
+        rows.append({"visible_from": entry["visible_from"].isoformat(),
+                     "quarter_end": entry["quarter_end"].isoformat(), **fig})
+    rows.sort(key=lambda r: r["visible_from"])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rows))
+    return rows
+
+
+def timeline(symbol):
+    """Cached as-of timeline, or [] if never built."""
+    p = PARSED / f"{symbol}.json"
+    return json.loads(p.read_text()) if p.exists() else []
+
+
+def visible(rows, day_iso, back=0):
+    """The filing visible on `day_iso`, or `back` quarters earlier. None if the
+    history does not reach that far -- never the nearest available."""
+    seen = [r for r in rows if r["visible_from"] <= day_iso]
+    if len(seen) <= back:
+        return None
+    return seen[-1 - back]
+
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        _selftest()
+    elif "--parse" in sys.argv:
+        import features
+        corpus = features.load_corpus()
+        n = ok = 0
+        for sym in sorted(corpus):
+            n += 1
+            if build_parsed(sym):
+                ok += 1
+            if n % 250 == 0:
+                print(f"  parsed {n}  with data {ok}", flush=True)
+        print(f"done: {ok}/{n} symbols have parsed fundamentals")
+    elif "--backfill" in sys.argv:
+        import features
+        from datetime import date
+        corpus = features.load_corpus()
+        syms = sorted(corpus)
+        print(f"backfilling fundamentals for {len(syms)} symbols")
+        backfill(syms, start=date(2019, 1, 1), end=date.today())
+    else:
+        sym = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
+        idx = fetch_index(sym)
+        print(f"{sym}: {len(idx)} quarterly filings")
+        for m in idx[:3]:
+            bc = _dt(m.get("broadCastDate"))
+            print(f"  {m['fromDate']} -> {m['toDate']}  broadcast {bc}  "
+                  f"lag {(bc - _dt(m['toDate'])).days}d  {m.get('consolidated','')}")

@@ -46,6 +46,11 @@ TRANSLATORS = {
     "breadth_above":       (lambda p: f"NSE breadth > {p['pct']}%", True),
     "rs_rank_above":       (lambda p: f"RS rank > {p['pct']} pctile over {p['lookback']}d", True),
     "surveillance_known":  (lambda p: "point-in-time ASM/GSM known", True),
+    # Quarterly filings with as-of dating. TradingView has no NSE fundamentals
+    # keyed to broadcast date, so these are declared, never approximated.
+    "revenue_growth_yoy":  (lambda p: f"revenue YoY > {p['min_pct']}% (as-of filed)", True),
+    "net_margin_above":    (lambda p: f"net margin > {p['pct']}% (as-of filed)", True),
+    "profitable_quarters": (lambda p: f"profitable in last {p['n']} filed quarters", True),
 }
 
 
@@ -199,6 +204,9 @@ SAMPLE_PARAMS = {
     "deliv_pct_above": {"pct": 50.0}, "deliv_zscore_above": {"z": 1.5, "window": 60},
     "breadth_above": {"pct": 60.0}, "rs_rank_above": {"lookback": 60, "pct": 80.0},
     "surveillance_known": {},
+    "revenue_growth_yoy": {"min_pct": 10.0},
+    "net_margin_above": {"pct": 5.0},
+    "profitable_quarters": {"n": 4},
 }
 
 

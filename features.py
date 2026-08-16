@@ -33,6 +33,7 @@ class Series:
     deliv_pct: list = field(default_factory=list)
     surveillance_known: list = field(default_factory=list)
     rs: dict = field(default_factory=dict)      # lookback -> [percentile per bar]
+    fund: list = field(default_factory=list)    # as-of filing timeline (see fundamentals.py)
 
     def __len__(self):
         return len(self.days)
@@ -87,6 +88,7 @@ def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict
             s.deliv_pct.append(b.deliv_pct)
             s.surveillance_known.append(b.surveillance_known)
     out = {k: v for k, v in out.items() if len(v) >= min_bars}
+    attach_fundamentals(out)
     return attach_rs(out)
 
 
@@ -234,6 +236,21 @@ def attach_rs(corpus, lookbacks=RS_LOOKBACKS):
         for s_ in corpus.values():
             s_.rs = getattr(s_, "rs", {})
             s_.rs[lb] = [ranks.get(d, {}).get(s_.symbol) for d in s_.days]
+    return corpus
+
+
+def attach_fundamentals(corpus):
+    """Attach each symbol's as-of filing timeline. Missing is normal -- 15% of
+    the universe has no filings at all and banks use a taxonomy the parser does
+    not read, so predicates must treat absence as UNKNOWN (None), never as a
+    failed test. Absent data that reads as False would silently exclude a
+    seventh of the universe while looking like selectivity."""
+    try:
+        import fundamentals
+    except Exception:
+        return corpus
+    for sym, s in corpus.items():
+        s.fund = fundamentals.timeline(sym)
     return corpus
 
 

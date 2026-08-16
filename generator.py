@@ -56,13 +56,21 @@ FAMILIES = {
     # These two families are the vocabulary's first non-momentum setups.
     "mean_reversion":  (["pct_off_high", "rsi_below"],
                         ["close_above_sma", "turnover_above", "deliv_pct_above",
-                         "down_days", "close_near_high", "rs_rank_above"]),
+                         "down_days", "close_near_high", "rs_rank_above",
+                         "profitable_quarters", "net_margin_above"]),
     "turtle_soup":     (["reclaim_prior_low"],
                         ["close_above_sma", "turnover_above", "rsi_below",
                          "deliv_zscore_above", "pct_off_high", "close_near_high"]),
     "rs_momentum":     (["rs_rank_above", "close_above_sma"],
                         ["ema_slope_up", "vol_expansion", "deliv_zscore_above",
-                         "turnover_above", "close_near_high", "breadth_above"]),
+                         "turnover_above", "close_near_high", "breadth_above",
+                         "revenue_growth_yoy", "profitable_quarters"]),
+    # Momentum plus a fundamental quality gate. The hypothesis under test: every
+    # candidate so far loses in BOTH bear blocks, and quality screens are the
+    # one input that has historically held up in drawdowns.
+    "quality_momentum": (["rs_rank_above", "profitable_quarters"],
+                        ["revenue_growth_yoy", "net_margin_above",
+                         "close_above_sma", "turnover_above", "close_near_high"]),
     "vcp":             (["range_contraction", "breakout_prior_high"],
                         ["atr_pct_below", "vol_expansion", "close_above_sma",
                          "deliv_zscore_above", "turnover_above", "rs_rank_above",

@@ -1,0 +1,113 @@
+backfilling fundamentals for 2486 symbols
+stage 1: metadata for 2486 symbols
+  index 100/2486  ok=88 fail=12
+  index 200/2486  ok=178 fail=22
+  index 300/2486  ok=263 fail=37
+  index 400/2486  ok=349 fail=51
+  index 500/2486  ok=437 fail=63
+  index 600/2486  ok=525 fail=75
+  index 700/2486  ok=608 fail=92
+  index 800/2486  ok=690 fail=110
+  index 900/2486  ok=776 fail=124
+  index 1000/2486  ok=838 fail=162
+  index 1100/2486  ok=925 fail=175
+  index 1200/2486  ok=1012 fail=188
+  index 1300/2486  ok=1090 fail=210
+  index 1400/2486  ok=1171 fail=229
+  index 1500/2486  ok=1257 fail=243
+  index 1600/2486  ok=1333 fail=267
+  index 1700/2486  ok=1421 fail=279
+  index 1800/2486  ok=1515 fail=285
+  index 1900/2486  ok=1605 fail=295
+  index 2000/2486  ok=1689 fail=311
+  index 2100/2486  ok=1774 fail=326
+  index 2200/2486  ok=1865 fail=335
+  index 2300/2486  ok=1954 fail=346
+  index 2400/2486  ok=2041 fail=359
+  done: ok=2116 fail=370
+stage 2: 42027 XBRL filings in window
+  xbrl 500/42027  ok=484 have=0 fail=16
+  xbrl 1000/42027  ok=979 have=0 fail=21
+  xbrl 1500/42027  ok=1465 have=0 fail=35
+  xbrl 2000/42027  ok=1952 have=0 fail=48
+  xbrl 2500/42027  ok=2436 have=0 fail=64
+  xbrl 3000/42027  ok=2923 have=0 fail=77
+  xbrl 3500/42027  ok=3406 have=0 fail=94
+  xbrl 4000/42027  ok=3888 have=0 fail=112
+  xbrl 4500/42027  ok=4368 have=0 fail=132
+  xbrl 5000/42027  ok=4857 have=0 fail=143
+  xbrl 5500/42027  ok=5343 have=0 fail=157
+  xbrl 6000/42027  ok=5838 have=0 fail=162
+  xbrl 6500/42027  ok=6334 have=0 fail=166
+  xbrl 7000/42027  ok=6808 have=0 fail=192
+  xbrl 7500/42027  ok=7295 have=0 fail=205
+  xbrl 8000/42027  ok=7778 have=0 fail=222
+  xbrl 8500/42027  ok=8256 have=0 fail=244
+  xbrl 9000/42027  ok=8740 have=0 fail=260
+  xbrl 9500/42027  ok=9226 have=0 fail=274
+  xbrl 10000/42027  ok=9719 have=0 fail=281
+  xbrl 10500/42027  ok=10217 have=0 fail=283
+  xbrl 11000/42027  ok=10698 have=0 fail=302
+  xbrl 11500/42027  ok=11177 have=0 fail=323
+  xbrl 12000/42027  ok=11660 have=0 fail=340
+  xbrl 12500/42027  ok=12152 have=0 fail=348
+  xbrl 13000/42027  ok=12634 have=0 fail=366
+  xbrl 13500/42027  ok=13117 have=0 fail=383
+  xbrl 14000/42027  ok=13608 have=0 fail=392
+  xbrl 14500/42027  ok=14098 have=0 fail=402
+  xbrl 15000/42027  ok=14582 have=0 fail=418
+  xbrl 15500/42027  ok=15072 have=0 fail=428
+  xbrl 16000/42027  ok=15564 have=0 fail=436
+  xbrl 16500/42027  ok=16037 have=0 fail=463
+  xbrl 17000/42027  ok=16522 have=0 fail=478
+  xbrl 17500/42027  ok=17001 have=0 fail=499
+  xbrl 18000/42027  ok=17479 have=0 fail=521
+  xbrl 18500/42027  ok=17961 have=0 fail=539
+  xbrl 19000/42027  ok=18440 have=0 fail=560
+  xbrl 19500/42027  ok=18920 have=0 fail=580
+  xbrl 20000/42027  ok=19399 have=0 fail=601
+  xbrl 20500/42027  ok=19881 have=0 fail=619
+  xbrl 21000/42027  ok=20371 have=0 fail=629
+  xbrl 21500/42027  ok=20857 have=0 fail=643
+  xbrl 22000/42027  ok=21342 have=0 fail=658
+  xbrl 22500/42027  ok=21825 have=0 fail=675
+  xbrl 23000/42027  ok=22311 have=0 fail=689
+  xbrl 23500/42027  ok=22794 have=0 fail=706
+  xbrl 24000/42027  ok=23288 have=0 fail=712
+  xbrl 24500/42027  ok=23773 have=0 fail=727
+  xbrl 25000/42027  ok=24253 have=0 fail=747
+  xbrl 25500/42027  ok=24742 have=0 fail=758
+  xbrl 26000/42027  ok=25231 have=0 fail=769
+  xbrl 26500/42027  ok=25721 have=0 fail=779
+  xbrl 27000/42027  ok=26207 have=0 fail=793
+  xbrl 27500/42027  ok=26692 have=0 fail=808
+  xbrl 28000/42027  ok=27177 have=0 fail=823
+  xbrl 28500/42027  ok=27659 have=0 fail=841
+  xbrl 29000/42027  ok=28149 have=0 fail=851
+  xbrl 29500/42027  ok=28639 have=0 fail=861
+  xbrl 30000/42027  ok=29131 have=0 fail=869
+  xbrl 30500/42027  ok=29609 have=0 fail=891
+  xbrl 31000/42027  ok=30098 have=0 fail=902
+  xbrl 31500/42027  ok=30580 have=0 fail=920
+  xbrl 32000/42027  ok=31059 have=0 fail=941
+  xbrl 32500/42027  ok=31547 have=0 fail=953
+  xbrl 33000/42027  ok=32036 have=0 fail=964
+  xbrl 33500/42027  ok=32520 have=0 fail=980
+  xbrl 34000/42027  ok=32986 have=0 fail=1014
+  xbrl 34500/42027  ok=33473 have=0 fail=1027
+  xbrl 35000/42027  ok=33954 have=0 fail=1046
+  xbrl 35500/42027  ok=34448 have=0 fail=1052
+  xbrl 36000/42027  ok=34919 have=0 fail=1081
+  xbrl 36500/42027  ok=35403 have=0 fail=1097
+  xbrl 37000/42027  ok=35895 have=0 fail=1105
+  xbrl 37500/42027  ok=36377 have=0 fail=1123
+  xbrl 38000/42027  ok=36869 have=0 fail=1131
+  xbrl 38500/42027  ok=37351 have=0 fail=1149
+  xbrl 39000/42027  ok=37829 have=0 fail=1171
+  xbrl 39500/42027  ok=38316 have=0 fail=1184
+  xbrl 40000/42027  ok=38805 have=0 fail=1195
+  xbrl 40500/42027  ok=39286 have=0 fail=1214
+  xbrl 41000/42027  ok=39778 have=0 fail=1222
+  xbrl 41500/42027  ok=40258 have=0 fail=1242
+  xbrl 42000/42027  ok=40749 have=0 fail=1251
+  done: {'idx_ok': 2116, 'idx_fail': 370, 'xbrl_ok': 40775, 'xbrl_have': 0, 'xbrl_fail': 1252}

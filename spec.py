@@ -194,6 +194,52 @@ def _p_down_days(c, i, n):
     return all(c.s.close[k] < c.s.close[k - 1] for k in range(i - n + 1, i + 1))
 
 
+def _fund(c, i, back=0):
+    """Filing visible on bar i, or `back` quarters earlier. None if unknown.
+
+    Median reporting lag is 42 days and p90 is 71 (measured over 91,843
+    filings), so this is typically six weeks stale by construction. That is the
+    honest state of the world on that date, not a defect.
+    """
+    rows = getattr(c.s, "fund", None)
+    if not rows:
+        return None
+    import fundamentals
+    return fundamentals.visible(rows, c.s.days[i].isoformat(), back=back)
+
+
+def _p_revenue_growth_yoy(c, i, min_pct):
+    """Revenue vs the same quarter a year earlier (4 filings back)."""
+    now, then = _fund(c, i), _fund(c, i, back=4)
+    if not now or not then:
+        return None
+    a, b = now.get("revenue"), then.get("revenue")
+    if a is None or not b or b <= 0:
+        return None
+    return (a / b - 1.0) * 100 > min_pct
+
+
+def _p_net_margin_above(c, i, pct):
+    f = _fund(c, i)
+    if not f:
+        return None
+    rev, np_ = f.get("revenue"), f.get("net_profit")
+    if not rev or rev <= 0 or np_ is None:
+        return None
+    return (np_ / rev) * 100 > pct
+
+
+def _p_profitable_quarters(c, i, n):
+    """Net profit positive in each of the last n visible quarters."""
+    vals = []
+    for b in range(n):
+        f = _fund(c, i, back=b)
+        if not f or f.get("net_profit") is None:
+            return None
+        vals.append(f["net_profit"])
+    return all(v > 0 for v in vals)
+
+
 def _p_surveillance_known(c, i):
     """Guard for live trading: refuse when point-in-time surveillance is absent."""
     return bool(c.s.surveillance_known[i])
@@ -224,6 +270,9 @@ PREDICATES = {
                                                    "pct": (float, 5.0, 60.0)}),
     "reclaim_prior_low":   (_p_reclaim_prior_low, {"lookback": (int, 5, 100)}),
     "down_days":           (_p_down_days,         {"n": (int, 2, 6)}),
+    "revenue_growth_yoy":  (_p_revenue_growth_yoy, {"min_pct": (float, -20.0, 50.0)}),
+    "net_margin_above":    (_p_net_margin_above,  {"pct": (float, -5.0, 30.0)}),
+    "profitable_quarters": (_p_profitable_quarters, {"n": (int, 1, 8)}),
 }
 # rs_rank_above only has ranks for the lookbacks features.attach_rs precomputes.
 RS_LOOKBACKS = features.RS_LOOKBACKS
