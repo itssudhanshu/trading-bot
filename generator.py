@@ -40,6 +40,27 @@ import split
 ROOT = Path(__file__).resolve().parent
 CANDIDATES = ROOT / "data" / "candidates.jsonl"        # latest run, for convenience
 
+# Fundamental predicates, toggleable as a SET rather than by editing families.
+# Epoch 6 mixed them with price-only specs in one ranking and PBO degraded to
+# 0.524, worse than either half alone (0.361 with, 0.028 without) -- the
+# signature of two populations being ranked against each other. Toggling makes
+# that comparison repeatable instead of a manual edit that drifts.
+FUNDAMENTAL_PREDS = {"revenue_growth_yoy", "net_margin_above", "profitable_quarters"}
+USE_FUNDAMENTALS = True
+
+
+def _families():
+    if USE_FUNDAMENTALS:
+        return FAMILIES
+    out = {}
+    for fam, (req, pool) in FAMILIES.items():
+        req2 = [p for p in req if p not in FUNDAMENTAL_PREDS]
+        if not req2:
+            continue                      # family exists only to carry them
+        out[fam] = (req2, [p for p in pool if p not in FUNDAMENTAL_PREDS])
+    return out
+
+
 MIN_INSTANCES = 100      # over the train span; ~30/fold, per lessons.md L4
 # ...and an upper bound. L4 asks for specs "loose enough to be testable while
 # still selective"; without this only the first half is enforced, and the search
@@ -91,8 +112,9 @@ def _snap(v, typ, lo, hi, rng):
 
 
 def sample_spec(rng) -> dict:
-    fam = rng.choice(sorted(FAMILIES))
-    required, pool = FAMILIES[fam]
+    fams = _families()
+    fam = rng.choice(sorted(fams))
+    required, pool = fams[fam]
     names = list(required) + rng.sample(pool, rng.randint(1, min(3, len(pool))))
 
     conditions = []
@@ -288,7 +310,14 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--symbols", type=int, default=0, help="cap universe for a fast pass")
     ap.add_argument("--parallel", type=int, default=0, help="workers; 0 = serial")
+    ap.add_argument("--no-fundamentals", action="store_true",
+                    help="exclude fundamental predicates from the search space")
     a = ap.parse_args()
+
+    global USE_FUNDAMENTALS
+    if a.no_fundamentals:
+        USE_FUNDAMENTALS = False
+        print('fundamentals EXCLUDED from the search space', flush=True)
 
     # Full corpus for indicator continuity; SIGNALS restricted to train days.
     # Holdout blocks are interleaved, so a date-range slice cannot express this,
@@ -354,6 +383,25 @@ def main():
 
 
 def _selftest():
+    # toggling must actually remove them, and must leave a usable space
+    global USE_FUNDAMENTALS
+    _orig = USE_FUNDAMENTALS
+    try:
+        USE_FUNDAMENTALS = False
+        rng0 = random.Random(0)
+        for _ in range(120):
+            sp = sample_spec(rng0)
+            assert not any(c["pred"] in FUNDAMENTAL_PREDS for c in sp["conditions"]), sp
+        assert len(_families()) >= 5, _families().keys()
+        USE_FUNDAMENTALS = True
+        seen = set()
+        rng1 = random.Random(0)
+        for _ in range(300):
+            seen |= {c["pred"] for c in sample_spec(rng1)["conditions"]}
+        assert seen & FUNDAMENTAL_PREDS, "fundamentals never sampled when enabled"
+    finally:
+        USE_FUNDAMENTALS = _orig
+
     rng = random.Random(0)
     for _ in range(200):
         sp = sample_spec(rng)
