@@ -157,19 +157,74 @@ def push_learning(headline, lines):
 
 
 def cmd_sims(_=None):
+    """Plain-language simulation report: what the numbers MEAN, not just what
+    they are. A table of CAGRs on a phone is unreadable and, worse, invites
+    picking the biggest one -- which walk-forward showed selects losers."""
     import simulate
     rows = simulate.load_results()
     if not rows:
         return "*simulations*\n\n_none stored yet_"
     batches = sorted({r["batch"] for r in rows})
-    latest = [r for r in rows if r["batch"] == batches[-1]]
-    latest.sort(key=lambda r: -r["cagr"])
-    out = [f"*simulations* batch `{batches[-1]}`",
-           f"_{len(rows)} results across {len(batches)} batches_", ""]
-    for r in latest[:12]:
-        out.append(f"`{r['cagr']:>+6.2f}%` DD `{r['maxdd']:>4.1f}%` n={r['n']:<4} "
-                   f"{r['variant']}")
-    out += ["", "_CAGR ranked. A best-of-N pick is inflated -- see /learning_"]
+    latest = sorted([r for r in rows if r["batch"] == batches[-1]],
+                    key=lambda r: -r["cagr"])
+    base = next((r for r in latest if r["variant"].startswith("baseline")), latest[0])
+
+    out = [f"*SIMULATION RESULTS*  `{batches[-1]}`",
+           "_Rs 5,00,000 book, 5.7 years of NSE history_", ""]
+
+    growth = base["equity"]
+    out += ["*Your book, as configured*",
+            f"• Rs 5,00,000 → *Rs {growth:,.0f}*   ({base['total_pct']:+.0f}% over 5.7 yrs)",
+            f"• that is *{base['cagr']:+.1f}% a year*",
+            f"• worst fall along the way: *-{base['maxdd']:.0f}%*",
+            f"• {base['n']} trades, *{base['win']}%* won", ""]
+
+    ex = base.get("exits") or {}
+    if ex:
+        tot = sum(ex.values()) or 1
+        out += ["*How trades ended*"]
+        for k, label in (("target", "hit +20% target"), ("stop", "hit -10% stop"),
+                         ("time", "closed after 15 days")):
+            if k in ex:
+                out.append(f"• {label}: {ex[k]} ({ex[k]*100//tot}%)")
+        out.append("")
+
+    mix = base.get("mix") or {}
+    if mix:
+        out += ["*Where the trades came from*",
+                "• " + " · ".join(f"{k} {v}" for k, v in mix.items()), ""]
+
+    out += ["*Other settings tested*"]
+    for r in latest[:6]:
+        if r["variant"] == base["variant"]:
+            continue
+        d = r["cagr"] - base["cagr"]
+        out.append(f"• {r['variant']}: {r['cagr']:+.1f}%/yr "
+                   f"({d:+.1f} vs yours), fall -{r['maxdd']:.0f}%")
+
+    out += ["", "⚠️ *Do not pick the best number here.* Walk-forward showed the",
+            "best in-sample setting ranked LAST out-of-sample. See /wf."]
+    return "\n".join(out)
+
+
+def cmd_clusters(_=None):
+    """The actual stocks the simulations trade."""
+    import clusters, features
+    c = features.load_corpus()
+    days = sorted({d for s in c.values() for d in s.days})
+    as_of = days[-1]
+    picks = clusters.pick(c, as_of, per_cluster=20)
+    sizes = {"micro": "smallest 3rd by turnover", "small": "middle 3rd",
+             "mid": "largest 3rd"}
+    out = [f"*CLUSTER STOCKS*  as of {as_of}",
+           "_screened on: 6-month strength, delivery %, liquidity,_",
+           "_must be above its own 200-day average_", ""]
+    for b in ("micro", "small", "mid"):
+        lst = picks.get(b, [])
+        out.append(f"*{b.upper()}* ({sizes[b]}) — top {min(10, len(lst))} of {len(lst)}")
+        out.append("  " + ", ".join(f"`{s}`" for s, _ in lst[:10]))
+        out.append("")
+    out.append("_the book takes 2 micro + 2 small + 1 mid from these_")
     return "\n".join(out)
 
 
@@ -199,7 +254,8 @@ def cmd_help(_=None):
             "/paper – paper trading book\n"
             "/health – is the agent actually running?\n"
             "/learning – what the bot has learned from its trades\n"
-            "/sims – stored simulation results\n"
+            "/sims – simulation results, in plain language\n"
+            "/clusters – the stocks being traded, by size band\n"
             "/wf – walk-forward tests: does tuning even work?\n"
             "/digest – full digest\n\n"
             "_read-only: I never start a search or spend holdout budget from here_")
@@ -230,6 +286,7 @@ def cmd_health(_=None):
 
 COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_health,
             "/learning": cmd_learning, "/sims": cmd_sims, "/wf": cmd_wf,
+            "/clusters": cmd_clusters,
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
             "/digest": cmd_digest}
 

@@ -1,10 +1,10 @@
 {
  "weights": {
-  "rs": 1.105,
-  "deliv": 0.7225,
-  "liq": 0.7225,
-  "near_high": 0.85
+  "rs": 1.0,
+  "deliv": 1.0,
+  "liq": 1.0,
+  "near_high": 1.0
  },
- "updated": "2026-08-16T16:51:32.077256",
- "note": "split-checked: rs and liq held (sign flip), deliv/off_high pass"
+ "updated": "2026-08-16T17:01:28.199224",
+ "note": "reset after deliv inversion falsified"
 }

@@ -33,6 +33,23 @@ MIN_TRADES = 200        # before any weight moves
 MAX_STEP = 0.15         # fraction of the way toward a new estimate
 FEATURES = ("rs", "deliv", "liq", "off_high", "near_high", "rsi")
 DEFAULT_WEIGHTS = {f: 1.0 for f in ("rs", "deliv", "liq", "near_high")}
+# Features whose information runs BACKWARDS and survives a split-check.
+#
+# EMPTY, and the reason matters. `deliv` qualified on every test available --
+# consistent negative spread (-0.97 -> -0.70 across halves), split-check passed
+# -- and inverting it took the book from +6.37% CAGR / 48% DD to -19.92% / 89%.
+#
+# The measurement was CONDITIONED ON SELECTION: those 2,758 trades were chosen
+# partly BY delivery, so the spread describes "among stocks already picked for
+# high delivery, the even-higher ones did worse". That is a statement about the
+# selected sample, not about the universe, and it does not survive changing the
+# population. Consistency across halves confirms the sign is stable; it cannot
+# confirm the relationship is causal, because both halves share the same
+# selection.
+#
+# Nothing goes in here until it is measured on trades chosen WITHOUT that
+# feature -- otherwise the loop keeps rediscovering its own selection rule.
+INVERTED = ()
 
 
 def record(rows, path=None):
@@ -139,6 +156,26 @@ def propose(trades, current=None):
             held.append(f"{f}: held -- {why}")
     notes.extend(held)
 
+    # A CONSISTENTLY negative spread is information, not absence: the feature
+    # ranks backwards and should be INVERTED, not discarded. Flooring it at zero
+    # threw away the strongest signal in the ledger (deliv, -0.97 -> -0.70 across
+    # halves) and -- once every spread floored to zero -- decayed all weights by
+    # the SAME factor, which a weighted average cancels exactly. The loop
+    # reported updates and changed nothing.
+    inverted = []
+    for f, s in list(spreads.items()):
+        if s < 0:
+            ok, _ = split_check(trades, f)
+            if ok:
+                # Do NOT auto-invert: the spread is measured on trades this very
+                # feature helped select, so a negative sign may be collider bias
+                # rather than backwards information. Flag it for a human and an
+                # unconditioned test; inverting deliv on exactly this evidence
+                # cost 26 points of CAGR.
+                notes.append(f"{f}: negative spread {s:+.2f}% is CONSISTENT but "
+                             f"selection-conditioned -- needs an unconditioned "
+                             f"test before inverting")
+                spreads[f] = 0.0
     pos = {f: max(s, 0.0) for f, s in spreads.items()}
     total = sum(pos.values()) or 1.0
     new = {}
@@ -146,6 +183,12 @@ def propose(trades, current=None):
         target = len(pos) * pos.get(f, 0.0) / total      # 1.0 = average weight
         new[f] = round(w + (target - w) * MAX_STEP, 4)
         notes.append(f"{f}: spread {spreads.get(f, 0):+.2f}% -> weight {w:.2f} -> {new[f]:.2f}")
+    # A uniform rescale changes NOTHING: the score is a weighted average, so
+    # multiplying every weight by one factor cancels. Say so, rather than
+    # reporting an update with no effect.
+    ratios = [new[f] / w for f, w in cur.items() if w]
+    if ratios and max(ratios) - min(ratios) < 1e-6:
+        notes.append("NO-OP: all weights scaled equally -- ranking unchanged")
     return new, notes
 
 
@@ -188,6 +231,14 @@ def _selftest():
     new, notes = propose(trades, {"rs": 1.0, "deliv": 1.0, "liq": 1.0})
     assert new["rs"] > 1.0, (new, notes)
     assert new["deliv"] < 1.0, new
+
+    # a uniform rescale must be reported as the no-op it is
+    flat_t = [{"rs": i / 300, "deliv": 0.5, "liq": 0.5, "near_high": 0.5,
+               "off_high": None, "rsi": None, "ret": 0.0,
+               "date": f"2024-{1 + i // 30:02d}-01"} for i in range(300)]
+    _, nn = propose(flat_t, {"rs": 1.0, "deliv": 1.0, "liq": 1.0, "near_high": 1.0})
+    assert any("NO-OP" in n for n in nn) or all(
+        "spread" not in n for n in nn), nn
 
     # a feature that flips sign between halves must be held at zero influence
     flip = []

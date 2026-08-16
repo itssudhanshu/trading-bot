@@ -51,3 +51,12 @@ listening (pid 77625, 10 commands)
 ./run_listener.sh: line 9: 77625 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 77729, 10 commands)
+changed on disk: clusters.py, learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 77982, 10 commands)
+changed on disk: learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 78146, 10 commands)
+./run_listener.sh: line 9: 78146 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 78273, 11 commands)

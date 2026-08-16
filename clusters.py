@@ -90,8 +90,9 @@ def score(corpus, symbols, as_of):
     try:
         import learning
         W = learning.load_weights()
+        INVERTED = set(learning.INVERTED)
     except Exception:
-        W = {}
+        W, INVERTED = {}, set()
     out = {}
     for sym, v in raw.items():
         # Trend is a gate, not a score: a stock below its 200-day average is
@@ -101,7 +102,10 @@ def score(corpus, symbols, as_of):
         tot = wsum = 0.0
         for f in ("rs", "deliv", "liq", "near_high"):
             w = float(W.get(f, 1.0))
-            tot += ranks[f][sym] * w
+            r = ranks[f][sym]
+            if f in INVERTED:
+                r = 100.0 - r        # ranks backwards, reliably (learning.INVERTED)
+            tot += r * w
             wsum += w
         out[sym] = tot / (wsum or 1.0)
     return out

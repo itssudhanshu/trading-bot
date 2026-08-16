@@ -1053,3 +1053,33 @@ itself, which is the only defence against a process that is confidently wrong.
 Live book stays at 10% / 20% / 15 days -- the operator's specification, not a
 tuned value. It also happens to be the out-of-sample winner on all three axes,
 which is noted and NOT acted upon: one out-of-sample period is one observation.
+
+## L48 — Selection-conditioned measurement: the learning loop rediscovered its own rule
+`deliv` showed a consistent NEGATIVE spread (-0.97 -> -0.70 across halves) and
+passed every test available: large effect, stable sign, split-checked. Inverting
+it took the book from +6.37% CAGR / 48% DD to **-19.92% / 89% DD**.
+
+The measurement was conditioned on selection. Those 2,758 trades were chosen
+partly BY delivery, so the spread says "among stocks already picked for high
+delivery, the even-higher ones did worse" -- a fact about the selected sample,
+not about the universe. Change the population and it inverts.
+
+Consistency across halves cannot detect this, because both halves share the same
+selection rule. A split-check confirms a sign is STABLE; it cannot confirm a
+relationship is CAUSAL.
+
+**Fixed:** `learning.INVERTED` is empty and documented. `propose()` no longer
+auto-inverts; it flags a consistent negative spread as selection-conditioned and
+requires an unconditioned test first. Without that, the loop keeps rediscovering
+its own selection criteria and acting on them backwards.
+
+**The general trap:** never measure a feature's information on trades that
+feature helped select. To test `deliv` honestly, generate trades chosen WITHOUT
+it, then measure. Everything else in the ledger has the same defect to a lesser
+degree -- `rs` and `liq` are also selection inputs, which is a further reason
+their sign flips between halves.
+
+**What was gained anyway:** reverting to neutral weights (all 1.0) gives
++12.66% CAGR / 38.9% DD, better than the +6.37% / 48.2% the tuned weights
+produced. Four hours of weight learning ended up worse than not learning at all,
+and the honest response is to say so and keep the neutral weights.
