@@ -1,0 +1,37 @@
+family restricted to oversold_uptrend
+rank key fixed to rev_growth
+corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1, 2025-H1, 2026-H1)
+  signals generated in 789s
+  25/400  {'evaluated': 2, 'too_few_instances': 22, 'unreachable_target': 1}  790s
+  50/400  {'evaluated': 4, 'too_few_instances': 45, 'unreachable_target': 1}  790s
+  75/400  {'evaluated': 6, 'too_few_instances': 67, 'unreachable_target': 2}  790s
+  100/400  {'evaluated': 10, 'too_few_instances': 88, 'unreachable_target': 2}  790s
+  125/400  {'evaluated': 14, 'too_few_instances': 109, 'unreachable_target': 2}  790s
+  150/400  {'evaluated': 18, 'too_few_instances': 129, 'unreachable_target': 3}  790s
+  175/400  {'evaluated': 20, 'too_few_instances': 152, 'unreachable_target': 3}  790s
+  200/400  {'evaluated': 22, 'too_few_instances': 174, 'unreachable_target': 4}  791s
+  225/400  {'evaluated': 24, 'too_few_instances': 197, 'unreachable_target': 4}  791s
+  250/400  {'evaluated': 26, 'too_few_instances': 220, 'unreachable_target': 4}  791s
+  275/400  {'evaluated': 30, 'too_few_instances': 241, 'unreachable_target': 4}  791s
+  300/400  {'evaluated': 33, 'too_few_instances': 263, 'unreachable_target': 4}  791s
+  325/400  {'evaluated': 39, 'too_few_instances': 282, 'unreachable_target': 4}  791s
+  350/400  {'evaluated': 43, 'too_few_instances': 303, 'unreachable_target': 4}  792s
+  375/400  {'evaluated': 44, 'too_few_instances': 326, 'unreachable_target': 5}  792s
+  400/400  {'evaluated': 46, 'too_few_instances': 349, 'unreachable_target': 5}  792s
+trial pool: +46 -> 2581 cumulative
+
+screening outcomes: {'evaluated': 46, 'too_few_instances': 349, 'unreachable_target': 5}
+generator yield: 46/400 = 11.5%
+
+top candidates by WORST-BLOCK P&L (L46; not evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  d94193a03d95c0c9 oversold_uptrend    795    176   4.5x  +0.35   34%      -862
+  50b9b880f31ec6a9 oversold_uptrend     88     61   1.4x  +0.33   10%      +957
+  c946d33fefb1a72a oversold_uptrend     33     33   1.0x  -0.35    3%    -1,693
+  4a4f78af76ec9a5e oversold_uptrend     80     31   2.6x  -0.00    9%      -191
+  ca455b8dde7c7090 oversold_uptrend     44     44   1.0x  +0.39   32%    +2,033
+  cbe9437855b2d2a9 oversold_uptrend     54     51   1.1x  -0.01   11%      -501
+  617ef8045efde4da oversold_uptrend    148    125   1.2x  +0.13    2%      +534
+  9902622eaaf3b0a2 oversold_uptrend     70     67   1.0x  +0.63   27%    +1,667
+  4c61b3eb4d74e9d6 oversold_uptrend     33     33   1.0x  -0.70   21%    -2,812
+  3fa36d21407fa755 oversold_uptrend    145    139   1.0x  -0.06    1%      -184

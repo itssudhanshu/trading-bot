@@ -1,13 +1,12 @@
 # Agent digest
-_2026-08-16 15:15_
+_2026-08-16 15:26_
 
 ## needs attention
-- agent has never run a snapshot (is the timer installed?)
-- 3 cycle(s) have promoted specs waiting for a deliberate `pipeline.py --consult`
+- nothing
 
 **due now:** nothing
 
-- corpus: **1695** trading days, **2** with surveillance
+- corpus: **1695** trading days, **3** with surveillance
 - holdout budget: **13/50** spent
 - paper: **0** open, **0** closed, realised **Rs +0**
 

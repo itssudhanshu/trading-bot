@@ -121,12 +121,44 @@ def cmd_paper(_=None):
     return "\n".join(out)
 
 
+def cmd_learning(_=None):
+    import learning, statistics
+    from collections import defaultdict
+    t = learning.load()
+    out = [f"*learning* {datetime.now():%d %b %H:%M}", "",
+           f"trades analysed: *{len(t)}*", ""]
+    if not t:
+        return "\n".join(out + ["_no trades recorded yet_"])
+    out.append("*feature information* (return spread, top third vs bottom)")
+    for f, v in sorted(learning.analyse(t).items(),
+                       key=lambda kv: -abs(kv[1]["spread"])):
+        arrow = "↑" if v["spread"] > 0 else "↓"
+        out.append(f"• `{f}` {arrow} {v['spread']:+.2f}%")
+    by = defaultdict(list)
+    for x in t:
+        by[x["bucket"]].append(x["ret"])
+    out += ["", "*by cluster*"]
+    for b, v in sorted(by.items(), key=lambda kv: -statistics.fmean(kv[1])):
+        out.append(f"• {b}: {statistics.fmean(v):+.2f}%/trade, "
+                   f"{sum(1 for r in v if r>0)/len(v)*100:.0f}% win, n={len(v)}")
+    w = learning.load_weights()
+    out += ["", f"*weights*: " + ", ".join(f"{k} {v:.2f}" for k, v in w.items())]
+    return "\n".join(out)
+
+
+def push_learning(headline, lines):
+    """Push a learning/improvement event unprompted. Kept short: a wall of text
+    on a phone gets skipped, and then the alerts stop being read."""
+    return send(f"*{headline}*\n" + "\n".join(f"• {l}" for l in lines[:8]))
+
+
 def cmd_help(_=None):
     return ("*commands*\n"
             "/status – what needs attention, what is due\n"
             "/progress – corpus, budget, research cycles\n"
             "/paper – paper trading book\n"
             "/health – is the agent actually running?\n"
+            "/learning – what the bot has learned from its trades\n"
             "/digest – full digest\n\n"
             "_read-only: I never start a search or spend holdout budget from here_")
 
@@ -155,6 +187,7 @@ def cmd_health(_=None):
 
 
 COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_health,
+            "/learning": cmd_learning,
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
             "/digest": cmd_digest}
 
@@ -229,8 +262,12 @@ if __name__ == "__main__":
     elif "--status" in sys.argv:
         print(json.dumps(send(cmd_status()).get("ok")))
     elif "--listen" in sys.argv:
-        _self = Path(__file__)
-        _mtime = _self.stat().st_mtime
+        # Watch EVERY project module, not just this file. tg.py imports agent,
+        # judge and engine at request time and holds them in memory, so editing
+        # agent.py left the bot serving stale logic while tg.py was untouched --
+        # it kept reporting attention items that had already been fixed. Watching
+        # only your own source catches your own edits and nothing else.
+        _watched = {p: p.stat().st_mtime for p in Path(__file__).parent.glob("*.py")}
         print(f"listening (pid {__import__('os').getpid()}, "
               f"{len(COMMANDS)} commands)", flush=True)
         while True:
@@ -239,8 +276,11 @@ if __name__ == "__main__":
                 # Restart on our own source changing. A poller that keeps
                 # serving stale code answers the wrong thing and looks healthy
                 # while doing it.
-                if _self.stat().st_mtime != _mtime:
-                    print("tg.py changed on disk -- exiting for restart", flush=True)
+                changed = [p.name for p, m in _watched.items()
+                           if not p.exists() or p.stat().st_mtime != m]
+                if changed:
+                    print(f"changed on disk: {', '.join(changed)} -- restarting",
+                          flush=True)
                     sys.exit(0)
             except KeyboardInterrupt:
                 break

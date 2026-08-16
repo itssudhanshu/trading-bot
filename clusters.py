@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Size clusters and stock selection: 20 micro, 20 small, 20 mid.
+
+SELECTION IS AS-OF A DATE. Every input is computed from bars up to and including
+that date only. Picking today's best performers and testing them on their own
+history is the classic way to build a system that backtests beautifully and
+fails live -- the stocks are chosen BECAUSE they already rose.
+
+Size proxy is median daily turnover, not market cap: true market cap needs
+shares outstanding, which no NSE feed collected here provides. Turnover also
+happens to be the more relevant axis for a 5-lakh book, since it decides whether
+a position can be entered and exited at all.
+
+Composite score, equally weighted after ranking (so no single factor dominates
+by scale):
+    relative strength   6-month return percentile across the whole universe
+    delivery quality    delivery % -- real accumulation, not intraday churn
+    liquidity           turnover within the cluster
+    trend               close above its own 200-day average
+    fundamentals        revenue growth where filings exist (neutral where not)
+"""
+import statistics
+import sys
+from datetime import date
+
+import features
+
+BUCKETS = ("micro", "small", "mid")
+PER_CLUSTER = 20
+
+
+def size_buckets(corpus, as_of=None, window=250):
+    """-> {bucket: [symbols]} by median daily turnover up to `as_of`."""
+    rows = []
+    for sym, s in corpus.items():
+        idx = len(s) - 1 if as_of is None else (s.index_of(as_of) or -1)
+        if idx < 200:
+            continue
+        t = [x for x in s.turnover[max(0, idx - window):idx + 1] if x > 0]
+        if len(t) > 100:
+            rows.append((statistics.median(t), sym))
+    rows.sort()
+    n = len(rows)
+    return {"micro": [s for _, s in rows[:n // 3]],
+            "small": [s for _, s in rows[n // 3:2 * n // 3]],
+            "mid":   [s for _, s in rows[2 * n // 3:]]}
+
+
+def _pct_rank(vals):
+    """-> {key: percentile 0-100}. Ties share the lower rank."""
+    order = sorted(vals.items(), key=lambda kv: kv[1])
+    n = len(order)
+    return {k: (i + 1) / n * 100 for i, (k, _) in enumerate(order)}
+
+
+def score(corpus, symbols, as_of):
+    """Composite 0-100 per symbol, from data available on `as_of` only."""
+    raw = {}
+    for sym in symbols:
+        s = corpus[sym]
+        i = s.index_of(as_of)
+        if i is None or i < 200:
+            continue
+        prev = s.close[i - 125] if i >= 125 else None
+        if not prev:
+            continue
+        rs = s.close[i] / prev - 1.0
+        deliv = [d for d in s.deliv_pct[max(0, i - 60):i + 1] if d and d > 0]
+        liq = statistics.median([x for x in s.turnover[max(0, i - 60):i + 1] if x > 0] or [0])
+        sma200 = statistics.fmean(s.close[i - 199:i + 1])
+        raw[sym] = {
+            "rs": rs,
+            "deliv": statistics.fmean(deliv) if deliv else 0.0,
+            "liq": liq,
+            "trend": 1.0 if s.close[i] > sma200 else 0.0,
+        }
+    if not raw:
+        return {}
+    ranks = {f: _pct_rank({k: v[f] for k, v in raw.items()})
+             for f in ("rs", "deliv", "liq")}
+    out = {}
+    for sym, v in raw.items():
+        # Trend is a gate, not a score: a stock below its 200-day average is
+        # excluded outright rather than compensated for by a high momentum rank.
+        if v["trend"] == 0.0:
+            continue
+        out[sym] = (ranks["rs"][sym] + ranks["deliv"][sym] + ranks["liq"][sym]) / 3
+    return out
+
+
+def pick(corpus, as_of, per_cluster=PER_CLUSTER):
+    """-> {bucket: [(symbol, score)]}, best `per_cluster` in each."""
+    buckets = size_buckets(corpus, as_of)
+    out = {}
+    for b, syms in buckets.items():
+        sc = score(corpus, syms, as_of)
+        out[b] = sorted(sc.items(), key=lambda kv: -kv[1])[:per_cluster]
+    return out
+
+
+def _selftest():
+    from datetime import timedelta
+    corpus = {}
+    d0 = date(2024, 1, 1)
+    days = [d0 + timedelta(days=k) for k in range(400)]
+    for j in range(30):
+        s = features.Series(f"S{j:02d}", list(days))
+        for k in range(400):
+            px = 100 + j * k * 0.02          # higher j = stronger uptrend
+            s.close.append(px); s.high.append(px); s.low.append(px); s.open.append(px)
+            s.volume.append(1000); s.turnover.append(1e6 * (j + 1))
+            s.deliv_pct.append(40.0 + j); s.surveillance_known.append(True)
+        corpus[s.symbol] = s
+
+    b = size_buckets(corpus)
+    assert sum(len(v) for v in b.values()) == 30, b
+    assert "S29" in b["mid"], "highest turnover must land in mid"
+    assert "S00" in b["micro"]
+
+    picks = pick(corpus, days[-1], per_cluster=3)
+    assert set(picks) == set(BUCKETS)
+    for bname, lst in picks.items():
+        assert len(lst) <= 3
+        scores = [sc for _, sc in lst]
+        assert scores == sorted(scores, reverse=True), "not ranked best-first"
+
+    # as-of: a pick on an early date must not use later bars
+    early = pick(corpus, days[250], per_cluster=3)
+    assert early, "no picks on a mid-history date"
+    assert pick(corpus, days[10], per_cluster=3) == {b: [] for b in BUCKETS}, \
+        "picked with under 200 bars of history"
+    print("clusters selftest ok")
+
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        _selftest()
+    else:
+        c = features.load_corpus()
+        days = sorted({d for s in c.values() for d in s.days})
+        as_of = days[-1]
+        print(f"selection as of {as_of}\n")
+        for b, lst in pick(c, as_of).items():
+            print(f"  {b.upper()} ({len(lst)})")
+            for sym, sc in lst[:20]:
+                print(f"    {sym:<14} score {sc:5.1f}")
+            print()

@@ -1,1 +1,7 @@
 listening (pid 72343, 7 commands)
+./run_listener.sh: line 9: 72343 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 75132, 7 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 76084, 8 commands)

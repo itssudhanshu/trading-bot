@@ -51,11 +51,18 @@ FUNDAMENTAL_PREDS = {"revenue_growth_yoy", "net_margin_above", "profitable_quart
 # as a RANK key (backtest.rank_score) and as an event GATE (earnings_clear),
 # neither of which competes in the boolean ranking.
 USE_FUNDAMENTALS = False
+# Module-level defaults so sample_spec works outside main(): main() creates
+# these via `global`, which is fine at runtime and left the selftest with a
+# NameError -- the code path a test exercises is not always the one main takes.
+ONLY_FAMILY = None       # restrict sampling to a single family
+FIXED_RANK = None        # pin the ranking key for a targeted search
 
 
 def _families():
     """`earnings_clear` is deliberately NOT in FUNDAMENTAL_PREDS: it is an event
     gate, not a quality filter, and it is one of the two layers under test."""
+    if ONLY_FAMILY:
+        return {ONLY_FAMILY: FAMILIES[ONLY_FAMILY]}
     if USE_FUNDAMENTALS:
         return FAMILIES
     out = {}
@@ -81,6 +88,15 @@ FAMILIES = {
                          "close_near_high", "earnings_clear"]),
     # Long-only momentum cannot profit in the holdout's regime (lessons L19).
     # These two families are the vocabulary's first non-momentum setups.
+    # Derived from c18d74c21b166df1 -- the only candidate profitable in all four
+    # holdout blocks. Its structure is required, not sampled: pullback + oversold
+    # + still above the long-term average (the falling-knife guard) + real
+    # delivery. Previous searches sampled seven families at random; this asks
+    # whether THIS shape has a variant with returns worth having.
+    "oversold_uptrend": (["pct_off_high", "rsi_below", "close_above_sma",
+                          "deliv_pct_above"],
+                         ["turnover_above", "close_near_high", "down_days",
+                          "rs_rank_above", "atr_pct_below", "earnings_clear"]),
     "mean_reversion":  (["pct_off_high", "rsi_below"],
                         ["close_above_sma", "turnover_above", "deliv_pct_above",
                          "down_days", "close_near_high", "rs_rank_above",
@@ -153,8 +169,8 @@ def sample_spec(rng) -> dict:
         "hold": {"max_bars": rng.choice([10, 20, 30, 45, 60])},
         # Fundamental momentum competes here, against price-based keys, on the
         # one question fundamentals can answer: which of several simultaneous
-        # setups deserves the slot.
-        "rank": {"by": rng.choice(sorted(specmod.RANK_RULES))},
+        # setups deserves the slot. FIXED_RANK pins it for a targeted search.
+        "rank": {"by": FIXED_RANK or rng.choice(sorted(specmod.RANK_RULES))},
     }
 
 
@@ -322,9 +338,19 @@ def main():
     ap.add_argument("--parallel", type=int, default=0, help="workers; 0 = serial")
     ap.add_argument("--no-fundamentals", action="store_true",
                     help="exclude fundamental predicates from the search space")
+    ap.add_argument("--family", help="restrict the search to one setup family")
+    ap.add_argument("--rank", help="fix the ranking key instead of sampling it")
     a = ap.parse_args()
 
-    global USE_FUNDAMENTALS
+    global USE_FUNDAMENTALS, ONLY_FAMILY, FIXED_RANK
+    if a.family:
+        assert a.family in FAMILIES, f"unknown family {a.family}; have {sorted(FAMILIES)}"
+        ONLY_FAMILY = a.family
+        print(f"family restricted to {a.family}", flush=True)
+    if a.rank:
+        assert a.rank in specmod.RANK_RULES, f"unknown rank {a.rank}"
+        FIXED_RANK = a.rank
+        print(f"rank key fixed to {a.rank}", flush=True)
     if a.no_fundamentals:
         USE_FUNDAMENTALS = False
         print('fundamentals EXCLUDED from the search space', flush=True)

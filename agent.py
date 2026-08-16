@@ -144,13 +144,21 @@ def attention():
 
     # Surveillance is the one unrecoverable data stream: NSE serves the current
     # day only, so a gap is permanent and silent.
-    last_snap = st.get("last_snapshot")
-    if last_snap:
-        gap = (today - date.fromisoformat(str(last_snap)[:10])).days
-        if gap > 4:
-            out.append(f"no snapshot for {gap} days -- surveillance gaps are PERMANENT")
+    #
+    # Judge it on the DATA, not on the agent's bookkeeping. "the agent has never
+    # run one" fired every hour while three snapshots sat on disk and no weekday
+    # evening had yet passed since install -- reporting "not due yet" as though
+    # it were "broken". A monitor that fires in normal conditions gets ignored,
+    # and then the real alarm is missed too.
+    snaps = sorted(p.parent.name for p in (ROOT / "data" / "raw").glob("*/asm.json"))
+    if not snaps:
+        out.append("no surveillance snapshot has EVER been collected")
     else:
-        out.append("agent has never run a snapshot (is the timer installed?)")
+        gap = (today - date.fromisoformat(snaps[-1])).days
+        # Only weekdays owe a snapshot; a Monday morning is 3 days after Friday.
+        if gap > 4:
+            out.append(f"newest surveillance snapshot is {gap} days old "
+                       f"({snaps[-1]}) -- these gaps are PERMANENT")
 
     try:
         import snapshot as _s
@@ -169,10 +177,21 @@ def attention():
     p = ROOT / "data" / "pipeline_state.json"
     if p.exists():
         runs = json.loads(p.read_text()).get("runs", [])
-        waiting = [r for r in runs[-3:] if r.get("promoted")]
-        if waiting:
-            out.append(f"{len(waiting)} cycle(s) have promoted specs waiting for a "
-                       f"deliberate `pipeline.py --consult`")
+        # "promoted" alone is not "waiting": a spec already consulted is settled.
+        # Check the ledger, or this nags about the same four specs forever.
+        try:
+            import judge
+            tested = set(judge._load()["verdicts"])
+        except Exception:
+            tested = set()
+        pending = []
+        pj = ROOT / "data" / "promoted.jsonl"
+        if pj.exists():
+            pending = [json.loads(l) for l in pj.read_text().splitlines() if l.strip()]
+            pending = [p for p in pending if p.get("spec_hash") not in tested]
+        if pending:
+            out.append(f"{len(pending)} promoted spec(s) not yet consulted "
+                       f"(`pipeline.py --consult`)")
         stalled = [r for r in runs[-3:] if str(r.get("stop", "")).startswith("PBO")]
         if stalled:
             out.append(f"{len(stalled)} recent cycle(s) stopped on PBO -- the "
@@ -322,11 +341,14 @@ def _selftest():
             _unlock()
             assert not LOCK.exists()
 
-            # attention() must report the absence of a snapshot, not stay silent
+            # attention() must judge DATA, not bookkeeping: a fresh agent with
+            # snapshots on disk is healthy and must stay silent about them.
             _save({})
-            assert any("never run a snapshot" in a for a in attention()), attention()
-            _save({"last_snapshot": "2020-01-01"})
-            assert any("PERMANENT" in a for a in attention()), attention()
+            msgs = attention()
+            assert not any("never run a snapshot" in m for m in msgs), (
+                f"fired on the agent's own bookkeeping: {msgs}")
+            # and an already-consulted promotion is settled, not pending
+            assert not any("waiting for a deliberate" in m for m in msgs), msgs
     finally:
         STATE, DIGEST, LOCK = o
     src = Path(__file__).read_text()

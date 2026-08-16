@@ -122,5 +122,48 @@
   "rank": {
    "by": "deliv_pct"
   }
+ },
+ {
+  "setup": "mean_reversion",
+  "version": "gen1",
+  "conditions": [
+   {
+    "pred": "pct_off_high",
+    "lookback": 180,
+    "pct": 34.61
+   },
+   {
+    "pred": "rsi_below",
+    "period": 15,
+    "level": 37.99
+   },
+   {
+    "pred": "deliv_pct_above",
+    "pct": 36.06
+   },
+   {
+    "pred": "close_above_sma",
+    "period": 182
+   }
+  ],
+  "entry": {
+   "rule": "close",
+   "buffer_pct": 0.25
+  },
+  "stop": {
+   "rule": "atr",
+   "mult": 3.0,
+   "period": 14
+  },
+  "target": {
+   "rule": "r_multiple",
+   "r": 3.0
+  },
+  "hold": {
+   "max_bars": 30
+  },
+  "rank": {
+   "by": "rev_growth"
+  }
  }
 ]
