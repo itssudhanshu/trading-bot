@@ -25,22 +25,22 @@ from datetime import date
 
 import features
 
-BUCKETS = ("micro", "small", "mid")
-# Overridable: widening this re-buckets every downstream reader (pick, build,
+CLUSTERS = ("micro", "small", "mid")
+# Overridable: widening this re-clusters every downstream reader (pick, build,
 # allocate). Ascending turnover -- first name is the smallest.
-BUCKET_NAMES = BUCKETS
+CLUSTER_NAMES = CLUSTERS
 PER_CLUSTER = 20
 
 
-def size_buckets(corpus, as_of=None, window=250, names=None):
-    """-> {bucket: [symbols]} by median daily turnover up to `as_of`.
+def size_clusters(corpus, as_of=None, window=250, names=None):
+    """-> {cluster: [symbols]} by median daily turnover up to `as_of`.
 
     `names` sets the number of quantiles: three gives the original
     micro/small/mid terciles, six gives finer size resolution. Module-level
-    BUCKET_NAMES is the default so a caller can widen the split for every
+    CLUSTER_NAMES is the default so a caller can widen the split for every
     downstream reader at once.
     """
-    names = names or BUCKET_NAMES
+    names = names or CLUSTER_NAMES
     rows = []
     for sym, s in corpus.items():
         idx = len(s) - 1 if as_of is None else (s.index_of(as_of) or -1)
@@ -137,10 +137,10 @@ def score(corpus, symbols, as_of, with_ranks=False):
 
 
 def pick(corpus, as_of, per_cluster=PER_CLUSTER):
-    """-> {bucket: [(symbol, score)]}, best `per_cluster` in each."""
-    buckets = size_buckets(corpus, as_of, names=BUCKET_NAMES)
+    """-> {cluster: [(symbol, score)]}, best `per_cluster` in each."""
+    clusters = size_clusters(corpus, as_of, names=CLUSTER_NAMES)
     out = {}
-    for b, syms in buckets.items():
+    for b, syms in clusters.items():
         sc = score(corpus, syms, as_of)
         out[b] = sorted(sc.items(), key=lambda kv: -kv[1])[:per_cluster]
     return out
@@ -160,13 +160,13 @@ def _selftest():
             s.deliv_pct.append(40.0 + j); s.surveillance_known.append(True)
         corpus[s.symbol] = s
 
-    b = size_buckets(corpus)
+    b = size_clusters(corpus)
     assert sum(len(v) for v in b.values()) == 30, b
     assert "S29" in b["mid"], "highest turnover must land in mid"
     assert "S00" in b["micro"]
 
     picks = pick(corpus, days[-1], per_cluster=3)
-    assert set(picks) == set(BUCKETS)
+    assert set(picks) == set(CLUSTERS)
     for bname, lst in picks.items():
         assert len(lst) <= 3
         scores = [sc for _, sc in lst]
@@ -175,7 +175,7 @@ def _selftest():
     # as-of: a pick on an early date must not use later bars
     early = pick(corpus, days[250], per_cluster=3)
     assert early, "no picks on a mid-history date"
-    assert pick(corpus, days[10], per_cluster=3) == {b: [] for b in BUCKETS}, \
+    assert pick(corpus, days[10], per_cluster=3) == {b: [] for b in CLUSTERS}, \
         "picked with under 200 bars of history"
     print("clusters selftest ok")
 

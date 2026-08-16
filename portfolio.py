@@ -35,7 +35,7 @@ from datetime import date
 import clusters
 import features
 
-CAPITAL = 500_000
+CAPITAL = 300_000    # the whole paper pocket, not a deployable target
 RISK_PCT = 2.0          # of capital, per position
 STOP_PCT = 10.0
 TARGET_PCT = 20.0
@@ -44,9 +44,10 @@ MAX_POSITIONS = 5
 
 # Cash is a position. A fully-invested book has no capacity to add when a
 # better setup appears mid-cycle, and no buffer when five correlated names gap
-# down together. Deploying 60% of Rs 5L caps any single name at Rs 60k, which
-# at a 10% stop puts total open risk at 6% -- exactly engine.MAX_PORTFOLIO_HEAT,
-# arrived at independently.
+# down together. Deploying 60% of the Rs 3L pocket caps any single name at
+# Rs 36k; at a 10% stop that is 6% total open risk, matching
+# engine.MAX_PORTFOLIO_HEAT. The percentage is what matters here, not the
+# rupee figure -- both scale with CAPITAL.
 DEPLOY_PCT = 60.0
 
 
@@ -84,6 +85,11 @@ def _why(r):
     return "; ".join(parts) + " (above 200-DMA, else excluded)"
 
 
+# The bucket: 2 micro + 3 small + 0 mid = 5 stocks. Module-level so the
+# generated Bucket Book reads the real mix instead of restating it in prose --
+# it was already describing 2/2/1 one minute after the design changed.
+TAKE_PER_CLUSTER = {"micro": 2, "small": 3}
+
 TRIGGER = "breakout"    # see trigger_test: near-identical CAGR to no trigger
                         # (+11.45 vs +12.53) but worst block -83.1% vs -120.5%.
                         # Ranked on worst block, which is the ranking that has
@@ -105,11 +111,11 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
     # names are not ready.
     picks = clusters.pick(corpus, as_of, per_cluster=20)
     ranks = {}
-    for b, syms in clusters.size_buckets(corpus, as_of,
-                                         names=clusters.BUCKET_NAMES).items():
+    for b, syms in clusters.size_clusters(corpus, as_of,
+                                         names=clusters.CLUSTER_NAMES).items():
         ranks.update(clusters.score(corpus, syms, as_of, with_ranks=True)[1])
     rows = []
-    for bucket, lst in picks.items():
+    for cluster, lst in picks.items():
         for sym, score in lst:
             s = corpus[sym]
             i = s.index_of(as_of)
@@ -120,7 +126,7 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
             if qty < 1:
                 continue
             rows.append({
-                "bucket": bucket, "symbol": sym, "score": round(score, 1),
+                "cluster": cluster, "symbol": sym, "score": round(score, 1),
                 "ref_close": round(ref, 2),
                 "entry_rule": "next session open",
                 "stop": round(ref * (1 - STOP_PCT / 100), 2),
@@ -136,33 +142,97 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
     return rows
 
 
-def allocate(rows, per_bucket=None):
+def _returns(s, i, n=60):
+    """-> last n daily returns ending at index i."""
+    a, out = max(1, i - n + 1), []
+    for k in range(a, i + 1):
+        p = s.close[k - 1]
+        if p:
+            out.append(s.close[k] / p - 1.0)
+    return out
+
+
+def _corr(a, b):
+    """Pearson correlation. -> 0.0 when either series is flat or too short."""
+    n = min(len(a), len(b))
+    if n < 20:
+        return 0.0
+    a, b = a[-n:], b[-n:]
+    ma, mb = sum(a) / n, sum(b) / n
+    va = sum((x - ma) ** 2 for x in a)
+    vb = sum((x - mb) ** 2 for x in b)
+    if va <= 0 or vb <= 0:
+        return 0.0
+    cov = sum((x - ma) * (y - mb) for x, y in zip(a, b))
+    return cov / (va ** 0.5 * vb ** 0.5)
+
+
+def decorrelate(rows, corpus, as_of, max_corr):
+    """Drop a candidate that moves too closely with one already taken.
+
+    The book had no diversification rule beyond cluster counts, and it showed:
+    two of five positions were hospital chains. Sector labels do not exist in
+    this corpus, but correlation is computable from the price history already
+    on disk and captures the same risk without needing a classification.
+    Order is preserved -- this only ever removes.
+    """
+    if not max_corr:
+        return rows
+    kept, series = [], []
+    for r in rows:
+        s = corpus.get(r["symbol"])
+        i = s.index_of(as_of) if s else None
+        if i is None:
+            kept.append(r)
+            continue
+        rr = _returns(s, i)
+        if any(abs(_corr(rr, prev)) > max_corr for prev in series):
+            continue
+        kept.append(r)
+        series.append(rr)
+    return kept
+
+
+def allocate(rows, take_per_cluster=None, offset=0):
     """Take the best from EACH cluster, not the best overall.
 
     Ranking all 60 candidates together and taking the top 5 returned five mid
-    caps: liquidity is a scoring component, so the largest bucket wins it
+    caps: liquidity is a scoring component, so the largest cluster wins it
     structurally and the three-cluster design collapses to one. The clusters
     exist to spread exposure across size bands; that only happens if the
     allocation is per band.
     """
-    per_bucket = per_bucket or {"micro": 2, "small": 2, "mid": 1}
-    # ROUND-ROBIN, not bucket-blocks. Returning micro's picks first and then
+    # 2 micro / 3 small / 0 mid. The mid cluster is still COMPUTED -- the three
+    # turnover terciles are what define micro and small, so dropping mid from
+    # the clustering would silently redefine both -- but no position is taken
+    # from it. Attribution over 57 mid trades: -149.9% total, -2.63% per trade,
+    # 35% win, the only negative cluster. All three no-mid mixes beat all three
+    # with-mid mixes, and the controlled pair (2/2/0 vs 2/2/1) puts the mid slot
+    # alone at -1.32 points of CAGR.
+    take_per_cluster = take_per_cluster or dict(TAKE_PER_CLUSTER)
+    # ROUND-ROBIN, not cluster-blocks. Returning micro's picks first and then
     # slicing rows[:room] took two micro whenever only two slots were free and
     # never reached small or mid -- the book traded 178 micro / 28 small / 3 mid
     # against a 2/2/1 design. Interleaving means any prefix of the result is
     # still spread across clusters.
-    if rows and not (set(per_bucket) & {r["bucket"] for r in rows}):
-        raise ValueError(f"per_bucket {sorted(per_bucket)} matches none of the "
-                         f"buckets present {sorted({r['bucket'] for r in rows})} "
+    if rows and not (set(take_per_cluster) & {r["cluster"] for r in rows}):
+        raise ValueError(f"take_per_cluster {sorted(take_per_cluster)} matches none of the "
+                         f"clusters present {sorted({r['cluster'] for r in rows})} "
                          "-- this would silently allocate nothing")
-    per = {b: [r for r in rows if r["bucket"] == b][:k] for b, k in per_bucket.items()}
-    out, depth = [], max(per_bucket.values())
+    # `offset` walks DOWN the ranking: offset 0 is the top 2 micro / 2 small /
+    # 1 mid, offset 1 is the next 2/2/1, and so on. Running each cohort as its
+    # own book turns "is the score real?" into a measurement -- if rank carries
+    # information the books must decay with depth, and if they do not, the
+    # ranking is decoration and the top book was luck.
+    per = {b: [r for r in rows if r["cluster"] == b][offset * k:offset * k + k]
+           for b, k in take_per_cluster.items()}
+    out, depth = [], max(take_per_cluster.values())
     for d in range(depth):
-        for b in per_bucket:
+        for b in take_per_cluster:
             if d < len(per[b]):
                 out.append(per[b][d])
     # Trigger LAST, after the interleave. Dropping untriggered names earlier
-    # changes which bucket supplies each slot, because the round-robin walks
+    # changes which cluster supplies each slot, because the round-robin walks
     # shortened lists -- same rules, different book (+9.05% vs +11.45%). The
     # trigger must remove candidates from the final order, never reorder it.
     return [r for r in out if r.get("triggered", True)]
@@ -189,21 +259,34 @@ def _selftest():
     assert b < a, (a, b)
 
     # allocation must spread across clusters, not collapse into the richest one
-    fake = ([{"bucket": "mid", "score": 90 - i, "symbol": f"M{i}"} for i in range(20)]
-            + [{"bucket": "small", "score": 60 - i, "symbol": f"S{i}"} for i in range(20)]
-            + [{"bucket": "micro", "score": 50 - i, "symbol": f"C{i}"} for i in range(20)])
+    fake = ([{"cluster": "mid", "score": 90 - i, "symbol": f"M{i}"} for i in range(20)]
+            + [{"cluster": "small", "score": 60 - i, "symbol": f"S{i}"} for i in range(20)]
+            + [{"cluster": "micro", "score": 50 - i, "symbol": f"C{i}"} for i in range(20)])
     fake.sort(key=lambda r: -r["score"])
     book = allocate(fake)
     got = {}
     for r in book:
-        got[r["bucket"]] = got.get(r["bucket"], 0) + 1
-    assert got == {"micro": 2, "small": 2, "mid": 1}, got
+        got[r["cluster"]] = got.get(r["cluster"], 0) + 1
+    # Assert the PROPERTY, not a hardcoded mix: the fixture gives `mid` the
+    # highest scores, so a book that ranked globally would be all mid. What
+    # must hold is that the configured mix is honoured exactly, whatever it is
+    # -- hardcoding the numbers made this fail every time the mix changed, for
+    # a reason unrelated to what it was protecting.
+    expected = dict(TAKE_PER_CLUSTER)
+    assert got == expected, (got, expected)
+    assert "mid" not in got, "mid is deliberately allocated zero positions"
+    assert max(got.values()) < len(book), "one cluster must not supply the whole book"
+    assert sum(got.values()) == len(book)
 
-    # ANY PREFIX must stay spread: this is what the slice bug violated
+    # ANY PREFIX must stay spread: this is what the slice bug violated. The
+    # bound is the number of clusters actually ALLOCATED TO (2 since mid went
+    # to zero), not a hardcoded 3 -- otherwise the test demands a cluster the
+    # design no longer buys.
+    n_clusters = len(expected)
     for room in (1, 2, 3, 4):
         pre = allocate(fake)[:room]
-        buckets = {r["bucket"] for r in pre}
-        assert len(buckets) == min(room, 3), (room, [r["bucket"] for r in pre])
+        seen = {r["cluster"] for r in pre}
+        assert len(seen) == min(room, n_clusters), (room, [r["cluster"] for r in pre])
     print("portfolio selftest ok")
 
 
@@ -219,10 +302,10 @@ if __name__ == "__main__":
         print(f"PAPER PORTFOLIO  Rs {CAPITAL:,}   selection as of {as_of}")
         print(f"entry: next session open | stop {STOP_PCT}% | target {TARGET_PCT}% "
               f"| exit {HOLD_DAYS}d | no trail\n")
-        print(f"  {'sym':<13}{'bkt':<7}{'ref':>9}{'entry':>8}{'stop':>9}{'target':>9}"
+        print(f"  {'sym':<13}{'clu':<7}{'ref':>9}{'entry':>8}{'stop':>9}{'target':>9}"
               f"{'qty':>7}{'value':>10}{'risk':>8}")
         for r in book:
-            print(f"  {r['symbol']:<13}{r['bucket']:<7}{r['ref_close']:>9,.2f}"
+            print(f"  {r['symbol']:<13}{r['cluster']:<7}{r['ref_close']:>9,.2f}"
                   f"{'open':>8}{r['stop']:>9,.2f}{r['target']:>9,.2f}"
                   f"{r['qty']:>7,}{r['value']:>10,}{r['risk']:>8,}")
         inv = sum(r["value"] for r in book)

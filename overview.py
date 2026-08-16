@@ -10,7 +10,7 @@ clothes, so this module is not allowed to state anything it did not just read.
 """
 import json
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -42,14 +42,27 @@ def state():
         s["days"] = len(snaps)
         s["span"] = (snaps[0], snaps[-1]) if snaps else (None, None)
 
-    # A holiday list that has run out silently turns every future holiday into
-    # an unexplained missing snapshot.
+    # holidays.json is OBSERVED, not published: backfill records a date when NSE
+    # serves a stale file for it. So its last entry is always in the past and
+    # says nothing about staleness -- an earlier version of this check warned
+    # permanently for that reason. What is actually worth knowing is whether
+    # any weekday in the corpus has no data AND no holiday recorded, which is a
+    # real gap rather than a calendar quirk.
+    s["unexplained_gaps"] = []
     try:
         h = json.loads((D / "holidays.json").read_text())
-        hs = sorted(str(x) for x in (h if isinstance(h, list) else h.get("holidays", list(h))))
-        s["holidays_to"] = hs[-1] if hs else None
+        hol = {str(x) for x in (h if isinstance(h, list) else h.get("holidays", list(h)))}
+        if s.get("days") and s["span"][0]:
+            have = set(days)
+            d, end = date.fromisoformat(s["span"][0]), date.fromisoformat(s["span"][1])
+            gaps = []
+            while d <= end:
+                if d.weekday() < 5 and d not in have and d.isoformat() not in hol:
+                    gaps.append(d.isoformat())
+                d += timedelta(days=1)
+            s["unexplained_gaps"] = gaps
     except Exception:
-        s["holidays_to"] = None
+        pass
 
     led = json.loads((D / "judge_ledger.json").read_text()) if (D / "judge_ledger.json").exists() else {}
     v = list(led.get("verdicts", {}).values())
@@ -167,8 +180,10 @@ def render(s=None):
     L.append("=" * 62)
     L.append("")
     L.append(f"SHARED DATA   {s['days']} trading sessions, {s['span'][0]} -> {s['span'][1]}")
-    if s.get("holidays_to") and s["holidays_to"] < str(date.today()):
-        L.append(f"  WARNING: holiday list ends {s['holidays_to']} -- stale")
+    g = s.get("unexplained_gaps") or []
+    if g:
+        L.append(f"  WARNING: {len(g)} weekday(s) with no data and no holiday "
+                 f"recorded, e.g. {', '.join(g[:3])}")
     L.append("")
     b = s["book"]
     L.append("TRACK A -- Rs 5L CLUSTER BOOK  (your 20/20/20 design)")

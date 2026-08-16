@@ -23,7 +23,7 @@ def generate(corpus=None, as_of=None):
     corpus = corpus or features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = as_of or days[-1]
-    sizes = clusters.size_buckets(corpus, as_of, names=clusters.BUCKET_NAMES)
+    sizes = clusters.size_clusters(corpus, as_of, names=clusters.CLUSTER_NAMES)
     rows = portfolio.build(corpus, as_of)
     chosen = portfolio.allocate(rows)
     trig = portfolio.TRIGGER
@@ -37,7 +37,7 @@ def generate(corpus=None, as_of=None):
          "decides whether an order fills.", ""]
     L.append("| cluster | stocks | median turnover band |")
     L.append("|---|---|---|")
-    for b in clusters.BUCKET_NAMES:
+    for b in clusters.CLUSTER_NAMES:
         syms = sizes.get(b, [])
         if not syms:
             L.append(f"| {b} | 0 | — |")
@@ -85,7 +85,13 @@ def generate(corpus=None, as_of=None):
           "half-year block from −120.5% to −83.1%.", "",
           "Order of operations matters and was measured:", "",
           "1. Rank every stock inside its cluster",
-          "2. Take the top *k* per cluster (2 micro / 2 small / 1 mid), interleaved",
+          "2. Take the top *k* per cluster ("
+          + " / ".join(f"{v} {k}" for k, v in portfolio.TAKE_PER_CLUSTER.items())
+          + ("" if len(portfolio.TAKE_PER_CLUSTER) == len(clusters.CLUSTERS) else
+             ", and 0 from "
+             + ", ".join(c for c in clusters.CLUSTERS
+                         if c not in portfolio.TAKE_PER_CLUSTER))
+          + "), interleaved",
           "3. **Then** require the trigger — drop what has not triggered",
           "4. Hold cash for the slots that stay empty", "",
           "Filtering before step 2 instead of after made the book reach further down the",
@@ -115,7 +121,7 @@ def generate(corpus=None, as_of=None):
         L.append("| stock | cluster | value | stop | target | why it was picked |")
         L.append("|---|---|---|---|---|---|")
         for r in chosen:
-            L.append(f"| **{r['symbol']}** | {r['bucket']} | ₹{r['value']:,} | "
+            L.append(f"| **{r['symbol']}** | {r['cluster']} | ₹{r['value']:,} | "
                      f"{r['stop']:.1f} | {r['target']:.1f} | {r['why']} |")
         dep = sum(r["value"] for r in chosen)
         L += ["", f"Deployed **₹{dep:,}** of ₹{portfolio.CAPITAL:,} "
@@ -128,7 +134,7 @@ def generate(corpus=None, as_of=None):
         L.append("| stock | cluster | triggered? | why |")
         L.append("|---|---|---|---|")
         for r in near:
-            L.append(f"| {r['symbol']} | {r['bucket']} | "
+            L.append(f"| {r['symbol']} | {r['cluster']} | "
                      f"{'yes' if r.get('triggered') else 'no'} | {r['why']} |")
     L += ["", "---", "",
           "_Costs modelled: brokerage, STT both sides, exchange txn, SEBI turnover, GST,",

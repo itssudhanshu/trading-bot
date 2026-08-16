@@ -142,3 +142,49 @@ changed on disk: pbook.py -- restarting
 listener exited, restarting in 3s
 listening (pid 81647, 16 commands)
 poll error: TypeError
+changed on disk: overview.py -- restarting
+listener exited, restarting in 3s
+listening (pid 82153, 16 commands)
+changed on disk: simulate.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 82226, 16 commands)
+poll error: TypeError
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 82613, 16 commands)
+changed on disk: bucketbook.py, runner.py, tg.py, bucket_test.py, clusters.py, simulate.py, pbook.py, validate.py, engine.py, learning.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 82876, 16 commands)
+changed on disk: engine.py -- restarting
+listener exited, restarting in 3s
+listening (pid 82981, 16 commands)
+changed on disk: pbook.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 83007, 16 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 83044, 16 commands)
+./run_listener.sh: line 9: 83044 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 83121, 16 commands)
+changed on disk: simulate.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 83263, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 84048, 17 commands)
+./run_listener.sh: line 9: 84048 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 84052, 17 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 84129, 17 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 84211, 17 commands)
+changed on disk: bucketbook.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 84297, 17 commands)
+./run_listener.sh: line 9: 84297 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 84304, 17 commands)

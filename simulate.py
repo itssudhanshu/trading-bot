@@ -26,8 +26,12 @@ STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
 
 
 def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
-        capital=500_000, per_bucket=None, refresh=5, bucket_cap=None,
-        start_idx=300, trigger="none"):
+        capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
+        start_idx=300, trigger="none", offset=0, max_corr=None):
+    # Default to the real pocket rather than a hardcoded figure: a simulation
+    # run at a different capital from the live book is not a test of the live
+    # book, because position size drives the cost percentage.
+    capital = portfolio.CAPITAL if capital is None else capital
     equity = peak = capital
     maxdd = 0.0
     open_pos, closed = [], []
@@ -59,7 +63,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
             fy = day.year if day.month > 3 else day.year - 1   # India FY: Apr-Mar
             fy_net[fy] = fy_net.get(fy, 0.0) + net
             closed.append({"ret": net / buy_val * 100, "why": why,
-                           "bkt": p["bkt"], "day": day, "sym": p["sym"],
+                           "clu": p["clu"], "day": day, "sym": p["sym"],
                            "cost_pct": cost / buy_val * 100})
         open_pos = still
         # Settle the previous year's tax after 31 March, on net gains only.
@@ -73,12 +77,13 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
         room = max_pos - len(open_pos)
         if room > 0 and di % refresh == 0 and di + 1 < len(days):
             held_syms = {p["sym"] for p in open_pos}
-            held_bkts = defaultdict(int)
+            held_clusters = defaultdict(int)
             for p in open_pos:
-                held_bkts[p["bkt"]] += 1
+                held_clusters[p["clu"]] += 1
             rows = portfolio.allocate(
                 portfolio.build(corpus, day, capital=equity, trigger=trigger),
-                per_bucket)
+                take_per_cluster, offset=offset)
+            rows = portfolio.decorrelate(rows, corpus, day, max_corr)
             for r in rows:
                 if room <= 0:
                     break
@@ -86,7 +91,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                     continue
                 # Caps positions per SIZE BUCKET. There is no sector rule in
                 # this system -- the corpus carries no industry classification.
-                if bucket_cap and held_bkts[r["bucket"]] >= bucket_cap:
+                if cluster_cap and held_clusters[r["cluster"]] >= cluster_cap:
                     continue
                 s = corpus[r["symbol"]]
                 i = s.index_of(day)
@@ -98,11 +103,11 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                 qty, _ = portfolio.position_size(equity, e, stop_pct)
                 if qty < 1:
                     continue
-                open_pos.append({"sym": r["symbol"], "bkt": r["bucket"], "entry": e,
+                open_pos.append({"sym": r["symbol"], "clu": r["cluster"], "entry": e,
                                  "qty": qty, "stop": e * (1 - stop_pct / 100),
                                  "tgt": e * (1 + target_pct / 100),
                                  "entry_day": days[di + 1]})
-                held_bkts[r["bucket"]] += 1
+                held_clusters[r["cluster"]] += 1
                 room -= 1
     equity -= sum(max(v, 0.0) for k, v in fy_net.items() if k not in taxed) * STCG
     yrs = (days[-1] - days[start_idx]).days / 365.25
@@ -125,7 +130,7 @@ def store(name, r, batch=None, track="cluster"):
     t = r["trades"]
     ex, bk = _dd(list), _dd(list)
     for x in t:
-        ex[x["why"]].append(x["ret"]); bk[x["bkt"]].append(x["ret"])
+        ex[x["why"]].append(x["ret"]); bk[x["clu"]].append(x["ret"])
     row = {
         "at": _dt.now().isoformat(timespec="seconds"),
         "batch": batch or _dt.now().strftime("%Y%m%d-%H%M"),
@@ -172,7 +177,7 @@ def report(name, r):
         print(f"  {name:<26} no trades"); return
     ex = defaultdict(list); bk = defaultdict(list)
     for x in t:
-        ex[x["why"]].append(x["ret"]); bk[x["bkt"]].append(x["ret"])
+        ex[x["why"]].append(x["ret"]); bk[x["clu"]].append(x["ret"])
     win = sum(1 for x in t if x["ret"] > 0) / n * 100
     print(f"  {name:<26} CAGR {r['cagr']:>+6.2f}%  DD {r['maxdd']:>5.1f}%  "
           f"n={n:>4}  win {win:>3.0f}%  "
@@ -287,10 +292,10 @@ if __name__ == "__main__":
     report("hold 25d", run(corpus, days, hold=25))
     report("3 positions", run(corpus, days, max_pos=3))
     report("8 positions", run(corpus, days, max_pos=8,
-                              per_bucket={"micro": 3, "small": 3, "mid": 2}))
-    report("cap 2/bucket", run(corpus, days, bucket_cap=2))
+                              take_per_cluster={"micro": 3, "small": 3, "mid": 2}))
+    report("cap 2/bucket", run(corpus, days, cluster_cap=2))
     report("small+mid only", run(corpus, days,
-                                 per_bucket={"small": 3, "mid": 2}))
+                                 take_per_cluster={"small": 3, "mid": 2}))
 
 
 # ---------------------------------------------------------------- keep/promote

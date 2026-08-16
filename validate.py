@@ -135,10 +135,10 @@ def main(shortlist=SHORTLIST):
     per_spec_blocks = {}
     print(f"  {'hash':16} {'setup':16} {'fold n/exp':>34} {'verdict'}")
     for r in rows:
-        bucket = []
-        fs = fold_stats(r["spec"], corpus, bd, ctx_cache, folds, allowed, collect=bucket)
-        if bucket:
-            per_spec_blocks[r["spec_hash"]] = cpcv.block_pnl(bucket[0], train_blocks)
+        cluster = []
+        fs = fold_stats(r["spec"], corpus, bd, ctx_cache, folds, allowed, collect=cluster)
+        if cluster:
+            per_spec_blocks[r["spec_hash"]] = cpcv.block_pnl(cluster[0], train_blocks)
         ok, reasons = verdict(fs, r["spec"].get("rank", {}).get("by", "none"))
         cells = "  ".join(f"{f['n_taken']:>3}/{f['exp']:>+6.0f}" for f in fs)
         print(f"  {r['spec_hash']:16} {r['spec']['setup']:16} {cells}  "

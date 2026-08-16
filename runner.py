@@ -106,7 +106,7 @@ def process_exits(j, corpus, day, costs):
                 learning.record([{**feats, "ret": (px / p["entry_px"] - 1) * 100,
                                   "net": net, "exit": reason,
                                   "symbol": p["symbol"], "date": str(day),
-                                  "bucket": p.get("bucket") or "unknown",
+                                  "cluster": p.get("cluster") or "unknown",
                                   "source": "forward"}])
         except Exception as e:
             print(f"  learning record failed: {type(e).__name__}", flush=True)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The learning loop: which entry conditions actually predicted outcomes.
 
-Every trade is recorded WITH THE FEATURES PRESENT AT ENTRY -- score, bucket,
+Every trade is recorded WITH THE FEATURES PRESENT AT ENTRY -- score, cluster,
 momentum, delivery, distance from the 200-day average. Afterwards those features
 are correlated against what happened, and the selection weights move toward the
 ones that carried information.

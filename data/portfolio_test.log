@@ -1,0 +1,16 @@
+6 rank cohorts x 1695 sessions, in parallel
+cohort k = ranks {2k..2k+1} micro, {2k..2k+1} small, {k} mid
+
+  cohort        CAGR   maxDD   win     n  avg/trade  worst blk
+  0 (top 5  )  +11.45%   23.8%   49%   240     +2.91%     -83.1%
+  1 (ranks 3-4)   +2.69%   10.8%   50%   178     +1.11%     -26.2%
+  2 (ranks 5-6)   +4.98%   32.1%   45%   187     +2.24%    -103.0%
+  3 (ranks 7-8)   -3.60%   31.7%   42%   169     -0.66%    -125.6%
+  4 (ranks 9-10)   -1.44%   22.0%   44%   170     -0.10%    -123.1%
+  5 (ranks 11-12)   -7.29%   38.7%   36%   176     -1.79%    -156.1%
+
+  spread: best +11.45%  worst -7.29%  median +0.62%  stdev 6.11
+  cohorts matching or beating the top-ranked book: 0 of 5
+  shallow cohorts +6.38% vs deep cohorts -4.11%  -> rank PREDICTS return
+
+  1 of 6 cleared the promotion bar

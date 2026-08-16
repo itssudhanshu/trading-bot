@@ -27,7 +27,7 @@ import features
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "pbook.db"
 
-CAPITAL = 500_000
+CAPITAL = 300_000    # must match portfolio.CAPITAL
 STOP_PCT, TARGET_PCT, HOLD_DAYS = 10.0, 20.0, 15
 # Same charge model as the simulation. A paper book that costs differently
 # from the backtest cannot validate it -- any divergence would be unreadable.
@@ -38,7 +38,7 @@ def db():
     c = sqlite3.connect(DB)
     c.executescript("""
     CREATE TABLE IF NOT EXISTS pos(
-      id INTEGER PRIMARY KEY, symbol TEXT, bucket TEXT, status TEXT,
+      id INTEGER PRIMARY KEY, symbol TEXT, cluster TEXT, status TEXT,
       queued_on TEXT, entry_day TEXT, entry_px REAL, qty INTEGER,
       stop REAL, target REAL, exit_day TEXT, exit_px REAL,
       exit_reason TEXT, net REAL, features TEXT);
@@ -57,9 +57,9 @@ def queue(rows, day, conn=None):
     for r in rows:
         if r["symbol"] in held:
             continue
-        c.execute("INSERT INTO pos(symbol,bucket,status,queued_on,qty,stop,target)"
+        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target)"
                   " VALUES(?,?,'pending',?,?,?,?)",
-                  (r["symbol"], r["bucket"], str(day), r["qty"], r["stop"], r["target"]))
+                  (r["symbol"], r["cluster"], str(day), r["qty"], r["stop"], r["target"]))
         n += 1
     c.commit()
     return n
@@ -121,7 +121,7 @@ def step(corpus, day, conn=None):
             if f:
                 learning.record([{**f, "ret": (px / p["entry_px"] - 1) * 100,
                                   "net": net, "exit": why, "symbol": p["symbol"],
-                                  "bucket": p["bucket"], "date": str(day),
+                                  "cluster": p["cluster"], "date": str(day),
                                   "source": "portfolio"}])
         except Exception:
             pass
@@ -144,6 +144,16 @@ def summary(conn=None):
 
 
 def _selftest():
+    import tempfile, learning
+    _orig_ledger = learning.LEDGER
+    learning.LEDGER = __import__("pathlib").Path(tempfile.gettempdir()) / "pbook_selftest_ledger.jsonl"
+    try:
+        return __selftest_body()
+    finally:
+        learning.LEDGER = _orig_ledger
+
+
+def __selftest_body():
     import tempfile
     from datetime import timedelta
     d0 = date(2024, 1, 1)
@@ -162,15 +172,15 @@ def _selftest():
         c = sqlite3.connect(Path(td) / "t.db")
         c.executescript(open(__file__).read().split('"""')[2]
                         .split("CREATE TABLE")[0] if False else """
-        CREATE TABLE pos(id INTEGER PRIMARY KEY, symbol TEXT, bucket TEXT, status TEXT,
+        CREATE TABLE pos(id INTEGER PRIMARY KEY, symbol TEXT, cluster TEXT, status TEXT,
           queued_on TEXT, entry_day TEXT, entry_px REAL, qty INTEGER, stop REAL,
           target REAL, exit_day TEXT, exit_px REAL, exit_reason TEXT, net REAL,
           features TEXT);""")
         corpus = {"T": s}
-        assert queue([{"symbol": "T", "bucket": "mid", "qty": 100,
+        assert queue([{"symbol": "T", "cluster": "mid", "qty": 100,
                        "stop": 90.0, "target": 120.0}], days[200], c) == 1
         # queueing the same symbol twice must not double it
-        assert queue([{"symbol": "T", "bucket": "mid", "qty": 100,
+        assert queue([{"symbol": "T", "cluster": "mid", "qty": 100,
                        "stop": 90.0, "target": 120.0}], days[200], c) == 0
 
         filled, closed = step(corpus, days[201], c)

@@ -162,7 +162,7 @@ def cmd_paper(_=None):
     for r in s["rows"]:
         if r["status"] in ("open", "pending"):
             px = r["entry_px"] or 0
-            out.append(f"  – {r['symbol']} ({r['bucket']}) {r['status']}"
+            out.append(f"  – {r['symbol']} ({r['cluster']}) {r['status']}"
                        + (f" @ {px:.2f}" if px else "")
                        + f"  stop {r['stop']:.2f} → tgt {r['target']:.2f}")
     if not s["closed"]:
@@ -196,7 +196,7 @@ def cmd_learning(_=None):
     by = defaultdict(list)
     for x in t:
         if x.get("ret") is not None:
-            by[x.get("bucket") or "unknown"].append(x["ret"])
+            by[x.get("cluster") or "unknown"].append(x["ret"])
     out += ["", "*by cluster*"]
     for b, v in sorted(by.items(), key=lambda kv: -statistics.fmean(kv[1])):
         out.append(f"• {b}: {statistics.fmean(v):+.2f}%/trade, "
@@ -359,7 +359,7 @@ def cmd_strategies(_=None):
 
 
 def cmd_bucket(_=None):
-    """The bucket book: clusters, stocks, entry logic, and why."""
+    """The cluster book: clusters, stocks, entry logic, and why."""
     import bucketbook
     p = bucketbook.generate()
     r = send_document(p, caption="Bucket Book — clusters, entry logic, and why "
@@ -369,7 +369,7 @@ def cmd_bucket(_=None):
     # Upload failed: fall back to the sections that answer "why".
     txt = p.read_text()
     cut = txt.find("## 3. Entry logic")
-    return ("*bucket book* (upload failed, showing entry logic)\n\n"
+    return ("*cluster book* (upload failed, showing entry logic)\n\n"
             + txt[cut:cut + 3200])
 
 
@@ -394,9 +394,9 @@ def cmd_wallet(_=None):
         if r["status"] == "open" and r["entry_px"]:
             u = val - r["qty"] * r["entry_px"]
             unreal += u
-            lines.append(f"  {sym} ({r['bucket']}) ₹{val:,.0f}  {u:+,.0f}")
+            lines.append(f"  {sym} ({r['cluster']}) ₹{val:,.0f}  {u:+,.0f}")
         else:
-            lines.append(f"  {sym} ({r['bucket']}) ₹{val:,.0f}  _queued_")
+            lines.append(f"  {sym} ({r['cluster']}) ₹{val:,.0f}  _queued_")
     cash = portfolio.CAPITAL + s["realised"] - deployed
     total = cash + deployed + 0.0
     out = [f"*wallet* {datetime.now():%d %b %H:%M}", "",
@@ -431,11 +431,11 @@ def cmd_trades(_=None):
                 "only — nothing here is backfilled from a backtest.")
     by = defaultdict(list)
     for r in done:
-        by[r["bucket"]].append(r["net"] or 0.0)
+        by[r["cluster"]].append(r["net"] or 0.0)
     out = [f"*closed trades* ({len(done)})", ""]
     for r in sorted(done, key=lambda x: x["exit_day"] or "")[-12:]:
         pct = ((r["exit_px"] / r["entry_px"] - 1) * 100) if r["entry_px"] else 0
-        out.append(f"{r['symbol']} ({r['bucket']}) {r['exit_reason']} "
+        out.append(f"{r['symbol']} ({r['cluster']}) {r['exit_reason']} "
                    f"₹{r['net']:+,.0f} ({pct:+.1f}%)")
     out += ["", "*By cluster*"]
     for b, v in sorted(by.items()):
@@ -446,12 +446,41 @@ def cmd_trades(_=None):
     return "\n".join(out)
 
 
+def cmd_stocks(_=None):
+    """Per-stock attribution for the live book."""
+    import analysis, pbook
+    s = pbook.summary()
+    done = [{"sym": r["symbol"], "ret": (r["exit_px"] / r["entry_px"] - 1) * 100,
+             "clu": r["cluster"]}
+            for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
+    if not done:
+        return ("*per-stock*\nNo closed trades yet, so there is nothing to "
+                "attribute. Per-stock figures are for review only in any case — "
+                "one or two trades per name carry no predictive weight.")
+    c = analysis.concentration(done)
+    out = [f"*per-stock attribution* ({len(done)} trades, {c['n_symbols']} names)", ""]
+    out.append(f"best single name: *{c['top1']:.1f}%* of all gains")
+    out.append(f"best 3 names:     *{c['top3']:.1f}%*")
+    out.append("")
+    out.append("*By cluster*")
+    for cl, v in sorted(analysis.per_cluster(done).items()):
+        out.append(f"  {cl}: n={v['n']} total {v['total']:+.1f}% "
+                   f"win {v['wins']/max(v['n'],1)*100:.0f}%")
+    rows = analysis.per_stock(done)
+    out += ["", "*Best*"] + [f"  {r['symbol']} {r['total']:+.1f}% (n={r['n']})"
+                             for r in rows[:5]]
+    out += ["", "*Worst*"] + [f"  {r['symbol']} {r['total']:+.1f}% (n={r['n']})"
+                              for r in rows[-5:]]
+    return "\n".join(out)
+
+
 def cmd_help(_=None):
     return ("*commands*\n"
             "/overview – where are we? is this working?\n"
             "/wallet – cash, deployed, realised and unrealised P&L\n"
-            "/bucket – the bucket book: clusters, entry logic, why\n"
+            "/bucket – the cluster book: clusters, entry logic, why\n"
             "/trades – closed trades with cluster and P&L\n"
+            "/stocks – per-stock attribution and concentration\n"
             "/status – what needs attention, what is due\n"
             "/progress – corpus, budget, research cycles\n"
             "/paper – paper trading book\n"
@@ -494,7 +523,8 @@ COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_hea
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
             "/digest": cmd_digest, "/overview": cmd_overview,
             "/strategies": cmd_strategies, "/wallet": cmd_wallet,
-            "/bucket": cmd_bucket, "/trades": cmd_trades}
+            "/bucket": cmd_bucket, "/trades": cmd_trades,
+            "/stocks": cmd_stocks}
 
 
 def _offset(new=None):

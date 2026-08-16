@@ -195,7 +195,7 @@ class Journal:
           signal_day TEXT, entry_day TEXT, entry_px REAL, qty INTEGER,
           stop REAL, target REAL, max_bars INTEGER,
           exit_day TEXT, exit_px REAL, exit_reason TEXT, net REAL,
-          bucket TEXT, features TEXT);
+          cluster TEXT, features TEXT);
         CREATE INDEX IF NOT EXISTS ix_pos_status ON positions(status);
         """)
         self.db.commit()
@@ -332,11 +332,22 @@ def _selftest():
     assert target_fill(130, bar(120, 128, 119, 127)) is None  # never reached
     assert target_fill(130, bar(131, 131, 131, 131)) is None  # locked
 
-    # --- costs: asymmetric, buy pays stamp duty ----------------------------
+    # --- costs: asymmetric, and which side is dearer depends on SIZE -------
+    # Buy pays stamp duty, which scales with value. Sell pays the depository
+    # charge, which is flat. So buy costs more only above the crossover at
+    # stamp_buy * value == dp_sell; below it the fixed charge dominates. The
+    # earlier test asserted buy > sell unconditionally, which was true only
+    # while DP charges were missing from the model entirely.
     c = Costs()
-    buy, sell = c.charge(100_000, "BUY"), c.charge(100_000, "SELL")
-    assert buy > sell, (buy, sell)
-    assert 100 < buy < 200, buy
+    cross = c.dp_sell / c.stamp_buy                      # ~Rs 1.06 lakh
+    big_b, big_s = c.charge(cross * 3, "BUY"), c.charge(cross * 3, "SELL")
+    assert big_b > big_s, (big_b, big_s)
+    small_b, small_s = c.charge(cross / 10, "BUY"), c.charge(cross / 10, "SELL")
+    assert small_s > small_b, (small_b, small_s)
+    assert 100 < c.charge(100_000, "BUY") < 200, c.charge(100_000, "BUY")
+    # fixed charges must make small trades proportionally far more expensive
+    assert (c.charge(5_000, "BUY") + c.charge(5_000, "SELL")) / 5_000 > \
+           4 * (c.charge(200_000, "BUY") + c.charge(200_000, "SELL")) / 200_000
 
     # --- journal round-trip ------------------------------------------------
     j = Journal(":memory:")

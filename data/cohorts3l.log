@@ -1,0 +1,12 @@
+capital Rs 300,000 | Rs 36,000 per stock
+
+  cohort         CAGR   maxDD     n  cost/trade  worst blk
+  0           +11.19%   23.9%   240       0.36%     -84.1%
+  1            +2.48%   11.1%   178       0.39%     -27.8%
+  2            +4.84%   32.1%   187       0.35%    -103.8%
+  3            -3.96%   32.6%   169       0.41%    -126.9%
+  4            -1.67%   22.4%   170       0.40%    -124.2%
+  5            -7.47%   39.1%   176       0.43%    -156.9%
+
+  shallow +6.17% vs deep -4.37% -> rank PREDICTS
+  at Rs 5L the same test gave: top +11.45%, shallow +6.38% vs deep -4.11%
