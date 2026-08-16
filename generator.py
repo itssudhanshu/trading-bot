@@ -185,6 +185,12 @@ def screen(spec, corpus, bd, ctx_cache, symbol_years=None, allowed=None, presign
     # flatters exactly the number being deflated (lessons L25).
     import dsr as _dsr
     res["trade_sharpe"] = _dsr.sharpe([t.net / 1_000_000 for t in trades]) if trades else 0.0
+    # Per-block P&L for EVERY evaluated candidate. PBO computed on a shortlist
+    # already selected by train rank answers a narrower question than the one it
+    # is meant to answer (L41); with this it runs on the full trial set.
+    import cpcv as _cpcv
+    import split as _split
+    res["block_pnl"] = _cpcv.block_pnl(trades, _split.blocks(sorted(allowed))) if allowed else {}
     res["median_mfe"] = statistics.median(mfe)
     res["target_hit_rate"] = hits / len(mfe)
     return "evaluated", res
@@ -256,6 +262,18 @@ def search(n_specs, seed, corpus, bd, verbose=True, allowed=None):
     return results, stages
 
 
+def rank_score(r):
+    """Selector: the WORST holdout-eligible block, per lessons L45/L46.
+
+    Summing block P&L is dominated by its largest term, so it rewards one
+    enormous block over consistency across all of them -- PBO 0.75-0.80 across
+    two seeds. Ranking on the worst block gives 0.16-0.25 and asks the same
+    question the judge does.
+    """
+    b = r.get("block_pnl") or {}
+    return min(b.values()) if b else float("-inf")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("-n", "--n-specs", type=int, default=60)
@@ -306,7 +324,7 @@ def main():
     import dsr as _dsr
     sharpes = [r["trade_sharpe"] for r in results if r.get("trade_sharpe") is not None]
     if sharpes:
-        pool = _dsr.record_trials(sharpes)
+        pool = _dsr.record_trials(sharpes, seed=a.seed)
         print(f"trial pool: +{len(sharpes)} -> {len(pool)} cumulative")
 
     print(f"\nscreening outcomes: {dict(sorted(stages.items()))}")
@@ -317,8 +335,8 @@ def main():
         return
     # Ranked on PORTFOLIO expectancy: what the invariants would actually let you
     # take. Unconstrained expectancy flatters specs that exceed capacity.
-    results.sort(key=lambda r: r["portfolio_expectancy"], reverse=True)
-    print(f"\ntop candidates by portfolio expectancy (NOT evidence -- train only):")
+    results.sort(key=rank_score, reverse=True)
+    print(f"\ntop candidates by WORST-BLOCK P&L (L46; not evidence -- train only):")
     print(f"  {'hash':16} {'setup':16} {'inst':>6} {'taken':>6} {'cap':>5} "
           f"{'avgR':>6} {'tgt%':>5} {'portExp':>9}")
     for r in results[:10]:

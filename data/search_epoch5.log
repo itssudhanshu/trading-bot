@@ -1,0 +1,35 @@
+corpus 2486 symbols, 1695 days | train 885  holdout 491 (blocks 2020-H2, 2023-H1, 2025-H1, 2026-H1)
+  signals generated in 1557s
+  25/400  {'evaluated': 14, 'too_few_instances': 11}  1558s
+  50/400  {'evaluated': 27, 'too_few_instances': 20, 'too_frequent': 1, 'unreachable_target': 2}  1559s
+  75/400  {'evaluated': 39, 'too_few_instances': 32, 'too_frequent': 2, 'unreachable_target': 2}  1561s
+  100/400  {'evaluated': 53, 'too_few_instances': 43, 'too_frequent': 2, 'unreachable_target': 2}  1562s
+  125/400  {'evaluated': 63, 'too_few_instances': 55, 'too_frequent': 2, 'unreachable_target': 5}  1563s
+  150/400  {'evaluated': 75, 'too_few_instances': 66, 'too_frequent': 3, 'unreachable_target': 6}  1567s
+  175/400  {'evaluated': 86, 'too_few_instances': 79, 'too_frequent': 3, 'unreachable_target': 7}  1567s
+  200/400  {'evaluated': 96, 'too_few_instances': 93, 'too_frequent': 3, 'unreachable_target': 8}  1568s
+  225/400  {'evaluated': 110, 'too_few_instances': 101, 'too_frequent': 4, 'unreachable_target': 10}  1570s
+  250/400  {'evaluated': 122, 'too_few_instances': 112, 'too_frequent': 4, 'unreachable_target': 12}  1571s
+  275/400  {'evaluated': 137, 'too_few_instances': 121, 'too_frequent': 4, 'unreachable_target': 13}  1572s
+  300/400  {'evaluated': 151, 'too_few_instances': 129, 'too_frequent': 4, 'unreachable_target': 16}  1574s
+  325/400  {'evaluated': 161, 'too_few_instances': 141, 'too_frequent': 7, 'unreachable_target': 16}  1576s
+  350/400  {'evaluated': 167, 'too_few_instances': 159, 'too_frequent': 8, 'unreachable_target': 16}  1578s
+  375/400  {'evaluated': 182, 'too_few_instances': 167, 'too_frequent': 10, 'unreachable_target': 16}  1581s
+  400/400  {'evaluated': 195, 'too_few_instances': 177, 'too_frequent': 10, 'unreachable_target': 18}  1581s
+trial pool: +195 -> 985 cumulative
+
+screening outcomes: {'evaluated': 195, 'too_few_instances': 177, 'too_frequent': 10, 'unreachable_target': 18}
+generator yield: 195/400 = 48.8%
+
+top candidates by WORST-BLOCK P&L (L46; not evidence -- train only):
+  hash             setup              inst  taken   cap   avgR  tgt%   portExp
+  d4a62a5b680596fe stage2_breakout     189     19   9.9x  +0.87   31%    +2,272
+  0427c2d1237130bc turtle_soup         282    143   2.0x  +0.27    2%    +1,360
+  778524d5cfefa179 mean_reversion       48     40   1.2x  -0.20   17%    -1,002
+  c4db5446b5532220 turtle_soup          85     83   1.0x  +0.23    1%    +1,076
+  3bc784b02bb1c33c mean_reversion      354    123   2.9x  +0.03    2%      +561
+  e376c1758450b49f stage2_breakout     147     67   2.2x  -0.08    2%      +120
+  04211d79db6008ad vcp                  84     50   1.7x  +0.29    6%    +2,338
+  5cc37beeb68758ce mean_reversion      182    138   1.3x  +0.07    1%      +456
+  1412e85e218d6bf4 vcp                 179     79   2.3x  +0.26    4%    +1,147
+  9e2a42b337016be3 vcp                 579    218   2.7x  +0.14    0%      +369

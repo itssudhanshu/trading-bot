@@ -85,7 +85,7 @@ def moments(returns) -> tuple:
 TRIAL_POOL = _TRIAL_DEFAULT
 
 
-def record_trials(sharpes, path=None):
+def record_trials(sharpes, path=None, seed=None):
     """Accumulate trial Sharpes ACROSS searches against the same holdout.
 
     N for deflation is cumulative, not per-search. Epoch 1-3 tested ~1,400 specs
@@ -97,18 +97,28 @@ def record_trials(sharpes, path=None):
     import json as _json
     from pathlib import Path as _P
     p = _P(path) if path else TRIAL_POOL
-    pool = _json.loads(p.read_text()) if p.exists() else []
-    pool.extend(float(x) for x in sharpes)
+    raw = _json.loads(p.read_text()) if p.exists() else {}
+    if isinstance(raw, list):                     # migrate the old flat format
+        raw = {"_legacy": raw}
+    # Keyed by seed so RE-RUNNING a seed replaces its trials instead of adding
+    # them again. Appending blindly double-counts the same hypotheses and
+    # inflates E[max SR] against work never done -- and re-runs are routine here
+    # (a bug fix, a lost file). Idempotence has to be a property of the store,
+    # not a thing the caller remembers.
+    raw[str(seed) if seed is not None else "_unkeyed"] = [float(x) for x in sharpes]
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(_json.dumps(pool))
-    return pool
+    p.write_text(_json.dumps(raw))
+    return [x for v in raw.values() for x in v]
 
 
 def load_trials(path=None):
     import json as _json
     from pathlib import Path as _P
     p = _P(path) if path else TRIAL_POOL
-    return _json.loads(p.read_text()) if p.exists() else []
+    if not p.exists():
+        return []
+    raw = _json.loads(p.read_text())
+    return raw if isinstance(raw, list) else [x for v in raw.values() for x in v]
 
 
 def deflated_sharpe(returns, trial_sharpes) -> dict:
@@ -173,10 +183,14 @@ def _selftest():
     with tempfile.TemporaryDirectory() as td:
         pth = _P(td) / "pool.json"
         assert load_trials(pth) == []
-        record_trials([0.1, 0.2], pth)
-        pool = record_trials([0.3], pth)
-        assert pool == [0.1, 0.2, 0.3], pool
+        record_trials([0.1, 0.2], pth, seed=1)
+        pool = record_trials([0.3], pth, seed=2)
+        assert sorted(pool) == [0.1, 0.2, 0.3], pool
         assert len(load_trials(pth)) == 3
+        # re-running a seed REPLACES, never doubles
+        again = record_trials([0.9, 0.9], pth, seed=1)
+        assert len(again) == 3, f"re-run double-counted: {again}"
+        assert sorted(again) == [0.3, 0.9, 0.9], again
 
     # a good-looking Sharpe from many trials must not survive deflation
     import random

@@ -107,11 +107,14 @@ def main(shortlist=SHORTLIST):
     if not rows:
         print("no candidates; run generator.py first")
         return
-    key = "portfolio_expectancy" if "portfolio_expectancy" in rows[0] else "expectancy_after_costs"
-    if key != "portfolio_expectancy":
-        print("WARNING: candidates predate portfolio metrics (lessons L11/L12). "
-              "Re-run generator.py before trusting this.", file=sys.stderr)
-    rows.sort(key=lambda r: r[key], reverse=True)
+    # Shortlist by the SAME metric the search ranks on (L46). Shortlisting by
+    # one criterion and promoting by another reintroduces the mismatch that made
+    # the ranking and the judge fight each other for three epochs.
+    import generator as _gen
+    if not any(r.get("block_pnl") for r in rows):
+        print("WARNING: candidates predate per-block P&L (L43). Re-run "
+              "generator.py before trusting this.", file=sys.stderr)
+    rows.sort(key=_gen.rank_score, reverse=True)
     rows = rows[:shortlist]
     print(f"walk-forward on top {len(rows)} of the train ranking "
           f"(shortlisting is itself selection -- the holdout is the real test)\n")
@@ -147,8 +150,12 @@ def main(shortlist=SHORTLIST):
     # blocks, does the best-in-sample spec generalise? Computed on train blocks
     # only -- the holdout is not touched here.
     if len(per_spec_blocks) >= 2:
-        r = cpcv.pbo(per_spec_blocks)
-        print(f"\nPBO (search-level, train blocks only)")
+        # PBO must use the SAME scorer the selector uses. Measuring a shortlist
+        # chosen by `min` with the default `sum` reports the overfitting of a
+        # metric no longer in use -- it printed 0.583 ("OVERFITTING") where the
+        # live selector scores 0.401, and would have condemned a working search.
+        r = cpcv.pbo(per_spec_blocks, scorer="min")
+        print(f"\nPBO (search-level, train blocks only, scorer=min)")
         print(f"  specs {r['n_specs']}  blocks {r['n_blocks']}  paths {r['n_paths']}")
         print(f"  PBO = {r['pbo']:.3f}   median lambda {r['median_lambda']:+.3f}")
         print(f"  -> {r['verdict']}")

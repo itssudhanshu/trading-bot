@@ -49,7 +49,21 @@ def block_pnl(trades, blocks) -> dict:
     return {lbl: sum(t.net for t in ts) for lbl, ts in attribute(trades, blocks).items()}
 
 
-def pbo(spec_block_pnl: dict, k=None) -> dict:
+SCORERS = {
+    # How the train blocks are collapsed into ONE number to pick a winner.
+    # This choice IS the selector, and PBO measures the selector -- so a high
+    # PBO may indict the metric rather than the candidate pool.
+    "sum":       lambda v: sum(v),
+    "median":    lambda v: sorted(v)[len(v) // 2],
+    "min":       lambda v: min(v),
+    "n_positive": lambda v: sum(1 for x in v if x > 0),
+    # magnitude scaled by consistency: rewards specs that are positive often,
+    # not specs that are enormous once
+    "consistency": lambda v: (sum(1 for x in v if x > 0) / len(v)) * sum(v),
+}
+
+
+def pbo(spec_block_pnl: dict, k=None, scorer="sum") -> dict:
     """spec_block_pnl: {spec_id: {block_label: pnl}} -> PBO statistics.
 
     `k` is the number of blocks held out as test per combination; defaults to
@@ -67,8 +81,9 @@ def pbo(spec_block_pnl: dict, k=None) -> dict:
     paths = 0
     for test in itertools.combinations(labels, k):
         train = [b for b in labels if b not in test]
-        tr_score = {s: sum(spec_block_pnl[s].get(b, 0.0) for b in train) for s in specs}
-        te_score = {s: sum(spec_block_pnl[s].get(b, 0.0) for b in test) for s in specs}
+        fn = SCORERS[scorer]
+        tr_score = {s: fn([spec_block_pnl[s].get(b, 0.0) for b in train]) for s in specs}
+        te_score = {s: fn([spec_block_pnl[s].get(b, 0.0) for b in test]) for s in specs}
         best = max(specs, key=lambda s: tr_score[s])
 
         # rank of the train-winner among all specs on the test blocks; 1 = worst
@@ -112,6 +127,11 @@ def _selftest():
     r2 = pbo(noise)
     assert r2["pbo"] > 0.5, r2
     assert r2["verdict"] == "SEARCH IS OVERFITTING", r2
+
+    # every scorer must be usable and produce a valid PBO
+    for name in SCORERS:
+        out = pbo(real, scorer=name)
+        assert 0.0 <= out["pbo"] <= 1.0, (name, out)
 
     # degenerate inputs must not raise
     assert math.isnan(pbo({"only": {"B0": 1.0}})["pbo"])

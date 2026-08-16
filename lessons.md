@@ -852,3 +852,172 @@ expectancy, block consistency, PSR or DSR stand on firmer ground -- those are
 computed over the full trade list or the admitted subset's returns -- but any
 rejection whose stated reason was trade count or capacity should be treated as
 uninformative rather than as evidence against that spec.
+## L41 — PBO = 0.929. The search does not generalise. Budget NOT spent. (decisive)
+First PBO run, on epoch 4's fixed candidates:
+
+    specs 30   blocks 10   paths 252 (= C(10,5))
+    PBO = 0.929    median lambda = -1.056
+    -> SEARCH IS OVERFITTING
+
+Across 252 train/test block combinations, the best-in-sample spec lands BELOW
+median out-of-sample 92.9% of the time. Not 50% (coin flip on noise) -- 93%.
+Train performance is not merely uninformative about test performance here, it
+ANTI-predicts it. Median lambda -1.056 says the typical train-winner sits near
+the 26th percentile out of sample.
+
+Seven specs were promoted by walk-forward in the same run. **No consultation was
+spent on any of them.** A candidate selected by a procedure with PBO 0.93 is not
+evidence, whatever its own numbers say, and testing seven of them would burn
+7/43 of the remaining budget to learn nothing while raising the trial count for
+everything after.
+
+This is the stop condition, pre-registered in L30 before the number existed, and
+restated in STATE.md before this run. Honouring it when it fires and is
+inconvenient is the entire point; a rule obeyed only when cheap is not a rule.
+
+**Caveat, stated because it cuts against the finding.** PBO is computed on the
+top-30 SHORTLIST, which was already selected by train expectancy, not on all 202
+candidates. Lopez de Prado's construction assumes the full trial set. On a
+pre-selected set the reading is "among the 30 best train performers, does the
+best of any subset generalise" -- a narrower question. If the 30 were equivalent
+noise, PBO would sit near 0.5; 0.93 means something systematic, not that the
+statistic is inapplicable. Computing it over all 202 needs per-block P&L for
+every candidate, which the search does not currently retain. That is the fix, and
+until it exists this number is directionally sound and not precisely calibrated.
+
+**What this does NOT say.** It does not say no edge exists in NSE equities. It
+says THIS procedure -- rank ~200 specs by train portfolio expectancy, shortlist
+30, walk forward -- selects specs whose train performance does not survive. More
+epochs of the same procedure cannot fix that; they are the thing measured.
+## L42 — Idempotence belongs in the store, not in the caller's memory (settled)
+The trial pool was a flat list that `record_trials` appended to. Re-running a
+seed therefore double-counted the same hypotheses -- inflating E[max SR] against
+work never done -- and the only defence was remembering to reset it first. I hit
+that hazard twice in one session (L32's lost archive, then the L34/L38 re-runs),
+and remembering worked once.
+
+Now keyed by seed: `{seed: [sharpes]}`, so re-running a seed REPLACES its entry.
+Re-runs are routine here -- a bug fix, a lost file, a machine rebuild -- and a
+correctness property that depends on operator recall is not a property.
+
+The old flat format migrates on first write, so the 395 already recorded survive.
+
+## L43 — PBO on a shortlist answers a narrower question than intended
+L41 flagged this against its own finding: PBO 0.929 was computed on the top-30
+by train expectancy, while Lopez de Prado's construction assumes the FULL trial
+set. On a pre-selected set it asks "among the 30 best train performers, does the
+best of any subset generalise" -- suggestive, not calibrated.
+
+`generator.screen` now records per-block P&L for every evaluated candidate, so
+PBO runs over all ~200. Both seeds are re-running to capture it.
+
+The prediction, recorded BEFORE the number exists: PBO over the full set should
+come in LOWER than 0.929, because the shortlist is the most train-overfit slice
+of the candidate pool and excludes the mediocre specs that dilute it. If it comes
+in near or above 0.93 anyway, the procedure is worse than the shortlist reading
+suggested, not better. Writing the prediction down first is the only way that
+number can surprise me.
+## L44 — 3R is NOT unreachable. L1/L8/L20 blamed the wrong thing. (correction)
+Measured MFE against the R:R floor across hold horizons and stop widths, on the
+Stage-2 setup over train blocks:
+
+    hold  atr   n   >=1.5R    >=2R    >=3R
+      30  1.5  45    48.9%   37.8%   28.9%
+      30  2.5  45    31.1%   24.4%    6.7%
+      45  1.5  45    57.8%   51.1%   46.7%
+      45  2.5  45    48.9%   44.4%   11.1%
+      60  1.5  45    66.7%   60.0%   55.6%
+      60  2.5  45    55.6%   53.3%   17.8%
+
+**3R is hit 28.9% of the time at 30 bars with a 1.5-ATR stop, and 55.6% at 60
+bars.** L1 concluded it was unreachable (0 of 64 trades) and L8 concluded it
+needed a 60-bar horizon. Both measured the `swing_low(10) - 0.5*ATR` stop, whose
+median width was 13.6% of price. With a stop that wide, 3R demands a ~40-84%
+move; with a 1.5-ATR stop it demands a fraction of that.
+
+**The binding constraint was the STOP RULE, never the R:R floor.** The vocabulary
+has contained ATR stops the whole time, and the generator samples them ~50% of
+the time, so the search space was never actually blocked -- only the swing_low
+half of it was.
+
+I told the operator three times that MIN_RR was the highest-leverage lever and
+recommended a decision on it. That recommendation was wrong. It rested on L1 and
+L8, both of which held the stop rule fixed while varying the thing they blamed.
+L2 came closest -- it varied stops and saw MFE rise -- but concluded expectancy
+worsened, on the pre-L34/L38 `portfolio_path`, so its verdict is void too.
+
+**Caveat, so this correction is not oversold:** n=45 per row, one setup family,
+train blocks only. It is enough to retire "3R is unreachable" and not enough to
+claim a working configuration.
+
+**The general failure:** three lessons agreed with each other and were all wrong
+in the same direction, because each inherited the previous one's fixed variable
+instead of re-testing it. Agreement between findings that share an assumption is
+not corroboration -- it is the same measurement repeated.
+## L45 — The selector was broken, not the candidates. Rank on the WORST block. (major)
+PBO by ranking metric, seed 31, all 193 evaluated candidates, 252 paths:
+
+    metric          PBO   med lambda   verdict
+    sum           0.754       -1.169   OVERFITTING
+    consistency   0.679       -1.412   OVERFITTING
+    median        0.440       +0.697   generalises
+    n_positive    0.266       +1.514   generalises
+    min           0.159       +1.412   generalises
+
+Ranking candidates by SUM of block P&L overfits badly. Ranking by the WORST
+block (`min`) gives PBO 0.159 -- the train winner lands ABOVE median
+out-of-sample 84% of the time. `n_positive` (how many blocks were profitable) is
+nearly as good at 0.266.
+
+**Same candidates. Same data. Only the choice of what "best" means.** L41
+concluded "this procedure selects specs whose train performance does not
+survive" and implied the candidate pool was noise. That was wrong: the pool
+contains specs that generalise, and summing P&L across blocks systematically
+failed to find them.
+
+**Why summing fails, in hindsight.** A sum is dominated by its largest term, so
+it rewards the spec with one enormous block over the spec that was positive in
+all of them. That is precisely the concentration failure I kept catching by hand
+-- epoch 2's PASS (+6.31%, all of it from one BULL block), epoch 3's near miss --
+and the ranking was actively selecting for it while the judge was rejecting it.
+The stratified holdout of epoch 2 was built to demand regime robustness; the
+ranking metric was quietly optimising the opposite.
+
+**What changes.** `min` and `n_positive` both select for robustness directly, and
+both are strictly more conservative than `sum`. Adopting one changes which specs
+promote, so every promotion decision to date is superseded -- not because the
+numbers were wrong (L34/L38 already handled that) but because a different, better
+question is now being asked of them.
+
+**Caveat:** measured on one seed's 193 candidates. Seed 41 is still running and
+will either replicate this or not. `min` is also a severe selector -- it may
+prefer mediocre-but-consistent specs over good ones, which is acceptable here
+(the judge still tests profitability) but is a real trade, not a free win.
+## L46 — Epoch 5 pre-registration: rank by MIN block P&L
+Chosen BEFORE the search that will be judged by it. Evidence, both seeds:
+
+    metric        seed31   seed41
+    min            0.159    0.254   <- chosen
+    median         0.440    0.397
+    n_positive     0.266    0.556   <- did not replicate; rejected
+    sum            0.754    0.798   <- the incumbent, overfits
+
+`min` scores best on both independent candidate sets and is the only metric
+whose ranking question matches the judge's: the judge demands >=3 of 4 holdout
+blocks positive, and `min` ranks on how the WORST block did. Ranking and judging
+finally ask the same thing. Under `sum` they were opposed -- the ranking rewarded
+one huge block while the judge rejected exactly that shape.
+
+`n_positive` is rejected despite a good seed-31 score: 0.266 -> 0.556 across
+seeds is not a finding, and adopting it would have been picking the best number
+from one sample.
+
+**Known cost, stated up front.** `min` is severe. It prefers a spec that is flat
+everywhere to one that is strongly positive in three blocks and slightly negative
+in the fourth. That is a real trade, not a free win. It is acceptable here only
+because the judge still independently tests expectancy, PSR and DSR -- the
+ranking's job is to surface candidates likely to pass, not to decide.
+
+**Supersedes:** every promotion decision to date was made under `sum`. Those
+seven epoch-4 promotions are withdrawn unconsulted; the budget stays at 7/50
+because none of them was ever tested against the holdout.
