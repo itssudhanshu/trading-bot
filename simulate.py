@@ -42,7 +42,7 @@ STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
 def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
         start_idx=300, trigger="none", offset=0, max_corr=None,
-        impact_c=engine.IMPACT_C):
+        impact_c=engine.IMPACT_C, sizing="equal"):
     # Default to the real pocket rather than a hardcoded figure: a simulation
     # run at a different capital from the live book is not a test of the live
     # book, because position size drives the cost percentage.
@@ -100,6 +100,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
 
         room = max_pos - len(open_pos)
         if room > 0 and di % refresh == 0 and di + 1 < len(days):
+            taken_n = 0
             held_syms = {p["sym"] for p in open_pos}
             held_clusters = defaultdict(int)
             for p in open_pos:
@@ -124,7 +125,13 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                 e = s.open[i + 1]
                 if not e:
                     continue
-                qty, _ = portfolio.position_size(equity, e, stop_pct)
+                vols = [v for v in (_liq(corpus[x["symbol"]],
+                        corpus[x["symbol"]].index_of(day) or 0)[1] for x in rows)
+                        if v]
+                medvol = statistics.median(vols) if vols else None
+                _, myvol = _liq(s, i)
+                mult = portfolio.size_mult(sizing, taken_n, myvol, medvol)
+                qty, _ = portfolio.position_size(equity, e, stop_pct, mult=mult)
                 if qty < 1:
                     continue
                 # You do not fill at the printed open. Pay impact on the way in;
@@ -141,10 +148,15 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                                  "tgt": e_eff * (1 + target_pct / 100),
                                  "entry_day": days[di + 1], "imp_in": imp})
                 held_clusters[r["cluster"]] += 1
+                taken_n += 1
                 room -= 1
     equity -= sum(max(v, 0.0) for k, v in fy_net.items() if k not in taxed) * STCG
     yrs = (days[-1] - days[start_idx]).days / 365.25
-    return {"occupancy": (statistics.fmean(occupancy) if occupancy else 0.0),
+    from collections import Counter as _Ctr
+    _dist = _Ctr(occupancy)
+    return {"occ_dist": {k: round(v / max(len(occupancy), 1) * 100, 1)
+                         for k, v in sorted(_dist.items())},
+            "occupancy": (statistics.fmean(occupancy) if occupancy else 0.0),
             "occ_full": (sum(1 for x in occupancy if x >= max_pos)
                          / max(len(occupancy), 1) * 100),
             "occ_empty": (sum(1 for x in occupancy if x == 0)

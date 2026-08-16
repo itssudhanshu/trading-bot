@@ -10,7 +10,8 @@
       -> rank within cluster: score + 200-DMA gate -> top 20 each
       -> bucket = 3 micro + 2 small = 5 stocks
       -> breakout trigger, filled at the NEXT open
-      -> Rs 3,00,000 capital, max 60% deployed (Rs 36k/stock, 6% total risk)
+      -> Rs 3,00,000 capital, max 75% deployed (Rs 45k/stock)
+         open risk 7.5% at a full book, ~4.6% typical (occupancy averages 3.09/5)
       -> exit: -10% stop / +20% target / 15 trading days
       -> analyse per stock AND per bucket -> record findings -> Telegram
 
@@ -89,7 +90,7 @@ number:
 |---|---|---|
 | 0.0 | +13.97% | the old, wrong assumption |
 | 0.5 | +11.60% | 83% |
-| **1.0** | **+10.85%** | **78%** — the standing baseline |
+| **1.0** | **+13.57%** | the standing baseline at 75% deployment |
 | 2.0 | +7.40% | 53% |
 | 3.0 | +4.53% | 32% |
 

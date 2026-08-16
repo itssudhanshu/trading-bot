@@ -43,15 +43,48 @@ HOLD_DAYS = 15
 MAX_POSITIONS = 5
 
 # Cash is a position. A fully-invested book has no capacity to add when a
-# better setup appears mid-cycle, and no buffer when five correlated names gap
-# down together. Deploying 60% of the Rs 3L pocket caps any single name at
-# Rs 36k; at a 10% stop that is 6% total open risk, matching
-# engine.MAX_PORTFOLIO_HEAT. The percentage is what matters here, not the
-# rupee figure -- both scale with CAPITAL.
-DEPLOY_PCT = 60.0
+# better setup appears mid-cycle, and no buffer when several correlated names
+# gap down together.
+#
+# Open risk at a full book is DEPLOY_PCT * STOP_PCT / 100 = 7.5% of capital.
+# engine.MAX_PORTFOLIO_HEAT (6%) is NOT a constraint on this path -- it is
+# checked only inside engine's own signal function, which nothing here calls.
+# An earlier comment cited it as though it bound this book; it never did, and
+# quoting a guard that does not run is the failure this project keeps making.
+# The real cap is arithmetic: 5 stocks x Rs 45k x 10% stop.
+# 75% of Rs 3L over 5 stocks = Rs 45k each. The cap does less than its name
+# suggests: average occupancy is 3.09 of 5, so the book is really ~46%
+# invested, not 75%. Raising it from 60% was worth +2.7 points of CAGR for
+# +4.6 of drawdown, measured, not assumed.
+DEPLOY_PCT = 75.0
 
 
-def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT):
+# How the deployable pot is split across names. Nominal R:R is identical for
+# every stock (-10% / +20%), so it cannot differentiate; what does differ is
+# how likely that fixed stop is to be hit by noise. A 10% stop on a 6%-daily-vol
+# microcap is inside the noise; on a 2%-vol name it is a real signal. Sizing
+# down the volatile names equalises what each position actually risks.
+SIZING = "equal"
+
+
+def size_mult(scheme, rank, vol_pct, med_vol_pct):
+    """-> multiplier on the base position size. Mean ~1.0 across a full book,
+    so total deployment is unchanged and only the SPLIT moves."""
+    if scheme == "equal" or not scheme:
+        return 1.0
+    if scheme == "invvol":
+        if not vol_pct or not med_vol_pct or vol_pct <= 0:
+            return 1.0
+        return max(0.5, min(2.0, med_vol_pct / vol_pct))
+    if scheme == "conviction":            # rank 0 largest, decaying
+        return max(0.5, min(2.0, 1.6 - 0.3 * rank))
+    if scheme == "both":
+        return (size_mult("invvol", rank, vol_pct, med_vol_pct)
+                * size_mult("conviction", rank, vol_pct, med_vol_pct)) ** 0.5
+    raise ValueError(f"unknown sizing scheme {scheme!r}")
+
+
+def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT, mult=1.0):
     """-> (qty, rupees_at_risk). Risk-based, then capped so one name cannot
     exceed its share of the book."""
     risk_rupees = capital * risk_pct / 100
@@ -59,7 +92,7 @@ def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT):
     if risk_per_share <= 0:
         return 0, 0.0
     qty = int(risk_rupees / risk_per_share)
-    cap_value = capital * DEPLOY_PCT / 100 / MAX_POSITIONS
+    cap_value = capital * DEPLOY_PCT / 100 / MAX_POSITIONS * mult
     qty = min(qty, int(cap_value / entry))
     return qty, qty * risk_per_share
 
@@ -90,6 +123,17 @@ def _why(r):
 # instead of restating it in prose -- it was already describing 2/2/1 one
 # minute after the design changed.
 TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
+
+# Floor on positions held. When fewer names trigger than this, the shortfall is
+# filled from the best-ranked candidates that did NOT trigger -- relaxing the
+# timing rule, never reaching deeper down the ranking. Reaching deeper was
+# tested and cost 4 points of CAGR.
+#
+# 0 = no floor. 1 is NOT the same as 0: it forces a position on days when
+# nothing triggered, which the book would otherwise sit out. That distinction
+# moved the result by 4 points and was nearly missed because the constant was
+# mislabelled.
+MIN_POSITIONS = 0
 
 TRIGGER = "breakout"    # see trigger_test: near-identical CAGR to no trigger
                         # (+11.45 vs +12.53) but worst block -83.1% vs -120.5%.
@@ -238,19 +282,30 @@ def allocate(rows, take_per_cluster=None, offset=0):
     # changes which cluster supplies each slot, because the round-robin walks
     # shortened lists -- same rules, different book (+9.05% vs +11.45%). The
     # trigger must remove candidates from the final order, never reorder it.
-    return [r for r in out if r.get("triggered", True)]
+    ok = [r for r in out if r.get("triggered", True)]
+    if len(ok) < MIN_POSITIONS:
+        taken = {id(r) for r in ok}
+        for r in out:                      # already in rank order
+            if len(ok) >= MIN_POSITIONS:
+                break
+            if id(r) not in taken:
+                ok.append(r)
+    return ok
 
 
 def _selftest():
+    cap_each = 500_000 * DEPLOY_PCT / 100 / MAX_POSITIONS
     q, risk = position_size(500_000, 100.0)
     # The DEPLOY_PCT cap binds before the risk rule at default parameters:
     # 60% of 5L over 5 names = Rs 60k, i.e. 600 shares at Rs 100, risking
     # Rs 6,000. The 2% risk rule would have allowed Rs 1L / 1,000 shares, so
     # risk_pct is currently DORMANT -- it only starts binding above a ~16.7%
     # stop. Kept deliberately: it is the backstop if stops ever widen.
-    assert q == 600 and abs(risk - 6_000) < 1, (q, risk)
-    cap = 500_000 * DEPLOY_PCT / 100 / MAX_POSITIONS
-    assert abs(q * 100.0 - cap) < 100, (q * 100.0, cap)
+    # Derive from DEPLOY_PCT rather than hardcode: this assertion has now
+    # broken twice for a deliberate design change rather than a defect.
+    assert abs(q * 100.0 - cap_each) < 100, (q * 100.0, cap_each)
+    assert abs(risk - cap_each * STOP_PCT / 100) < 1, (risk, cap_each)
+    cap = cap_each
     # a full book must leave cash on the table
     assert cap * MAX_POSITIONS <= 500_000 * 0.75, "book must not be fully invested"
     q2, _ = position_size(500_000, 10.0)

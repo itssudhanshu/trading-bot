@@ -1,6 +1,6 @@
 # Bucket Book
 
-Generated 2026-08-16 20:36 · selection as of **2026-08-14**
+Generated 2026-08-16 21:09 · selection as of **2026-08-14**
 
 ---
 
@@ -70,7 +70,7 @@ a gap up.
 ## 4. Sizing and cash
 
 - Capital **₹300,000**
-- Deploy at most **60%** → ₹180,000 across 5 slots = ₹36,000 per name
+- Deploy at most **75%** → ₹225,000 across 5 slots = ₹45,000 per name
 - Total open risk at a 10% stop: **6%** of capital
 - The rest stays in cash. A fully-invested book cannot add when a better setup
   appears, and has no buffer when correlated names gap together.
@@ -79,9 +79,9 @@ a gap up.
 
 | stock | cluster | value | stop | target | why it was picked |
 |---|---|---|---|---|---|
-| **HAPPYFORGE** | small | ₹35,523 | 1880.6 | 2507.5 | top-30% in near its high, relative strength, liquidity, delivery % (above 200-DMA, else excluded) |
+| **HAPPYFORGE** | small | ₹43,882 | 1880.6 | 2507.5 | top-30% in near its high, relative strength, liquidity, delivery % (above 200-DMA, else excluded) |
 
-Deployed **₹35,523** of ₹300,000 (11.8%) — cash **₹264,477**
+Deployed **₹43,882** of ₹300,000 (14.6%) — cash **₹256,118**
 
 ## 6. Ranked candidates that did NOT make it
 

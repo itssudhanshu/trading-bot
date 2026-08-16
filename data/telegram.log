@@ -245,3 +245,36 @@ listening (pid 87325, 18 commands)
 changed on disk: simulate.py -- restarting
 listener exited, restarting in 3s
 listening (pid 87438, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 87844, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 87870, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 87888, 18 commands)
+./run_listener.sh: line 9: 87888 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 87955, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 88077, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 88179, 18 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 88269, 18 commands)
+./run_listener.sh: line 9: 88269 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 88418, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 88510, 18 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 88544, 18 commands)
+./run_listener.sh: line 9: 88544 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 88651, 18 commands)

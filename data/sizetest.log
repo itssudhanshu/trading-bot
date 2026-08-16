@@ -1,0 +1,8 @@
+  sizing           CAGR   maxDD   win     n  avg held  worst blk  CAGR/DD
+  equal         +13.57%   28.8%   49%   217      3.09     -83.6%    0.471  <- current
+  invvol        +12.63%   29.1%   49%   217      3.09     -83.1%    0.435
+  conviction    +14.97%   34.7%   48%   217      3.08     -84.9%    0.431
+  both          +13.45%   33.6%   48%   217      3.09     -84.1%    0.400
+
+  beating equal on BOTH return and tail: none
+  best risk-adjusted: equal (0.471)

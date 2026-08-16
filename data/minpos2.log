@@ -1,0 +1,7 @@
+  floor       CAGR   maxDD   win     n  avg held  % empty  worst blk  CAGR/DD
+  0        +13.57%   28.8%   49%   217      3.09       1%     -83.6%    0.471  <- true baseline
+  1        +17.27%   33.4%   48%   250      3.62       0%     -77.6%    0.517
+  2        +11.45%   36.0%   50%   293      3.87       0%     -91.3%    0.318
+  3        +12.86%   30.6%   50%   230      4.31       0%    -130.2%    0.421  <- your proposal
+
+  floor 0 must reproduce the +13.57% sizing baseline: +13.57%  OK
