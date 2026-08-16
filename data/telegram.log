@@ -39,3 +39,15 @@ listening (pid 77172, 9 commands)
 changed on disk: simulate.py -- restarting
 listener exited, restarting in 3s
 listening (pid 77323, 9 commands)
+changed on disk: tg.py, simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 77495, 10 commands)
+./run_listener.sh: line 9: 77495 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 77565, 10 commands)
+changed on disk: tg.py, simulate.py, learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 77625, 10 commands)
+./run_listener.sh: line 9: 77625 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 77729, 10 commands)

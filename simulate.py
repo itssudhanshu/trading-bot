@@ -148,6 +148,65 @@ def report(name, r):
     store(name, r, batch=BATCH)
 
 
+WF_RESULTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "walkforward.jsonl"
+
+
+def store_wf(res):
+    """Persist a walk-forward verdict. `anti_predicts` is the field that matters:
+    when the in-sample winner ranks last out-of-sample, tuning on in-sample
+    results is worse than not tuning."""
+    import json as _j
+    from datetime import datetime as _dt
+    n = len(res["out_sample"])
+    row = {"at": _dt.now().isoformat(timespec="seconds"), "param": res["param"],
+           "chosen": res["chosen"], "oos_rank": res["oos_rank_of_chosen"],
+           "oos_of": n, "oos_best": res["oos_best"],
+           # Three states, because two collapsed amber into green: the phone
+           # showed a green tick for hold (rank 2/3) while wf_guard correctly
+           # REFUSED it. A display that disagrees with the decision is worse
+           # than no display.
+           "anti_predicts": res["oos_rank_of_chosen"] >= n,
+           "verdict": ("anti" if res["oos_rank_of_chosen"] >= n and n > 1
+                       else "weak" if res["oos_rank_of_chosen"] > 1 else "ok"),
+           "in_sample": {str(k): round(v["cagr"], 2) for k, v in res["in_sample"].items()},
+           "out_sample": {str(k): round(v["cagr"], 2) for k, v in res["out_sample"].items()}}
+    WF_RESULTS.parent.mkdir(parents=True, exist_ok=True)
+    with WF_RESULTS.open("a") as f:
+        f.write(_j.dumps(row) + "\n")
+    return row
+
+
+def load_wf(limit=None):
+    import json as _j
+    if not WF_RESULTS.exists():
+        return []
+    rows = [_j.loads(l) for l in WF_RESULTS.read_text().splitlines() if l.strip()]
+    return rows[-limit:] if limit else rows
+
+
+def wf_guard(param, values, corpus, days, **fixed):
+    """-> (allowed, reason). A parameter may only be CHANGED if choosing it
+    in-sample actually predicts out-of-sample.
+
+    Measured on this book: the in-sample winner ranked LAST out-of-sample for
+    target and stop, and 2nd of 3 for hold. Tuning against in-sample results was
+    not merely useless, it was backwards -- so the tuning loop has to be able to
+    refuse itself.
+    """
+    res = walk_forward(corpus, days, param, values, **fixed)
+    store_wf(res)
+    n = len(res["out_sample"])
+    if res["oos_rank_of_chosen"] >= n and n > 1:
+        return False, (f"{param}: in-sample winner {res['chosen']} ranked "
+                       f"{res['oos_rank_of_chosen']}/{n} out-of-sample -- "
+                       f"selection anti-predicts, keep the current value")
+    if res["oos_rank_of_chosen"] > 1:
+        return False, (f"{param}: in-sample winner {res['chosen']} ranked "
+                       f"{res['oos_rank_of_chosen']}/{n} out-of-sample -- not "
+                       f"good enough to justify a change")
+    return True, f"{param}: {res['chosen']} won both in and out of sample"
+
+
 def walk_forward(corpus, days, param, values, split=0.5, **fixed):
     """Choose `param` on the FIRST half, then test that choice on the second.
 

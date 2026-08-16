@@ -173,6 +173,25 @@ def cmd_sims(_=None):
     return "\n".join(out)
 
 
+def cmd_wf(_=None):
+    import simulate
+    rows = simulate.load_wf()
+    if not rows:
+        return "*walk-forward*\n\n_none stored yet_"
+    out = [f"*walk-forward* ({len(rows)} tests)", ""]
+    for r in rows[-6:]:
+        v = r.get("verdict") or ("anti" if r.get("anti_predicts") else "ok")
+        flag = {"anti": "🔴 ANTI-PREDICTS", "weak": "🟡 too weak to act on",
+                "ok": "🟢 generalises"}[v]
+        out.append(f"{flag} `{r['param']}`")
+        out.append(f"   chose {r['chosen']} in-sample → rank "
+                   f"{r['oos_rank']}/{r['oos_of']} out-of-sample "
+                   f"(best was {r['oos_best']})")
+    out += ["", "_red = tuning picks LOSERS · amber = no better than chance_",
+            "_only green would justify changing a parameter_"]
+    return "\n".join(out)
+
+
 def cmd_help(_=None):
     return ("*commands*\n"
             "/status – what needs attention, what is due\n"
@@ -181,6 +200,7 @@ def cmd_help(_=None):
             "/health – is the agent actually running?\n"
             "/learning – what the bot has learned from its trades\n"
             "/sims – stored simulation results\n"
+            "/wf – walk-forward tests: does tuning even work?\n"
             "/digest – full digest\n\n"
             "_read-only: I never start a search or spend holdout budget from here_")
 
@@ -209,7 +229,7 @@ def cmd_health(_=None):
 
 
 COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_health,
-            "/learning": cmd_learning, "/sims": cmd_sims,
+            "/learning": cmd_learning, "/sims": cmd_sims, "/wf": cmd_wf,
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
             "/digest": cmd_digest}
 

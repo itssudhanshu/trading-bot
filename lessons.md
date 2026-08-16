@@ -1021,3 +1021,35 @@ ranking's job is to surface candidates likely to pass, not to decide.
 **Supersedes:** every promotion decision to date was made under `sum`. Those
 seven epoch-4 promotions are withdrawn unconsulted; the budget stays at 7/50
 because none of them was ever tested against the holdout.
+
+## L47 — Parameter tuning on this book ANTI-predicts (decisive)
+Walk-forward: choose each parameter on the first half of history, then rank all
+values on the second half.
+
+    param        chose (IS)   rank out-of-sample   OOS winner
+    target_pct      15%           3 of 3              20%
+    stop_pct        15%           3 of 3              10%
+    hold            25d           2 of 3              15d
+
+The in-sample winner ranked LAST twice and second-worst once. Tuning against
+in-sample results does not merely fail to help here -- it reliably selects the
+worse setting.
+
+That invalidates the eleven-variant table run an hour earlier as a basis for
+choosing anything. `target 15%` at +12.39% and `target 25%` at +13.04% are the
+top two of eleven trials on one dataset; the walk-forward says that ranking is
+noise with the sign flipped.
+
+**Why, visible in the same numbers:** every variant lost ~25% CAGR in 2020-2023
+and made ~+30-39% in 2023-2026. A 64-point regime swing dwarfs every parameter
+difference, so the "best" in-sample value is whichever lost least in a bad
+regime -- a different property from making most in a good one.
+
+**Encoded, not just noted.** `simulate.wf_guard()` refuses a parameter change
+unless the in-sample winner also wins out-of-sample, and every test is stored to
+`data/walkforward.jsonl` (`/wf` on Telegram). The tuning loop can now refuse
+itself, which is the only defence against a process that is confidently wrong.
+
+Live book stays at 10% / 20% / 15 days -- the operator's specification, not a
+tuned value. It also happens to be the out-of-sample winner on all three axes,
+which is noted and NOT acted upon: one out-of-sample period is one observation.

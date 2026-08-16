@@ -82,6 +82,30 @@ def analyse(trades):
     return out
 
 
+def split_check(trades, feature, split=0.5):
+    """Does this feature's information survive out of sample?
+
+    propose() moves weights on the spread measured across ALL trades -- the same
+    in-sample tuning that walk-forward proved anti-predicts for parameters
+    (lessons L47). A feature whose spread flips sign between halves is noise,
+    and raising its weight makes selection worse, confidently.
+    """
+    rows = [t for t in trades if t.get(feature) is not None and t.get("ret") is not None]
+    if len(rows) < 100:
+        return None, "too few observations"
+    rows.sort(key=lambda t: t.get("date") or "")
+    cut = int(len(rows) * split)
+    early, late = analyse(rows[:cut]), analyse(rows[cut:])
+    if feature not in early or feature not in late:
+        return None, "not measurable in both halves"
+    a, b = early[feature]["spread"], late[feature]["spread"]
+    if a == 0 or b == 0:
+        return False, f"no information in one half ({a:+.2f} / {b:+.2f})"
+    if (a > 0) != (b > 0):
+        return False, f"spread FLIPS SIGN across halves ({a:+.2f} -> {b:+.2f})"
+    return True, f"consistent sign ({a:+.2f} -> {b:+.2f})"
+
+
 def propose(trades, current=None):
     """-> (new_weights, notes). Returns current weights unchanged when the
     evidence is too thin; the caller should say so rather than pretend."""
@@ -100,6 +124,21 @@ def propose(trades, current=None):
         return cur, notes
     # Target weight proportional to how much each feature separated outcomes;
     # negative spreads mean the feature ranked BACKWARDS and get floored at zero.
+    # Only features whose information survives a split may move. Without this,
+    # weights are tuned on in-sample spread alone -- the exact mistake L47
+    # measured one layer up, where the in-sample winner ranked LAST out of
+    # sample.
+    held = []
+    for f in list(spreads):
+        ok, why = split_check(trades, f)
+        if ok is False:
+            spreads[f] = 0.0
+            held.append(f"{f}: HELD -- {why}")
+        elif ok is None:
+            spreads[f] = 0.0
+            held.append(f"{f}: held -- {why}")
+    notes.extend(held)
+
     pos = {f: max(s, 0.0) for f, s in spreads.items()}
     total = sum(pos.values()) or 1.0
     new = {}
@@ -149,6 +188,18 @@ def _selftest():
     new, notes = propose(trades, {"rs": 1.0, "deliv": 1.0, "liq": 1.0})
     assert new["rs"] > 1.0, (new, notes)
     assert new["deliv"] < 1.0, new
+
+    # a feature that flips sign between halves must be held at zero influence
+    flip = []
+    for i in range(400):
+        v = i / 400
+        # first half rewards high rs, second half punishes it
+        r = (v - 0.5) * 20 if i < 200 else (0.5 - v) * 20
+        flip.append({"rs": v, "deliv": (i % 7) / 7, "liq": (i % 5) / 5,
+                     "near_high": (i % 3) / 3, "off_high": None, "rsi": None,
+                     "ret": r, "date": f"2024-{1 + i // 40:02d}-01"})
+    ok, why = split_check(flip, "rs")
+    assert ok is False and "FLIP" in why.upper(), (ok, why)
 
     # too few trades: weights must not move at all
     same, notes2 = propose(trades[:50], {"rs": 1.0, "deliv": 1.0, "liq": 1.0})
