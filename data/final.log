@@ -1,0 +1,28 @@
+FINAL: ('micro', 'small') clusters, pooled ranking
+  CAGR +16.61%  DD 30.0%  n=215  occ 2.54
+  expected from the pooled test: +16.61%, DD 30.0%, n=215
+
+ATTRIBUTION — final
+==========================================================
+
+  215 trades across 119 symbols (66 profitable)
+  share of all gains from the single best symbol : 15.4%
+  from the best 3 symbols                        : 28.5%
+  from the best 10% of symbols                   : 54.1%
+
+  BY CLUSTER
+    micro   n=89    total    +284.5%  avg  +3.20%  win  46%
+    small   n=126   total    +507.4%  avg  +4.03%  win  52%
+
+  BEST 8 SYMBOLS
+    BCG          n=7   total   +221.2%  avg +31.60%
+    NAHARSPING   n=3   total   +106.2%  avg +35.40%
+    IWEL         n=3   total    +80.4%  avg +26.79%
+    TTML         n=7   total    +74.3%  avg +10.62%
+    AXISILVER    n=6   total    +51.2%  avg  +8.54%
+    VAIBHAVGBL   n=4   total    +48.1%  avg +12.03%
+    GREENPANEL   n=3   total    +45.8%  avg +15.28%
+    IMAGICAA     n=2   total    +40.0%  avg +20.01%
+
+  WORST 8 SYMBOLS
+    GOKULAGRO 

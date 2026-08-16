@@ -1,0 +1,8 @@
+  tradeable        CAGR   maxDD   win     n  avg held  worst blk  CAGR/DD
+  bottom  33%    +4.81%   35.6%   42%   211      2.75     -51.3%    0.135
+  bottom  50%   +10.61%   30.2%   47%   223      2.59     -83.9%    0.351
+  bottom  67%   +13.57%   28.8%   49%   217      3.09     -83.6%    0.471  <- current (inherited)
+  bottom  85%    +5.11%   32.8%   45%   227      2.50    -126.9%    0.156
+  bottom 100%    +6.07%   24.6%   48%   225      2.55    -152.1%    0.246
+
+  beating the inherited 67% on BOTH: none

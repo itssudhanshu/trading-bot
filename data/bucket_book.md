@@ -1,6 +1,6 @@
 # Bucket Book
 
-Generated 2026-08-16 21:09 · selection as of **2026-08-14**
+Generated 2026-08-16 22:00 · selection as of **2026-08-14**
 
 ---
 
@@ -15,7 +15,6 @@ decides whether an order fills.
 |---|---|---|
 | **micro** | 629 | ₹0.3L – ₹14.4Cr |
 | **small** | 629 | ₹44.9L – ₹56.7Cr |
-| **mid** | 629 | ₹527.7L – ₹2,437.1Cr |
 
 ## 2. How a stock is scored
 
@@ -52,7 +51,7 @@ half-year block from −120.5% to −83.1%.
 Order of operations matters and was measured:
 
 1. Rank every stock inside its cluster
-2. Take the top *k* per cluster (3 micro / 2 small, and 0 from mid), interleaved
+2. Take the top *k* per cluster (3 micro / 2 small), interleaved
 3. **Then** require the trigger — drop what has not triggered
 4. Hold cash for the slots that stay empty
 
@@ -87,14 +86,14 @@ Deployed **₹43,882** of ₹300,000 (14.6%) — cash **₹256,118**
 
 | stock | cluster | triggered? | why |
 |---|---|---|---|
-| HCG | small | no | top-30% in delivery %, near its high, liquidity, relative strength (above 200-DMA, else excluded) |
-| TAKE | micro | no | top-30% in near its high, delivery %, relative strength (above 200-DMA, else excluded) |
 | SUNDRMFAST | small | no | top-30% in delivery %, near its high, relative strength (above 200-DMA, else excluded) |
-| YUKEN | micro | no | top-30% in near its high, liquidity, delivery %, relative strength (above 200-DMA, else excluded) |
+| HCG | small | no | top-30% in delivery %, near its high, liquidity, relative strength (above 200-DMA, else excluded) |
+| KOVAI | small | no | top-30% in relative strength, delivery %, near its high; weak on liquidity (above 200-DMA, else excluded) |
+| TAKE | micro | no | top-30% in near its high, delivery %, relative strength (above 200-DMA, else excluded) |
 | RPEL | small | yes | top-30% in relative strength, near its high, liquidity, delivery % (above 200-DMA, else excluded) |
-| KRISHIVAL | micro | no | top-30% in delivery %, relative strength, near its high (above 200-DMA, else excluded) |
 | GMMPFAUDLR | small | yes | top-30% in near its high, delivery %, liquidity (above 200-DMA, else excluded) |
-| THELEELA | small | no | top-30% in near its high, liquidity, delivery % (above 200-DMA, else excluded) |
+| YUKEN | micro | no | top-30% in near its high, liquidity, delivery %, relative strength (above 200-DMA, else excluded) |
+| KAPSTON | micro | no | top-30% in near its high, relative strength, liquidity; weak on delivery % (above 200-DMA, else excluded) |
 
 ---
 

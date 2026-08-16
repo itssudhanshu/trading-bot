@@ -23,7 +23,7 @@ def generate(corpus=None, as_of=None):
     corpus = corpus or features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = as_of or days[-1]
-    sizes = clusters.size_clusters(corpus, as_of, names=clusters.CLUSTER_NAMES)
+    sizes = clusters.size_clusters(corpus, as_of)
     rows = portfolio.build(corpus, as_of)
     chosen = portfolio.allocate(rows)
     trig = portfolio.TRIGGER
@@ -37,7 +37,7 @@ def generate(corpus=None, as_of=None):
          "decides whether an order fills.", ""]
     L.append("| cluster | stocks | median turnover band |")
     L.append("|---|---|---|")
-    for b in clusters.CLUSTER_NAMES:
+    for b in clusters.CLUSTERS:
         syms = sizes.get(b, [])
         if not syms:
             L.append(f"| {b} | 0 | — |")

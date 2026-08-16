@@ -190,7 +190,7 @@ def store(name, r, batch=None, track="cluster"):
         "n": len(t),
         "win": round(sum(1 for x in t if x["ret"] > 0) / max(len(t), 1) * 100),
         "avg_stop": round(statistics.fmean(ex["stop"]), 2) if ex["stop"] else None,
-        "mix": {b: len(bk[b]) for b in ("micro", "small", "mid")},
+        "mix": {b: len(bk[b]) for b in clusters.CLUSTERS},
         "exits": {k: len(v) for k, v in ex.items()},
     }
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
@@ -232,7 +232,7 @@ def report(name, r):
     print(f"  {name:<26} CAGR {r['cagr']:>+6.2f}%  DD {r['maxdd']:>5.1f}%  "
           f"n={n:>4}  win {win:>3.0f}%  "
           f"stop {statistics.fmean(ex['stop']) if ex['stop'] else 0:>+6.2f}%  "
-          f"mix " + "/".join(f"{len(bk[b])}" for b in ("micro", "small", "mid")))
+          f"mix " + "/".join(f"{len(bk[b])}" for b in clusters.CLUSTERS))
     store(name, r, batch=BATCH)
 
 
@@ -342,10 +342,10 @@ if __name__ == "__main__":
     report("hold 25d", run(corpus, days, hold=25))
     report("3 positions", run(corpus, days, max_pos=3))
     report("8 positions", run(corpus, days, max_pos=8,
-                              take_per_cluster={"micro": 3, "small": 3, "mid": 2}))
+                              take_per_cluster={"micro": 4, "small": 4}))
     report("cap 2/bucket", run(corpus, days, cluster_cap=2))
     report("small+mid only", run(corpus, days,
-                                 take_per_cluster={"small": 3, "mid": 2}))
+                                 take_per_cluster={"small": 5}))
 
 
 # ---------------------------------------------------------------- keep/promote

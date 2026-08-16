@@ -23,7 +23,7 @@ def _jsonl(p):
 def state():
     import clusters, features, portfolio, simulate
     s = {"mix": dict(portfolio.TAKE_PER_CLUSTER),
-         "tradeable": list(clusters.TRADEABLE),
+         "tradeable": list(clusters.CLUSTERS),
          "capital": portfolio.CAPITAL, "deploy": portfolio.DEPLOY_PCT,
          "trigger": portfolio.TRIGGER, "stop": portfolio.STOP_PCT,
          "target": portfolio.TARGET_PCT, "hold": portfolio.HOLD_DAYS}

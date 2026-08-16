@@ -266,11 +266,11 @@ def cmd_clusters(_=None):
     as_of = days[-1]
     picks = clusters.pick(c, as_of, per_cluster=20)
     sizes = {"micro": "smallest 3rd by turnover", "small": "middle 3rd",
-             "mid": "largest 3rd"}
+             }
     out = [f"*CLUSTER STOCKS*  as of {as_of}",
            "_screened on: 6-month strength, delivery %, liquidity,_",
            "_must be above its own 200-day average_", ""]
-    for b in ("micro", "small", "mid"):
+    for b in clusters.CLUSTERS:
         lst = picks.get(b, [])
         out.append(f"*{b.upper()}* ({sizes[b]}) — top {min(10, len(lst))} of {len(lst)}")
         out.append("  " + ", ".join(f"`{s}`" for s, _ in lst[:10]))
@@ -405,6 +405,23 @@ def cmd_wallet(_=None):
         out += lines
     else:
         out.append("_No positions. Fully in cash._")
+    # Context for the holding count. A book showing one stock is not broken --
+    # one stock is the normal state ~14% of the time -- but nothing said so,
+    # and the question came up.
+    import analysis
+    base = analysis.load_occupancy()
+    held = s["open"] + s["pending"]
+    if base:
+        pct = base["dist"].get(held, 0.0)
+        atleast = sum(v for k, v in base["dist"].items() if k >= held)
+        out.append("")
+        out.append(f"*Holding {held} of {portfolio.MAX_POSITIONS}* — historically "
+                   f"{pct:.0f}% of sessions hold exactly this many, and "
+                   f"{atleast:.0f}% hold this many or more. Typical is "
+                   f"{base['mean']:.2f}.")
+        if held <= 1:
+            out.append("_Few names means few breakouts, not a fault. Forcing more "
+                       "was tested four ways and made returns and drawdown worse._")
     out.append("")
     out.append(f"_Cap: {portfolio.DEPLOY_PCT:.0f}% deployable "
                f"(₹{portfolio.CAPITAL * portfolio.DEPLOY_PCT / 100:,.0f}), "

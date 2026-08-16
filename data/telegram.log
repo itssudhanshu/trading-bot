@@ -278,3 +278,51 @@ listening (pid 88544, 18 commands)
 ./run_listener.sh: line 9: 88544 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 88651, 18 commands)
+changed on disk: analysis.py -- restarting
+listener exited, restarting in 3s
+listening (pid 88864, 18 commands)
+changed on disk: tg.py, analysis.py -- restarting
+listener exited, restarting in 3s
+listening (pid 88889, 18 commands)
+./run_listener.sh: line 9: 88889 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 89395, 18 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 89543, 18 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 89712, 18 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 89821, 18 commands)
+./run_listener.sh: line 9: 89821 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 89829, 18 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 89897, 18 commands)
+changed on disk: bucketbook.py, clusters.py, overview.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 89960, 18 commands)
+changed on disk: analysis.py, selection_test.py -- restarting
+listener exited, restarting in 3s
+listening (pid 90010, 18 commands)
+changed on disk: tg.py, simulate.py, pbook.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 90050, 18 commands)
+changed on disk: clusters.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 90101, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 90169, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 90220, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 90293, 18 commands)
+./run_listener.sh: line 9: 90293 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 90365, 18 commands)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Size clusters and stock selection: 20 micro, 20 small, 20 mid.
+"""Size clusters and stock selection: micro and small, 20 candidates each.
 
 SELECTION IS AS-OF A DATE. Every input is computed from bars up to and including
 that date only. Picking today's best performers and testing them on their own
@@ -30,23 +30,33 @@ import features
 # would put Nestle and Titan into "small", redefining the cluster whose results
 # every test in this project measured. Terciles keep micro = bottom third and
 # small = middle third; the top third is simply not tradeable here.
-CLUSTERS = ("micro", "small", "mid")
-TRADEABLE = ("micro", "small")
+# Two clusters, both traded. The universe is ranked by turnover, the most
+# liquid TRADEABLE_PCT is discarded outright, and what remains is split in
+# half. There is no third band: `mid` used to exist only to mark where `small`
+# stopped, which the percentile cut now does directly.
+CLUSTERS = ("micro", "small")
 # Overridable: widening this re-clusters every downstream reader (pick, build,
 # allocate). Ascending turnover -- first name is the smallest.
-CLUSTER_NAMES = CLUSTERS
 PER_CLUSTER = 20
+
+
+# What fraction of the universe, from the least liquid end, is tradeable at
+# all. 2/3 was INHERITED from the micro/small/mid design and has now been
+# TESTED: 33/50/67/85/100% give CAGR 4.81 / 10.61 / 13.57 / 5.11 / 6.07 and
+# CAGR-per-drawdown 0.135 / 0.351 / 0.471 / 0.156 / 0.246. A clean inverted U
+# peaking here. Too narrow is all noise and impact; too wide admits large caps
+# where this momentum edge does not exist.
+TRADEABLE_PCT = 2 / 3
 
 
 def size_clusters(corpus, as_of=None, window=250, names=None):
     """-> {cluster: [symbols]} by median daily turnover up to `as_of`.
 
     `names` sets the number of quantiles: three gives the original
-    micro/small/mid terciles, six gives finer size resolution. Module-level
-    CLUSTER_NAMES is the default so a caller can widen the split for every
-    downstream reader at once.
+    micro/small, more gives finer size resolution. The most liquid
+    (1 - TRADEABLE_PCT) of the universe is discarded before splitting.
     """
-    names = names or CLUSTER_NAMES
+    names = names or CLUSTERS
     rows = []
     for sym, s in corpus.items():
         idx = len(s) - 1 if as_of is None else (s.index_of(as_of) or -1)
@@ -57,7 +67,10 @@ def size_clusters(corpus, as_of=None, window=250, names=None):
             rows.append((statistics.median(t), sym))
     rows.sort()
     n, k = len(rows), len(names)
-    return {nm: [s for _, s in rows[i * n // k:(i + 1) * n // k]]
+    # Rank the WHOLE universe, discard the most liquid (1 - TRADEABLE_PCT),
+    # split what remains into equal bands.
+    cut = int(n * TRADEABLE_PCT)
+    return {nm: [s for _, s in rows[i * cut // k:(i + 1) * cut // k]]
             for i, nm in enumerate(names)}
 
 
@@ -142,13 +155,31 @@ def score(corpus, symbols, as_of, with_ranks=False):
     return (out, detail) if with_ranks else out
 
 
+def pick_pooled(corpus, as_of, n=PER_CLUSTER * len(CLUSTERS)):
+    """Rank the whole tradeable universe as ONE pool.
+
+    Percentile ranks are then computed across every tradeable name rather than
+    within a size band, so `liq` is no longer neutralised by comparing a stock
+    only against others of similar turnover. Under the old three-cluster design
+    this collapsed the book into the largest band for exactly that reason; with
+    the most liquid third now discarded entirely, the question is open again.
+    """
+    bands = size_clusters(corpus, as_of, names=CLUSTERS)
+    syms = [s for v in bands.values() for s in v]
+    where = {s: b for b, v in bands.items() for s in v}
+    sc = score(corpus, syms, as_of)
+    top = sorted(sc.items(), key=lambda kv: -kv[1])[:n]
+    out = {b: [] for b in CLUSTERS}
+    for sym, v in top:
+        out[where[sym]].append((sym, v))
+    return out
+
+
 def pick(corpus, as_of, per_cluster=PER_CLUSTER):
     """-> {cluster: [(symbol, score)]}, best `per_cluster` in each."""
-    clusters = size_clusters(corpus, as_of, names=CLUSTER_NAMES)
+    clusters = size_clusters(corpus, as_of, names=CLUSTERS)
     out = {}
     for b, syms in clusters.items():
-        if b not in TRADEABLE:
-            continue
         sc = score(corpus, syms, as_of)
         out[b] = sorted(sc.items(), key=lambda kv: -kv[1])[:per_cluster]
     return out
@@ -169,16 +200,22 @@ def _selftest():
         corpus[s.symbol] = s
 
     b = size_clusters(corpus)
-    assert sum(len(v) for v in b.values()) == 30, b
-    assert "S29" in b["mid"], "highest turnover must land in mid"
+    # Only the least-liquid TRADEABLE_PCT is clustered; the rest is discarded.
+    kept = sum(len(v) for v in b.values())
+    assert kept == int(30 * TRADEABLE_PCT), (kept, TRADEABLE_PCT)
+    assert set(b) == set(CLUSTERS), sorted(b)
+    assert "S29" not in b["micro"] and "S29" not in b["small"], \
+        "the highest-turnover name must be discarded, not clustered"
     assert "S00" in b["micro"]
 
     picks = pick(corpus, days[-1], per_cluster=3)
-    # pick() scores only the TRADEABLE clusters -- mid is still computed by
-    # size_clusters (it defines where the micro/small boundaries fall) but is
-    # never ranked or bought.
-    assert set(picks) == set(TRADEABLE), sorted(picks)
-    assert "mid" in size_clusters(corpus), "mid must still define the terciles"
+    assert set(picks) == set(CLUSTERS), sorted(picks)
+    # the most liquid names must be excluded outright, not placed in a band
+    allsyms = {s for v in size_clusters(corpus).values() for s in v}
+    ranked = sorted(corpus, key=lambda s: statistics.median(
+        [x for x in corpus[s].turnover if x > 0] or [0]))
+    assert ranked[-1] not in allsyms, "the most liquid name must be discarded"
+    assert ranked[0] in allsyms, "the least liquid name must be tradeable"
     for bname, lst in picks.items():
         assert len(lst) <= 3
         scores = [sc for _, sc in lst]
@@ -187,7 +224,7 @@ def _selftest():
     # as-of: a pick on an early date must not use later bars
     early = pick(corpus, days[250], per_cluster=3)
     assert early, "no picks on a mid-history date"
-    assert pick(corpus, days[10], per_cluster=3) == {b: [] for b in TRADEABLE}, \
+    assert pick(corpus, days[10], per_cluster=3) == {b: [] for b in CLUSTERS}, \
         "picked with under 200 bars of history"
     print("clusters selftest ok")
 

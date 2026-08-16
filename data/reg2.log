@@ -1,0 +1,4 @@
+after removing mid entirely: CAGR +13.57%  DD 28.8%  n=217
+expected (unchanged):        CAGR +13.57%  DD 28.8%  n=217
+REGRESSION OK
+clusters: ('micro', 'small')

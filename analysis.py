@@ -85,7 +85,7 @@ def _selftest():
     t = [{"sym": "A", "ret": 10.0, "clu": "micro"},
          {"sym": "A", "ret": -2.0, "clu": "micro"},
          {"sym": "B", "ret": 5.0, "clu": "small"},
-         {"sym": "C", "ret": -3.0, "clu": "mid"}]
+         {"sym": "C", "ret": -3.0, "clu": "small"}]
     ps = per_stock(t)
     assert ps[0]["symbol"] == "A" and ps[0]["n"] == 2, ps[0]
     assert abs(ps[0]["total"] - 8.0) < 1e-9
@@ -94,6 +94,7 @@ def _selftest():
     assert c["n_symbols"] == 3 and c["winners"] == 2, c
     pc = per_cluster(t)
     assert pc["micro"]["n"] == 2 and abs(pc["micro"]["total"] - 8.0) < 1e-9
+    assert set(pc) <= {"micro", "small"}, pc
     # a book whose gains all sit in one name must report 100%
     assert concentration([{"sym": "X", "ret": 5.0, "clu": "m"}])["top1"] == 100.0
     print("analysis selftest ok")
@@ -133,6 +134,7 @@ def record(label, trades, extra=None):
                               "avg": round(v["avg"], 3), "wins": v["wins"]}
                           for k, v in per_cluster(trades).items()},
            "concentration": {k: round(v, 2) for k, v in c.items()},
+           "occupancy_baseline": (load_occupancy() or {}).get("mean"),
            "top": [{"symbol": r["symbol"], "n": r["n"], "total": round(r["total"], 2)}
                    for r in per_stock(trades)[:5]],
            "bottom": [{"symbol": r["symbol"], "n": r["n"], "total": round(r["total"], 2)}
@@ -151,3 +153,30 @@ def load_findings(limit=None):
         return []
     rows = [json.loads(l) for l in FINDINGS.read_text().splitlines() if l.strip()]
     return rows[-limit:] if limit else rows
+
+
+OCC_BASELINE = __import__("pathlib").Path(__file__).resolve().parent / "data" / "occupancy_baseline.json"
+
+
+def save_occupancy(dist, mean, config):
+    """Store how often the book holds n stocks, historically.
+
+    Without this, a book showing one stock looks broken. It is not: one stock
+    is the normal state 14% of the time. The baseline is what turns "we only
+    hold 1" into "we hold 1, which happens about one session in seven".
+    """
+    import json
+    OCC_BASELINE.parent.mkdir(parents=True, exist_ok=True)
+    OCC_BASELINE.write_text(json.dumps(
+        {"dist": {str(k): v for k, v in dist.items()}, "mean": round(mean, 2),
+         "config": config}, indent=1))
+    return OCC_BASELINE
+
+
+def load_occupancy():
+    import json
+    if not OCC_BASELINE.exists():
+        return None
+    d = json.loads(OCC_BASELINE.read_text())
+    d["dist"] = {int(k): v for k, v in d["dist"].items()}
+    return d

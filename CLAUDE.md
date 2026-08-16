@@ -7,8 +7,8 @@
          (the universe splits into THREE terciles; the top third is not traded.
           A 50/50 split would put Nestle and Titan into "small" and redefine
           every result ever measured.)
-      -> rank within cluster: score + 200-DMA gate -> top 20 each
-      -> bucket = 3 micro + 2 small = 5 stocks
+      -> POOLED rank across every eligible stock + 200-DMA gate
+      -> bucket = the best 5 outright (clusters gate eligibility only)
       -> breakout trigger, filled at the NEXT open
       -> Rs 3,00,000 capital, max 75% deployed (Rs 45k/stock)
          open risk 7.5% at a full book, ~4.6% typical (occupancy averages 3.09/5)

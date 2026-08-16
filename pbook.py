@@ -176,10 +176,10 @@ def __selftest_body():
           target REAL, exit_day TEXT, exit_px REAL, exit_reason TEXT, net REAL,
           features TEXT);""")
         corpus = {"T": s}
-        assert queue([{"symbol": "T", "cluster": "mid", "qty": 100,
+        assert queue([{"symbol": "T", "cluster": "small", "qty": 100,
                        "stop": 90.0, "target": 120.0}], days[200], c) == 1
         # queueing the same symbol twice must not double it
-        assert queue([{"symbol": "T", "cluster": "mid", "qty": 100,
+        assert queue([{"symbol": "T", "cluster": "small", "qty": 100,
                        "stop": 90.0, "target": 120.0}], days[200], c) == 0
 
         filled, closed = step(corpus, days[201], c)

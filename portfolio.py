@@ -122,6 +122,20 @@ def _why(r):
 # clusters. Module-level so the generated Bucket Book reads the real mix
 # instead of restating it in prose -- it was already describing 2/2/1 one
 # minute after the design changed.
+# "per_cluster" ranks inside each size band; "pooled" ranks every tradeable
+# name against every other. Pooled makes the cluster split cosmetic, since the
+# book then takes whatever ranks highest regardless of band.
+# "pooled": every tradeable stock is ranked against every other and the book
+# takes the best five outright. The size clusters then only decide WHO IS
+# ELIGIBLE (the least-liquid 67%), not how the five are split.
+#
+# Measured against per-cluster 3/2: CAGR +16.61 vs +13.57, CAGR-per-drawdown
+# 0.553 vs 0.471 -- but the worst half-year block is -119.4% against -83.6%.
+# Better return and better risk-adjusted return, worse tail. Worst-block
+# ranking is the one that has generalised in this project, so this is a
+# deliberate trade, not a free win.
+RANKING = "pooled"
+
 TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
 
 # Floor on positions held. When fewer names trigger than this, the shortfall is
@@ -154,15 +168,13 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
     # that variant returns +7.48% / 37.9% DD against +11.45% / 23.8% for
     # marking. Rank first, then require the trigger, then hold cash if the best
     # names are not ready.
-    picks = clusters.pick(corpus, as_of, per_cluster=20)
+    picks = (clusters.pick_pooled(corpus, as_of) if RANKING == "pooled"
+             else clusters.pick(corpus, as_of, per_cluster=20))
     ranks = {}
-    for b, syms in clusters.size_clusters(corpus, as_of,
-                                         names=clusters.CLUSTER_NAMES).items():
+    for b, syms in clusters.size_clusters(corpus, as_of).items():
         ranks.update(clusters.score(corpus, syms, as_of, with_ranks=True)[1])
     rows = []
     for cluster, lst in picks.items():
-        if cluster not in clusters.TRADEABLE:
-            continue
         for sym, score in lst:
             s = corpus[sym]
             i = s.index_of(as_of)
@@ -256,6 +268,17 @@ def allocate(rows, take_per_cluster=None, offset=0):
     # 35% win, the only negative cluster. All three no-mid mixes beat all three
     # with-mid mixes, and the controlled pair (2/2/0 vs 2/2/1) puts the mid slot
     # alone at -1.32 points of CAGR.
+    if RANKING == "pooled" and take_per_cluster is None:
+        # Pooled ranking with a per-cluster quota would be neither one thing
+        # nor the other: take the best five outright, whatever band they are in.
+        out = [r for r in rows[:MAX_POSITIONS] if r.get("triggered", True)]
+        if len(out) < MIN_POSITIONS:
+            for r in rows[:MAX_POSITIONS]:
+                if len(out) >= MIN_POSITIONS:
+                    break
+                if r not in out:
+                    out.append(r)
+        return out
     take_per_cluster = take_per_cluster or dict(TAKE_PER_CLUSTER)
     # ROUND-ROBIN, not cluster-blocks. Returning micro's picks first and then
     # slicing rows[:room] took two micro whenever only two slots were free and
@@ -317,8 +340,9 @@ def _selftest():
     assert b < a, (a, b)
 
     # allocation must spread across clusters, not collapse into the richest one
-    fake = ([{"cluster": "mid", "score": 90 - i, "symbol": f"M{i}"} for i in range(20)]
-            + [{"cluster": "small", "score": 60 - i, "symbol": f"S{i}"} for i in range(20)]
+    # `small` deliberately carries the highest scores: a book that ranked
+    # globally would be all small, and the per-cluster split is what stops it.
+    fake = ([{"cluster": "small", "score": 90 - i, "symbol": f"S{i}"} for i in range(20)]
             + [{"cluster": "micro", "score": 50 - i, "symbol": f"C{i}"} for i in range(20)])
     fake.sort(key=lambda r: -r["score"])
     book = allocate(fake)
@@ -330,21 +354,28 @@ def _selftest():
     # must hold is that the configured mix is honoured exactly, whatever it is
     # -- hardcoding the numbers made this fail every time the mix changed, for
     # a reason unrelated to what it was protecting.
-    expected = dict(TAKE_PER_CLUSTER)
-    assert got == expected, (got, expected)
-    assert "mid" not in got, "mid is deliberately allocated zero positions"
-    assert max(got.values()) < len(book), "one cluster must not supply the whole book"
-    assert sum(got.values()) == len(book)
+    if RANKING == "pooled":
+        # Pooled ranking takes the best five outright, so one cluster CAN
+        # supply the whole book. That is the design, not the slice bug -- but
+        # it is a real concentration the 3/2 split used to prevent, so assert
+        # it deliberately rather than letting it pass unremarked.
+        assert len(book) == MAX_POSITIONS, len(book)
+        assert [r["symbol"] for r in book] == [r["symbol"] for r in fake[:5]], \
+            "pooled must take the top five by score, in order"
+    else:
+        expected = dict(TAKE_PER_CLUSTER)
+        assert got == expected, (got, expected)
+        assert max(got.values()) < len(book), "one cluster must not supply the whole book"
+        assert sum(got.values()) == len(book)
 
-    # ANY PREFIX must stay spread: this is what the slice bug violated. The
-    # bound is the number of clusters actually ALLOCATED TO (2 since mid went
-    # to zero), not a hardcoded 3 -- otherwise the test demands a cluster the
-    # design no longer buys.
-    n_clusters = len(expected)
-    for room in (1, 2, 3, 4):
-        pre = allocate(fake)[:room]
-        seen = {r["cluster"] for r in pre}
-        assert len(seen) == min(room, n_clusters), (room, [r["cluster"] for r in pre])
+    # ANY PREFIX must stay spread -- only meaningful under per-cluster
+    # ranking, which is the mode that promises a spread at all.
+    if RANKING != "pooled":
+        n_clusters = len(TAKE_PER_CLUSTER)
+        for room in (1, 2, 3, 4):
+            pre = allocate(fake)[:room]
+            seen = {r["cluster"] for r in pre}
+            assert len(seen) == min(room, n_clusters), (room, [r["cluster"] for r in pre])
     print("portfolio selftest ok")
 
 
