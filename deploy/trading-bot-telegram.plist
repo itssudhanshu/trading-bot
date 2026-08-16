@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Telegram listener. KeepAlive because it long-polls: if it dies, launchd
+  restarts it, otherwise commands silently stop being answered and you would
+  not know until you asked something and got nothing back.
+
+    cp deploy/trading-bot-telegram.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/trading-bot-telegram.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sudhanshu.tradingbot.telegram</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>-lc</string>
+    <string>/usr/local/bin/python3 tg.py --listen</string></array>
+  <key>KeepAlive</key><true/>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/telegram.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/telegram.log</string>
+</dict>
+</plist>

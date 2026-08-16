@@ -1,0 +1,41 @@
+walk-forward on top 30 of the train ranking (shortlisting is itself selection -- the holdout is the real test)
+
+  hash             setup                                    fold n/exp verdict
+  724bb8d8751b6ac4 ema_pullback      12/ -1216    0/    +0    0/    +0    0/    +0  4/4 folds under 30 taken trades
+  b0228b650823485e mean_reversion     3/ +4912   53/  +691   13/  +877   19/ +1416  3/4 folds under 30 taken trades
+  f37504dfe5496f7b turtle_soup        2/+13948   24/ +3295   14/ +3487    9/ +1161  4/4 folds under 30 taken trades
+  8500dc623898f0cb mean_reversion     4/  -701    1/  +339    4/ +4658    0/    +0  4/4 folds under 30 taken trades
+  131b0290ca0232c2 vcp                9/  -965   12/ +2364   21/ +2800   32/ +2503  3/4 folds under 30 taken trades
+  414ce07f7d9766bb mean_reversion     8/  +351   23/ -1244   11/ +1314   17/  -594  4/4 folds under 30 taken trades
+  9c169f4e8fe059fa mean_reversion     8/ -2893   17/ -2267    8/ +3859    9/  +673  4/4 folds under 30 taken trades
+  e5bec6cb19c60c2a vcp               16/  +577    6/ +3440   29/ +1489   20/ +1667  4/4 folds under 30 taken trades
+  2b73bd0defb02920 vcp                9/ -1607    7/ -1455   47/ +2200   29/   +40  3/4 folds under 30 taken trades
+  d2b2dce7fa6f363b mean_reversion    54/  +265   38/   +20   48/ +1540   64/  +169  PROMOTED
+  57c89c6ffe9e5141 mean_reversion    10/+26590   43/ +2253   25/ +1133   26/  +868  3/4 folds under 30 taken trades
+  32c2829561563d0d ema_pullback      13/ +5220    0/    +0    6/ -1763    0/    +0  4/4 folds under 30 taken trades
+  9c2a53def80eb955 turtle_soup       52/   +55  116/  +356   91/ +1022   95/   -81  PROMOTED
+  c54c8e0bfc13a873 ema_pullback      18/   +64   28/ -1382   41/  +797   46/  -750  2/4 folds under 30 taken trades
+  a00e46d02392a76b mean_reversion    26/  -382   29/  -929   38/ +1356   31/  +118  2/4 folds under 30 taken trades
+  d0df23575cea8238 turtle_soup        8/ +6227   24/  +413    8/ +8938   21/ +1761  4/4 folds under 30 taken trades
+  88d72c5b5c9bc598 turtle_soup        3/ +6160   22/  -433    3/ +2555   22/ +2519  4/4 folds under 30 taken trades
+  66dac618118337da turtle_soup       34/   -93   22/ -1579   30/  +725   31/ -1908  1/4 folds under 30 taken trades
+  6ae48851f0355a62 turtle_soup       21/   -73   48/  +568   36/ +3643   42/ -2264  1/4 folds under 30 taken trades
+  a2389827bf5c5022 rs_momentum       24/ -3848   31/ -1986   32/ -1263   36/ -3307  1/4 folds under 30 taken trades
+  8dd8ebbcfbf5f8f5 turtle_soup       25/  +133   77/  -193   45/  +526   62/  -206  1/4 folds under 30 taken trades
+  5fb3ef06bc3ae346 ema_pullback       8/ +3221   15/  -573   20/ +1858   32/ +1877  3/4 folds under 30 taken trades
+  9d8a78001dd87900 rs_momentum       20/ +1420   17/ -2685   36/ +4235   53/   +76  2/4 folds under 30 taken trades
+  9949f7005e0741f9 ema_pullback      53/ +1363   23/ -4106   19/  +388    0/    +0  3/4 folds under 30 taken trades
+  264532de0db832df ema_pullback      14/ +9747   10/ -2923    8/ +5873   20/ -3401  4/4 folds under 30 taken trades
+  9faa6b67dd296436 stage2_breakout   14/ +1438   34/ -2044   25/ +1823   26/ +2056  3/4 folds under 30 taken trades
+  f4d57bda88dc8b0b mean_reversion    35/ +1088   89/ +1088   16/ +1340   21/ +1468  2/4 folds under 30 taken trades
+  0afc3c162bc6ecc0 ema_pullback      23/ +3205    3/ -5933   22/ -1337    0/    +0  4/4 folds under 30 taken trades
+  866d932e1ca384bf ema_pullback       9/ +3292    7/ +2409   12/ +3761   11/ -2345  4/4 folds under 30 taken trades
+  a26044c0af5a9ef1 turtle_soup       22/ +1636   48/  -672   31/ +1292   54/  -351  1/4 folds under 30 taken trades
+
+PBO (search-level, train blocks only, scorer=min)
+  specs 30  blocks 10  paths 252
+  PBO = 0.373   median lambda +0.598
+  -> search selection carries signal
+
+promoted: 2/30
+each promoted spec may now be consulted against the sealed holdout, at one budget unit each (9/50 spent)

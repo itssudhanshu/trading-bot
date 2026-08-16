@@ -76,7 +76,11 @@ def pbo_of(seed, scorer="min"):
     return cpcv.pbo(d, scorer=scorer)["pbo"], len(d)
 
 
-def one_cycle(n_specs=400, workers=6, consult=False, log=print):
+def _flushing(*a, **k):
+    print(*a, **{**k, "flush": True})
+
+
+def one_cycle(n_specs=400, workers=6, consult=False, log=_flushing):
     import judge
     state = _load_state()
     seed = next_seed(state)
@@ -133,7 +137,7 @@ def one_cycle(n_specs=400, workers=6, consult=False, log=print):
     return rec
 
 
-def _consult(rows, log=print):
+def _consult(rows, log=_flushing):
     import dsr, features, judge, report, split
     corpus = features.load_corpus(); bd = features.breadth(corpus)
     days = sorted({d for s in corpus.values() for d in s.days})

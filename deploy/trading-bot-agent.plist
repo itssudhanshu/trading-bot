@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The self-running agent. ONE schedule replaces the daily/weekly pair.
+  Runs hourly and does only what is outstanding, so it is safe to run twice and
+  catches up after the machine was asleep.
+
+  That difference matters here: a fixed 19:00 job on a sleeping machine misses
+  the session permanently, because NSE publishes surveillance state for the
+  current day only. An agent that asks "is today's snapshot missing?" simply
+  does it on the next wake.
+
+  Install (replaces trading-bot-daily / -weekly / -pipeline):
+    cp deploy/trading-bot-agent.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/trading-bot-agent.plist
+
+  Never passes --consult: holdout budget is spent by a person who means it.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sudhanshu.tradingbot.agent</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>/usr/local/bin/python3 agent.py --once</string>
+  </array>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/agent.log</string>
+  <key>Nice</key><integer>10</integer>
+</dict>
+</plist>

@@ -1,0 +1,26 @@
+{
+  "runs": [
+    {
+      "seed": 905832,
+      "at": "20260816-1237",
+      "stage": "validate",
+      "pbo": 0.19047619047619047,
+      "n_candidates": 227,
+      "promoted": 1,
+      "stop": "1 promoted; consultation is a deliberate act"
+    },
+    {
+      "seed": 763846,
+      "at": "20260816-1309",
+      "stage": "validate",
+      "pbo": 0.25,
+      "n_candidates": 226,
+      "promoted": 2,
+      "stop": "2 promoted; consultation is a deliberate act"
+    }
+  ],
+  "seeds_used": [
+    905832,
+    763846
+  ]
+}

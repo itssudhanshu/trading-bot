@@ -1,0 +1,14 @@
+# Linux equivalent. Same idea: hourly, does what is due, idempotent.
+#   cp deploy/trading-bot-agent.* ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now trading-bot-agent.timer
+#   loginctl enable-linger $USER
+[Unit]
+Description=trading-bot self-running agent
+After=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trading-bot
+ExecStart=/usr/bin/python3 agent.py --once
+Nice=10
+StandardOutput=append:%h/trading-bot/data/agent.log
+StandardError=append:%h/trading-bot/data/agent.log

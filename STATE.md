@@ -132,6 +132,28 @@ and the serial path measured ~98 s/spec here against ~25 s/spec on the Mac,
 putting a 400-spec search at ~10 hours. Bounding the memo (L35) made the
 pipeline runnable here at all -- it did not make it fast.
 
+### Self-running agent (the entry point)
+
+`agent.py` is the single scheduled job. Hourly, idempotent, does only what is
+outstanding:
+
+    snapshot -> catchup -> paper runner -> research cycle (weekends, every 6d)
+
+Driven by what is MISSING, not by the clock, so a machine asleep at 19:00
+catches up on the next wake instead of losing the session permanently -- NSE
+publishes surveillance state for the current day only.
+
+    python3 agent.py --status   # what is due; changes nothing
+    python3 agent.py --once     # do what is due (this is what the timer runs)
+    python3 agent.py --daemon   # loop, for a machine left running
+
+Writes `data/DIGEST.md` -- the human-readable answer; the logs hold the detail.
+Holds a lock so two agents cannot collide, and skips if a heavy job is already
+running. NEVER spends holdout budget.
+
+Install: deploy/trading-bot-agent.plist (macOS) or .service/.timer (Linux).
+Replaces the daily/weekly/pipeline schedules.
+
 ### Autonomous pipeline
 
 `pipeline.py` runs the whole next-step chain unattended:

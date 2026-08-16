@@ -1,0 +1,10 @@
+=== cycle 20260816-1237  seed 905832 ===
+  search done in 1323s
+  PBO(min) = 0.190 over 227 candidates
+  promoted: 1
+HOLD: 1 promoted; consultation is a deliberate act  (rerun with --consult to spend budget)
+=== cycle 20260816-1309  seed 763846 ===
+  search done in 1342s
+  PBO(min) = 0.250 over 226 candidates
+  promoted: 2
+HOLD: 2 promoted; consultation is a deliberate act  (rerun with --consult to spend budget)
