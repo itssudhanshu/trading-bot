@@ -99,6 +99,55 @@ def analyse(trades):
     return out
 
 
+def unconditioned_test(corpus, days, feature, n_dates=40, hold=15,
+                       stop_pct=10.0, target_pct=20.0):
+    """Measure a feature on trades selected WITHOUT it.
+
+    The ledger's spread for `deliv` was measured on trades that delivery helped
+    choose, so it described the selected sample rather than the universe --
+    inverting on that evidence cost 26 points of CAGR (L48). The only honest
+    test samples the universe at RANDOM, ignoring every score, then asks whether
+    the feature separates outcomes anyway.
+    """
+    import random
+    import runner
+    rng = random.Random(11)
+    rows = []
+    for di in range(300, len(days) - hold - 1, max(1, (len(days) - 320) // n_dates)):
+        day = days[di]
+        syms = [s for s in corpus if corpus[s].index_of(day) is not None]
+        if not syms:
+            continue
+        for sym in rng.sample(syms, min(25, len(syms))):
+            s = corpus[sym]
+            i = s.index_of(day)
+            if i is None or i < 200 or i + 1 >= len(s):
+                continue
+            e = s.open[i + 1]
+            if not e:
+                continue
+            f = runner.entry_features(s, i)
+            if f.get(feature) is None:
+                continue
+            stop, tgt = e * (1 - stop_pct / 100), e * (1 + target_pct / 100)
+            px = s.close[min(i + hold, len(s) - 1)]
+            for k in range(i + 1, min(i + 1 + hold, len(s))):
+                if s.low[k] <= stop:
+                    px = min(stop, s.open[k]); break
+                if s.high[k] >= tgt:
+                    px = max(tgt, s.open[k]); break
+            rows.append({**f, "ret": (px / e - 1) * 100 - 0.4})
+    if len(rows) < 200:
+        return None, f"only {len(rows)} unconditioned samples"
+    info = analyse(rows)
+    if feature not in info:
+        return None, "not measurable"
+    v = info[feature]
+    return v["spread"], (f"unconditioned spread {v['spread']:+.2f}% "
+                         f"(top {v['top_third']:+.2f} vs bottom {v['bottom_third']:+.2f}, "
+                         f"n={v['n']})")
+
+
 def split_check(trades, feature, split=0.5):
     """Does this feature's information survive out of sample?
 
@@ -123,7 +172,7 @@ def split_check(trades, feature, split=0.5):
     return True, f"consistent sign ({a:+.2f} -> {b:+.2f})"
 
 
-def propose(trades, current=None):
+def propose(trades, current=None, unconditioned=None):
     """-> (new_weights, notes). Returns current weights unchanged when the
     evidence is too thin; the caller should say so rather than pretend."""
     cur = dict(current or load_weights())
@@ -162,20 +211,44 @@ def propose(trades, current=None):
     # halves) and -- once every spread floored to zero -- decayed all weights by
     # the SAME factor, which a weighted average cancels exactly. The loop
     # reported updates and changed nothing.
+    # Every bad update today passed the conditioned tests and failed this one:
+    # a weight may only move if the feature's information survives being
+    # measured on trades it did NOT help select (L48).
+    corpus = (current or {}).pop("_corpus", None) if isinstance(current, dict) else None
+    # The unconditioned measurement IS the measurement. Disagreement with the
+    # selected-sample reading does not make both untrustworthy -- it identifies
+    # the selected one as the artefact, which is the entire point of measuring
+    # on trades the feature did not choose. Holding on disagreement discarded
+    # deliv at +1.22%, the strongest genuine signal in the data.
+    if unconditioned:
+        for f in list(spreads):
+            u = unconditioned.get(f)
+            if u is None:
+                spreads[f] = 0.0
+                notes.append(f"{f}: held -- no unconditioned measurement")
+                continue
+            was = spreads[f]
+            spreads[f] = u
+            if abs(was) > 1e-9 and (u > 0) != (was > 0):
+                notes.append(f"{f}: selected-sample said {was:+.2f}%, unconditioned "
+                             f"says {u:+.2f}% -- using unconditioned, the other is "
+                             f"a selection artefact")
+            else:
+                notes.append(f"{f}: unconditioned {u:+.2f}%")
+
+    # Inversion is allowed ONLY on unconditioned evidence. Inverting deliv on
+    # the selected-sample reading cost 26 points of CAGR (L48); the same
+    # operation on an unconditioned measurement is a different claim, because
+    # the sample was not chosen by the feature being tested.
     inverted = []
     for f, s in list(spreads.items()):
-        if s < 0:
-            ok, _ = split_check(trades, f)
-            if ok:
-                # Do NOT auto-invert: the spread is measured on trades this very
-                # feature helped select, so a negative sign may be collider bias
-                # rather than backwards information. Flag it for a human and an
-                # unconditioned test; inverting deliv on exactly this evidence
-                # cost 26 points of CAGR.
-                notes.append(f"{f}: negative spread {s:+.2f}% is CONSISTENT but "
-                             f"selection-conditioned -- needs an unconditioned "
-                             f"test before inverting")
-                spreads[f] = 0.0
+        if s < 0 and abs(s) > 0.5 and unconditioned and unconditioned.get(f) is not None:
+            inverted.append(f)
+            spreads[f] = -s
+            notes.append(f"{f}: INVERT -- unconditioned {s:+.2f}% (low values did "
+                         f"better); verify by simulation before keeping")
+        elif s < 0:
+            spreads[f] = 0.0
     pos = {f: max(s, 0.0) for f, s in spreads.items()}
     total = sum(pos.values()) or 1.0
     new = {}
@@ -189,6 +262,9 @@ def propose(trades, current=None):
     ratios = [new[f] / w for f, w in cur.items() if w]
     if ratios and max(ratios) - min(ratios) < 1e-6:
         notes.append("NO-OP: all weights scaled equally -- ranking unchanged")
+    if inverted:
+        notes.append("INVERTED: " + ", ".join(inverted) +
+                     " -- must be confirmed by a full simulation")
     return new, notes
 
 

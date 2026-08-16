@@ -60,3 +60,33 @@ listening (pid 78146, 10 commands)
 ./run_listener.sh: line 9: 78146 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 78273, 11 commands)
+changed on disk: learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 78495, 11 commands)
+changed on disk: learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 78600, 11 commands)
+changed on disk: learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 78644, 11 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 78778, 11 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 78864, 11 commands)
+./run_listener.sh: line 9: 78864 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 78912, 13 commands)
+changed on disk: simulate.py, pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 79562, 13 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 79580, 13 commands)
+changed on disk: overview.py -- restarting
+listener exited, restarting in 3s
+listening (pid 79604, 13 commands)
+./run_listener.sh: line 9: 79604 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 79615, 13 commands)

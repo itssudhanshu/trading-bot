@@ -93,7 +93,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
 RESULTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "simulations.jsonl"
 
 
-def store(name, r, batch=None):
+def store(name, r, batch=None, track="cluster"):
     """Append one simulation result. Append-only and timestamped: a variant run
     weeks apart under different code is a DIFFERENT result, and overwriting
     would hide that the parameters or the engine moved underneath it."""
@@ -107,7 +107,7 @@ def store(name, r, batch=None):
     row = {
         "at": _dt.now().isoformat(timespec="seconds"),
         "batch": batch or _dt.now().strftime("%Y%m%d-%H%M"),
-        "variant": name,
+        "variant": name, "track": track,
         "cagr": round(r["cagr"], 2), "maxdd": round(r["maxdd"], 1),
         "total_pct": round(r["total_pct"], 1), "equity": round(r["equity"]),
         "n": len(t),
@@ -122,11 +122,22 @@ def store(name, r, batch=None):
     return row
 
 
-def load_results(limit=None, batch=None):
+def load_results(limit=None, batch=None, track="cluster", include_void=False):
+    """Reads ONE track by default.
+
+    The cluster book and the spec-search are different experiments with
+    different universes, sizing and exits. Counting them together produces a
+    number that describes neither -- the same blending CLAUDE.md forbids for
+    regime blocks. `track=None` opts into the blend deliberately.
+    """
     import json as _j
     if not RESULTS.exists():
         return []
     rows = [_j.loads(l) for l in RESULTS.read_text().splitlines() if l.strip()]
+    if not include_void:
+        rows = [r for r in rows if not r.get("void")]
+    if track:
+        rows = [r for r in rows if r.get("track", "cluster") == track]
     if batch:
         rows = [r for r in rows if r["batch"] == batch]
     return rows[-limit:] if limit else rows
@@ -258,3 +269,69 @@ if __name__ == "__main__":
     report("cap 2/bucket", run(corpus, days, sector_cap=2))
     report("small+mid only", run(corpus, days,
                                  per_bucket={"small": 3, "mid": 2}))
+
+
+# ---------------------------------------------------------------- keep/promote
+STRATS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "strategies.jsonl"
+
+# A configuration is worth paper-trading only if it survives all four. Positive
+# CAGR alone is what a search returns by construction -- out of N variants the
+# best few are profitable whether or not anything real is there. The drawdown
+# and trade-count bars are what stop the store filling with lucky 20-trade runs.
+KEEP_CAGR, KEEP_DD, KEEP_N, KEEP_WIN = 5.0, 55.0, 150, 30.0
+
+
+def keep(name, r, params, *, batch=None, note="", track="cluster"):
+    """Store a configuration that cleared the promotion bar, with the exact
+    parameters needed to replay it in the paper book.
+
+    Status is always 'candidate'. Nothing here is validated -- these are
+    backtest survivors, and the whole project's evidence says a backtest
+    survivor is a hypothesis, not a strategy. Promotion to 'paper' happens only
+    after forward trades, which is the one evidence stream a search cannot
+    contaminate.
+    """
+    import json as _j
+    from datetime import datetime as _dt
+    t = r["trades"]
+    n = len(t)
+    win = sum(1 for x in t if x["ret"] > 0) / max(n, 1) * 100
+    fails = []
+    if not (r["cagr"] > KEEP_CAGR):  fails.append(f"cagr {r['cagr']:.2f}<={KEEP_CAGR}")
+    if not (r["maxdd"] < KEEP_DD):   fails.append(f"maxdd {r['maxdd']:.1f}>={KEEP_DD}")
+    if n < KEEP_N:                   fails.append(f"n {n}<{KEEP_N}")
+    if win < KEEP_WIN:               fails.append(f"win {win:.0f}<{KEEP_WIN}")
+    if fails:
+        return None
+    row = {"at": _dt.now().isoformat(timespec="seconds"),
+           "batch": batch or BATCH, "variant": name, "status": "candidate",
+           "track": track,
+           "cagr": round(r["cagr"], 2), "maxdd": round(r["maxdd"], 1),
+           "n": n, "win": round(win), "note": note,
+           "params": {k: v for k, v in sorted(params.items())}}
+    STRATS.parent.mkdir(parents=True, exist_ok=True)
+    with STRATS.open("a") as f:
+        f.write(_j.dumps(row) + "\n")
+    return row
+
+
+def load_strats(status=None, track="cluster"):
+    import json as _j
+    if not STRATS.exists():
+        return []
+    rows = [_j.loads(l) for l in STRATS.read_text().splitlines() if l.strip()]
+    if track:
+        rows = [r for r in rows if r.get("track", "cluster") == track]
+    return [r for r in rows if r.get("status") == status] if status else rows
+
+
+def best_strategy():
+    """-> the stored candidate with the best WORST-CASE evidence, or None.
+
+    Ranked by CAGR only among rows that cleared `keep`. Ranking a search by its
+    best result is what PBO measured at 0.75-0.86; this store is not a search,
+    it is a shortlist of already-filtered configurations, and the paper book
+    still only ever runs one of them at a time.
+    """
+    rows = load_strats()
+    return max(rows, key=lambda r: r["cagr"]) if rows else None

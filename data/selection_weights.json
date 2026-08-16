@@ -1,10 +1,10 @@
 {
  "weights": {
   "rs": 1.0,
-  "deliv": 1.0,
+  "deliv": 1.5,
   "liq": 1.0,
   "near_high": 1.0
  },
- "updated": "2026-08-16T17:01:28.199224",
- "note": "reset after deliv inversion falsified"
+ "updated": "2026-08-16T17:21:46.631209",
+ "note": "deliv +50%: unconditioned spread +1.22% on 954 randomly-sampled trades; confirmed by simulation (+24.10% CAGR / 27.0% DD vs +12.66% / 38.9% neutral). liq inversion NOT adopted: raises CAGR but drawdown 27->49%."
 }

@@ -107,17 +107,33 @@ def cmd_progress(_=None):
 
 
 def cmd_paper(_=None):
+    """The Rs 5L cluster book FIRST -- it is the live one.
+
+    This used to read engine.Journal() only, which is the spec-search book and
+    has never held a position. /paper therefore reported an empty book while
+    the cluster book had five queued. Two books, one command, no label.
+    """
+    import pbook
+    s = pbook.summary()
+    out = [f"*paper book* {datetime.now():%d %b %H:%M}", "",
+           f"*Rs 5L cluster book* — your 20/20/20 design",
+           f"• equity: Rs {s['equity']:,.0f}  (realised Rs {s['realised']:+,.0f})",
+           f"• {s['open']} open · {s['pending']} queued · {s['closed']} closed"]
+    for r in s["rows"]:
+        if r["status"] in ("open", "pending"):
+            px = r["entry_px"] or 0
+            out.append(f"  – {r['symbol']} ({r['bucket']}) {r['status']}"
+                       + (f" @ {px:.2f}" if px else "")
+                       + f"  stop {r['stop']:.2f} → tgt {r['target']:.2f}")
+    if not s["closed"]:
+        out.append("_no closed trades yet — forward evidence is calendar-bound_")
+    out.append("")
     import engine
     j = engine.Journal()
     op, cl = j.positions("open"), j.positions("closed")
-    out = [f"*paper book* {datetime.now():%d %b %H:%M}", "",
-           f"• open: {len(op)}", f"• closed: {len(cl)}",
-           f"• realised: Rs {j.realised_pnl():+,.0f}"]
-    for p in op[:8]:
-        out.append(f"  – {p['symbol']} @ {p['entry_px'] or 0:.2f} "
-                   f"stop {p['stop']:.2f}")
-    if not op and not cl:
-        out.append("\n_no trades yet -- forward evidence is calendar-bound_")
+    out.append(f"*spec-search book* — the earlier track, kept separate")
+    out.append(f"• {len(op)} open · {len(cl)} closed · "
+               f"realised Rs {j.realised_pnl():+,.0f}")
     return "\n".join(out)
 
 
@@ -247,8 +263,64 @@ def cmd_wf(_=None):
     return "\n".join(out)
 
 
+def cmd_overview(_=None):
+    """The one-screen answer to 'where are we, is this working?'"""
+    import overview
+    s = overview.state()
+    g = overview.gates(s)
+    verdict, why = overview.direction(s, g)
+    b = s["book"]
+    out = [f"*OVERVIEW* — {verdict}", ""]
+    out.append(f"*Data* {s['days']} sessions, {s['span'][0]} → {s['span'][1]}")
+    out.append(f"*Search* {s['n_sims']} sims · {s['n_wf']} walk-forward · "
+               f"{s['n_learn_trades']:,} trades studied")
+    out.append(f"*Holdout* {s['budget_spent']}/{s['budget_total']} spent — "
+               f"{s['holdout_pass']} PASS, {s['holdout_fail']} FAIL")
+    out.append(f"*Book* {b['pending']} queued, {b['open']} open, {b['closed']} closed, "
+               f"realised {b['net']:+,.0f}")
+    out.append("")
+    out.append("*Gates*")
+    mark = {"PASS": "✅", "FAIL": "❌", "PENDING": "⏳", "NONE": "—",
+            "WEAK": "⚠️", "THIN": "⚠️", "MEASURING": "📈"}
+    for name, vd, ev in g:
+        out.append(f"{mark.get(vd, '·')} {name} — _{ev}_")
+    out.append("")
+    out.append("*Why that verdict*")
+    for w in why:
+        out.append(f"• {w}")
+    out.append("")
+    out.append("_The apparatus is trustworthy; the strategy is not yet shown to "
+               "work. Only the first has been earned._")
+    return "\n".join(out)
+
+
+def cmd_strategies(_=None):
+    """Backtest survivors kept for forward testing."""
+    import simulate
+    rows = simulate.load_strats()
+    if not rows:
+        return ("*strategies*\nNothing stored yet — no configuration has cleared "
+                f"the bar (CAGR>{simulate.KEEP_CAGR}%, DD<{simulate.KEEP_DD}%, "
+                f"n≥{simulate.KEEP_N}, win≥{simulate.KEEP_WIN}%).")
+    out = [f"*stored strategies* ({len(rows)})", ""]
+    for r in sorted(rows, key=lambda x: -x["cagr"])[:8]:
+        p = r.get("params", {})
+        out.append(f"*{r['variant']}* — `{r['status']}`")
+        out.append(f"  CAGR {r['cagr']:+.2f}% · DD {r['maxdd']:.1f}% · "
+                   f"n={r['n']} · win {r['win']}%")
+        out.append(f"  stop {p.get('stop_pct')}% / target {p.get('target_pct')}% / "
+                   f"hold {p.get('hold')}d")
+        if p.get("inverted"):
+            out.append(f"  inverted: {', '.join(p['inverted'])}")
+        out.append("")
+    out.append("_Candidates are backtest survivors, not validated strategies. "
+               "They earn 'paper' status only from forward trades._")
+    return "\n".join(out)
+
+
 def cmd_help(_=None):
     return ("*commands*\n"
+            "/overview – where are we? is this working?\n"
             "/status – what needs attention, what is due\n"
             "/progress – corpus, budget, research cycles\n"
             "/paper – paper trading book\n"
@@ -257,6 +329,7 @@ def cmd_help(_=None):
             "/sims – simulation results, in plain language\n"
             "/clusters – the stocks being traded, by size band\n"
             "/wf – walk-forward tests: does tuning even work?\n"
+            "/strategies – profitable configs kept for paper trading\n"
             "/digest – full digest\n\n"
             "_read-only: I never start a search or spend holdout budget from here_")
 
@@ -288,7 +361,8 @@ COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_hea
             "/learning": cmd_learning, "/sims": cmd_sims, "/wf": cmd_wf,
             "/clusters": cmd_clusters,
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
-            "/digest": cmd_digest}
+            "/digest": cmd_digest, "/overview": cmd_overview,
+            "/strategies": cmd_strategies}
 
 
 def _offset(new=None):

@@ -53,6 +53,25 @@ def _pct_rank(vals):
     return {k: (i + 1) / n * 100 for i, (k, _) in enumerate(order)}
 
 
+# Overridable so a caller can test a weight set WITHOUT saving it. These were
+# function-locals inside score(), which made them look injectable while every
+# call silently re-read the file: four different weight configurations returned
+# byte-identical books, and the only clue was that they matched to the digit.
+W = None
+INVERTED = None
+
+
+def _weights():
+    """-> (weights, inverted). Module overrides win; otherwise read the file."""
+    if W is not None or INVERTED is not None:
+        return (W or {}), set(INVERTED or ())
+    try:
+        import learning
+        return learning.load_weights(), set(learning.INVERTED)
+    except Exception:
+        return {}, set()
+
+
 def score(corpus, symbols, as_of):
     """Composite 0-100 per symbol, from data available on `as_of` only."""
     raw = {}
@@ -87,12 +106,7 @@ def score(corpus, symbols, as_of):
     # Weights are learned, not fixed. learning.propose() moves them on measured
     # information; a feature that stops predicting loses influence rather than
     # staying in the score because it was in the original design.
-    try:
-        import learning
-        W = learning.load_weights()
-        INVERTED = set(learning.INVERTED)
-    except Exception:
-        W, INVERTED = {}, set()
+    W, INVERTED = _weights()
     out = {}
     for sym, v in raw.items():
         # Trend is a gate, not a score: a stock below its 200-day average is

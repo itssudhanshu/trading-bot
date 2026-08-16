@@ -26,7 +26,6 @@ import features
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "pbook.db"
-BOOK = ROOT / "data" / "paper_portfolio.json"
 
 CAPITAL = 500_000
 STOP_PCT, TARGET_PCT, HOLD_DAYS = 10.0, 20.0, 15
