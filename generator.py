@@ -46,10 +46,16 @@ CANDIDATES = ROOT / "data" / "candidates.jsonl"        # latest run, for conveni
 # signature of two populations being ranked against each other. Toggling makes
 # that comparison repeatable instead of a manual edit that drifts.
 FUNDAMENTAL_PREDS = {"revenue_growth_yoy", "net_margin_above", "profitable_quarters"}
-USE_FUNDAMENTALS = True
+# Default OFF as AND-filters: epoch 6 measured PBO 0.063 -> 0.524 when these
+# were mixed into the boolean space. The same data is now used where it works --
+# as a RANK key (backtest.rank_score) and as an event GATE (earnings_clear),
+# neither of which competes in the boolean ranking.
+USE_FUNDAMENTALS = False
 
 
 def _families():
+    """`earnings_clear` is deliberately NOT in FUNDAMENTAL_PREDS: it is an event
+    gate, not a quality filter, and it is one of the two layers under test."""
     if USE_FUNDAMENTALS:
         return FAMILIES
     out = {}
@@ -72,7 +78,7 @@ FAMILIES = {
     "stage2_breakout": (["close_above_sma", "ema_slope_up", "breakout_prior_high"],
                         ["vol_expansion", "deliv_zscore_above", "turnover_above",
                          "breadth_above", "above_prior_close", "rs_rank_above",
-                         "close_near_high"]),
+                         "close_near_high", "earnings_clear"]),
     # Long-only momentum cannot profit in the holdout's regime (lessons L19).
     # These two families are the vocabulary's first non-momentum setups.
     "mean_reversion":  (["pct_off_high", "rsi_below"],
@@ -85,7 +91,8 @@ FAMILIES = {
     "rs_momentum":     (["rs_rank_above", "close_above_sma"],
                         ["ema_slope_up", "vol_expansion", "deliv_zscore_above",
                          "turnover_above", "close_near_high", "breadth_above",
-                         "revenue_growth_yoy", "profitable_quarters"]),
+                         "revenue_growth_yoy", "profitable_quarters",
+                         "earnings_clear"]),
     # Momentum plus a fundamental quality gate. The hypothesis under test: every
     # candidate so far loses in BOTH bear blocks, and quality screens are the
     # one input that has historically held up in drawdowns.
@@ -144,6 +151,9 @@ def sample_spec(rng) -> dict:
                   "buffer_pct": rng.choice([0.0, 0.1, 0.25])},
         "stop": stop, "target": target,
         "hold": {"max_bars": rng.choice([10, 20, 30, 45, 60])},
+        # Fundamental momentum competes here, against price-based keys, on the
+        # one question fundamentals can answer: which of several simultaneous
+        # setups deserves the slot.
         "rank": {"by": rng.choice(sorted(specmod.RANK_RULES))},
     }
 

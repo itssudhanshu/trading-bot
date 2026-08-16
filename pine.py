@@ -51,6 +51,7 @@ TRANSLATORS = {
     "revenue_growth_yoy":  (lambda p: f"revenue YoY > {p['min_pct']}% (as-of filed)", True),
     "net_margin_above":    (lambda p: f"net margin > {p['pct']}% (as-of filed)", True),
     "profitable_quarters": (lambda p: f"profitable in last {p['n']} filed quarters", True),
+    "earnings_clear":      (lambda p: f"no results expected within {p['days']}d", True),
 }
 
 
@@ -207,6 +208,7 @@ SAMPLE_PARAMS = {
     "revenue_growth_yoy": {"min_pct": 10.0},
     "net_margin_above": {"pct": 5.0},
     "profitable_quarters": {"n": 4},
+    "earnings_clear": {"days": 30},
 }
 
 

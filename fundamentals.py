@@ -231,6 +231,20 @@ def _selftest():
     assert as_of(fil, _d(2025, 1, 16))["xbrl"] == "b"
     assert as_of([], _d(2025, 1, 1)) is None
 
+    # expected_next_filing: from the company's OWN lag, never a forward calendar
+    hist = [{"visible_from": "2024-01-25", "quarter_end": "2023-12-31"},
+            {"visible_from": "2024-04-24", "quarter_end": "2024-03-31"},
+            {"visible_from": "2024-07-25", "quarter_end": "2024-06-30"}]
+    nxt = expected_next_filing(hist, "2024-08-01")
+    assert nxt is not None
+    # last quarter end 2024-06-30 + 91d + median lag (25d) = 2024-10-24
+    assert nxt.isoformat() == "2024-10-24", nxt
+    # it must never see filings that were not yet visible
+    assert expected_next_filing(hist, "2024-01-26") == expected_next_filing(
+        hist[:1] + hist[1:], "2024-01-26"), "used a future filing"
+    assert expected_next_filing(hist[:1], "2024-02-01") is None, "needs >=2 filings"
+    assert expected_next_filing([], "2024-02-01") is None
+
     # visible(): the as-of rule again, plus lookback measured in QUARTERS
     rows = [{"visible_from": "2024-01-20", "quarter_end": "2023-12-31", "revenue": 100.0},
             {"visible_from": "2024-04-25", "quarter_end": "2024-03-31", "revenue": 110.0},
@@ -357,6 +371,61 @@ def timeline(symbol):
     """Cached as-of timeline, or [] if never built."""
     p = PARSED / f"{symbol}.json"
     return json.loads(p.read_text()) if p.exists() else []
+
+
+def expected_next_filing(rows, day_iso):
+    """Predicted date of the NEXT results, from this company's own past pattern.
+
+    A blackout needs to know results are coming, and the only honest source is
+    history: the last visible quarter end, plus one quarter, plus THIS company's
+    median publication lag. NSE does publish forward board-meeting calendars,
+    but using one in a backtest is lookahead -- on any past date I would be
+    reading a schedule that had not been announced.
+
+    Companies differ enormously: 25 days at p10, 71 at p90 across 91,843
+    filings. A universe-wide constant would blackout the wrong window for most
+    names, so the lag is per-company.
+    """
+    from datetime import date as _date, timedelta as _td
+    seen = [r for r in rows if r["visible_from"] <= day_iso]
+    if len(seen) < 2:
+        return None
+    lags = []
+    for r in seen:
+        qe = _date.fromisoformat(r["quarter_end"])
+        vf = _date.fromisoformat(r["visible_from"])
+        lags.append((vf - qe).days)
+    lags.sort()
+    median_lag = lags[len(lags) // 2]
+    last_qe = _date.fromisoformat(seen[-1]["quarter_end"])
+    return last_qe + _td(days=91) + _td(days=median_lag)
+
+
+def growth_yoy(rows, day_iso, back=0):
+    """Revenue growth vs the same quarter a year earlier, as a fraction.
+
+    `back` shifts the whole comparison earlier, so back=1 gives LAST quarter's
+    YoY growth -- which is what acceleration needs.
+    """
+    now, then = visible(rows, day_iso, back=back), visible(rows, day_iso, back=back + 4)
+    if not now or not then:
+        return None
+    a, b = now.get("revenue"), then.get("revenue")
+    if a is None or not b or b <= 0:
+        return None
+    return a / b - 1.0
+
+
+def growth_accel(rows, day_iso):
+    """Change in YoY growth rate: is the company getting better FASTER?
+
+    A threshold on growth ("grew >10%") is a static quality check and most
+    companies pass it in a good year. The change in growth rate is the momentum
+    signal -- and it is what distinguishes a business accelerating from one
+    merely large.
+    """
+    now, prev = growth_yoy(rows, day_iso), growth_yoy(rows, day_iso, back=1)
+    return None if now is None or prev is None else now - prev
 
 
 def visible(rows, day_iso, back=0):

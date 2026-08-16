@@ -58,7 +58,23 @@ class Trade:
 
 
 def rank_score(rule, sig, s, i):
-    """Preference among same-day signals. Higher is taken first."""
+    """Preference among same-day signals. Higher is taken first.
+
+    Fundamental momentum belongs HERE, not as an AND-filter. As a boolean gate
+    ("profitable last 4 quarters") it is true for most listed companies -- extra
+    search dimensions with no selectivity, which is how epoch 6 overfit. As a
+    ranking key it decides which of several simultaneous setups to take, which
+    is the question fundamentals can actually answer.
+    """
+    if rule in ("rev_growth", "rev_accel"):
+        rows = getattr(s, "fund", None)
+        if not rows:
+            return float("-inf")          # unranked, never preferred
+        import fundamentals
+        day = s.days[i].isoformat()
+        v = (fundamentals.growth_yoy(rows, day) if rule == "rev_growth"
+             else fundamentals.growth_accel(rows, day))
+        return float("-inf") if v is None else v
     if rule == "rr":
         return sig.rr
     if rule == "turnover":

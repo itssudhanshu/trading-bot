@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Autonomous research cycle: search -> PBO gate -> validate -> report.
+  Sunday 02:00, when the machine is idle and markets are shut.
+
+  Does NOT pass --consult. The pipeline stops before spending holdout budget
+  even when everything upstream passes: 50 consultations exist for the life of
+  the project and an unattended loop would spend them in two runs. Promotions
+  wait for a person who means it.
+
+  Install:
+    cp deploy/trading-bot-pipeline.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/trading-bot-pipeline.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sudhanshu.tradingbot.pipeline</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>/usr/local/bin/python3 pipeline.py --cycles 2</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array><dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>2</integer></dict></array>
+  <key>StandardOutPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/pipeline.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/pipeline.log</string>
+  <key>Nice</key><integer>10</integer>
+</dict>
+</plist>

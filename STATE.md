@@ -132,6 +132,24 @@ and the serial path measured ~98 s/spec here against ~25 s/spec on the Mac,
 putting a 400-spec search at ~10 hours. Bounding the memo (L35) made the
 pipeline runnable here at all -- it did not make it fast.
 
+### Autonomous pipeline
+
+`pipeline.py` runs the whole next-step chain unattended:
+
+    search (fresh unused seed) -> PBO gate -> validate -> report
+
+It STOPS on any pre-registered condition: PBO > 0.5, budget exhausted, or
+nothing promoted. It does NOT consult the holdout -- that spends a lifetime
+budget of 50 and an unattended loop would drain it in two runs. `--consult`
+exists for a human who means it and caps at 3 per run.
+
+    python3 pipeline.py --cycles 2            # research only, no budget spent
+    python3 pipeline.py --cycles 1 --consult  # deliberate, spends up to 3
+
+Weekly via deploy/trading-bot-pipeline.plist (Sunday 02:00, no --consult).
+State and seeds used: data/pipeline_state.json -- seeds are never reused, so a
+cycle is always a fresh hypothesis set.
+
 ### Next actions, in order
 
 0. On whatever machine runs it, confirm the header prints `corpus 2486

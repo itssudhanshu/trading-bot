@@ -208,6 +208,24 @@ def _fund(c, i, back=0):
     return fundamentals.visible(rows, c.s.days[i].isoformat(), back=back)
 
 
+def _p_earnings_clear(c, i, days):
+    """No results expected within `days` -- so a hold does not straddle a print.
+
+    Earnings are a coin flip no swing edge survives: the gap is decided by
+    information that did not exist when the position was opened. Unknown
+    schedule returns None (no signal) rather than True, because "I cannot tell"
+    must not read as "safe".
+    """
+    rows = getattr(c.s, "fund", None)
+    if not rows:
+        return None
+    import fundamentals
+    nxt = fundamentals.expected_next_filing(rows, c.s.days[i].isoformat())
+    if nxt is None:
+        return None
+    return (nxt - c.s.days[i]).days > days
+
+
 def _p_revenue_growth_yoy(c, i, min_pct):
     """Revenue vs the same quarter a year earlier (4 filings back)."""
     now, then = _fund(c, i), _fund(c, i, back=4)
@@ -273,6 +291,7 @@ PREDICATES = {
     "revenue_growth_yoy":  (_p_revenue_growth_yoy, {"min_pct": (float, -20.0, 50.0)}),
     "net_margin_above":    (_p_net_margin_above,  {"pct": (float, -5.0, 30.0)}),
     "profitable_quarters": (_p_profitable_quarters, {"n": (int, 1, 8)}),
+    "earnings_clear":      (_p_earnings_clear,     {"days": (int, 5, 60)}),
 }
 # rs_rank_above only has ranks for the lookbacks features.attach_rs precomputes.
 RS_LOOKBACKS = features.RS_LOOKBACKS
@@ -284,7 +303,7 @@ TARGET_RULES = {"r_multiple", "prior_swing_high"}
 # When more signals fire than the portfolio can hold, THIS decides which are
 # taken. Without it an over-subscribed spec is under-specified: the result
 # depends on chronological accident rather than on the strategy.
-RANK_RULES = {"rr", "turnover", "deliv_pct", "none"}
+RANK_RULES = {"rr", "turnover", "deliv_pct", "none", "rev_growth", "rev_accel"}
 
 
 class SpecError(ValueError):
