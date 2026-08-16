@@ -45,7 +45,7 @@ def _busy():
     """True if a heavy job is already running. Two searches at once would
     thrash memory and interleave writes to candidates.jsonl."""
     try:
-        out = subprocess.run(["pgrep", "-f", "generator.py|validate.py|pipeline.py"],
+        out = subprocess.run(["pgrep", "-f", "pbook_run.py|snapshot.py"],
                              capture_output=True, text=True).stdout
         return bool([p for p in out.split() if p and int(p) != os.getpid()])
     except Exception:
@@ -70,6 +70,21 @@ def _unlock():
         LOCK.unlink()
 
 
+# The complete set of things the agent may run. Anything not here is not the
+# agent's business -- the strategy search that used to live here is retired.
+_JOBS = {
+    "snapshot": ["snapshot.py"],
+    "catchup":  ["snapshot.py", "--catchup"],
+    "pbook":    ["pbook_run.py"],
+}
+_JOB_NAMES = tuple(_JOBS)
+
+
+def _cmd_for(job):
+    import sys as _s
+    return [_s.executable] + _JOBS[job]
+
+
 def due(now=None):
     """-> list of task names outstanding right now."""
     now = now or datetime.now()
@@ -85,30 +100,13 @@ def due(now=None):
             todo.append("snapshot")
     if st.get("last_catchup") != str(today):
         todo.append("catchup")
-    if st.get("last_runner") != str(today) and now.weekday() < 5 and now.hour >= 18:
-        todo.append("runner")
     if st.get("last_pbook") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("pbook")
-
-    last = st.get("last_research")
-    if last:
-        gap = (today - date.fromisoformat(str(last)[:10])).days
-    else:
-        gap = 999
-    if gap >= RESEARCH_EVERY_DAYS and now.weekday() >= 5:
-        todo.append("research")
     return todo
 
 
 def run_task(name, log=print):
-    py = sys.executable
-    cmds = {
-        "snapshot": [py, "snapshot.py"],
-        "catchup":  [py, "snapshot.py", "--catchup"],
-        "runner":   [py, "runner.py"],
-        "pbook":    [py, "pbook_run.py"],
-        "research": [py, "pipeline.py", "--cycles", "1"],
-    }
+    cmds = {k: [sys.executable] + v for k, v in _JOBS.items()}
     logf = ROOT / "data" / f"agent_{name}.log"
     with open(logf, "w") as f:
         rc = subprocess.run(cmds[name], stdout=f, stderr=subprocess.STDOUT,
@@ -134,7 +132,6 @@ def attention():
     A monitor that only reports success trains you to stop reading it. This
     reports what is WRONG or waiting, so an empty list is the signal.
     """
-    import judge
     out = []
     st = _state()
     today = date.today()
@@ -173,38 +170,23 @@ def attention():
     except Exception:
         pass
 
-    left = judge.BUDGET - judge._load()["spent"]
-    if left <= 5:
-        out.append(f"only {left} holdout consultations remain")
-
-    p = ROOT / "data" / "pipeline_state.json"
-    if p.exists():
-        runs = json.loads(p.read_text()).get("runs", [])
-        # "promoted" alone is not "waiting": a spec already consulted is settled.
-        # Check the ledger, or this nags about the same four specs forever.
-        try:
-            import judge
-            tested = set(judge._load()["verdicts"])
-        except Exception:
-            tested = set()
-        pending = []
-        pj = ROOT / "data" / "promoted.jsonl"
-        if pj.exists():
-            pending = [json.loads(l) for l in pj.read_text().splitlines() if l.strip()]
-            pending = [p for p in pending if p.get("spec_hash") not in tested]
-        if pending:
-            out.append(f"{len(pending)} promoted spec(s) not yet consulted "
-                       f"(`pipeline.py --consult`)")
-        stalled = [r for r in runs[-3:] if str(r.get("stop", "")).startswith("PBO")]
-        if stalled:
-            out.append(f"{len(stalled)} recent cycle(s) stopped on PBO -- the "
-                       f"selector is not generalising")
+    # The book is queued but nothing has filled for several sessions: either
+    # no candidate is triggering, which is normal, or pbook has stopped running.
+    try:
+        import pbook
+        s = pbook.summary()
+        if s["pending"] and st.get("last_pbook"):
+            gap = (today - date.fromisoformat(str(st["last_pbook"])[:10])).days
+            if gap > 4:
+                out.append(f"book has {s['pending']} queued but pbook last ran "
+                           f"{gap} days ago")
+    except Exception:
+        pass
     return out
 
 
 def digest():
     """Human-readable state. The logs hold detail; this holds the answer."""
-    import judge
     st = _state()
     lines = [f"# Agent digest", f"_{datetime.now():%Y-%m-%d %H:%M}_", ""]
     att = attention()
@@ -214,23 +196,15 @@ def digest():
     lines += [f"**due now:** {', '.join(nxt) if nxt else 'nothing'}", ""]
     days = len(list((ROOT / "data" / "raw").glob("*/bhavcopy_delivery.csv")))
     surv = len(list((ROOT / "data" / "raw").glob("*/asm.json")))
-    lines += [f"- corpus: **{days}** trading days, **{surv}** with surveillance",
-              f"- holdout budget: **{judge._load()['spent']}/{judge.BUDGET}** spent"]
+    lines += [f"- corpus: **{days}** trading days, **{surv}** with surveillance"]
     try:
-        import engine
-        j = engine.Journal()
-        lines.append(f"- paper: **{len(j.positions('open'))}** open, "
-                     f"**{len(j.positions('closed'))}** closed, "
-                     f"realised **Rs {j.realised_pnl():+,.0f}**")
+        import pbook, portfolio
+        s = pbook.summary()
+        lines.append(f"- book: **{s['open']}** open, **{s['pending']}** queued, "
+                     f"**{s['closed']}** closed, realised "
+                     f"**Rs {s['realised']:+,.0f}** of Rs {portfolio.CAPITAL:,}")
     except Exception as e:
-        lines.append(f"- paper: unavailable ({type(e).__name__})")
-    p = ROOT / "data" / "pipeline_state.json"
-    if p.exists():
-        runs = json.loads(p.read_text()).get("runs", [])
-        lines += ["", "## research cycles"]
-        for r in runs[-5:]:
-            lines.append(f"- seed `{r['seed']}` PBO {r.get('pbo', float('nan')):.3f} "
-                         f"promoted {r.get('promoted', 0)} — {r.get('stop', '')[:60]}")
+        lines.append(f"- book: unavailable ({type(e).__name__})")
     lines += ["", f"last tasks: {json.dumps({k: str(v) for k, v in st.items()})}"]
     DIGEST.write_text("\n".join(lines) + "\n")
     return DIGEST
@@ -293,7 +267,7 @@ def once(log=print):
             if run_task(t, log=log):
                 done.append(t)
                 key = {"snapshot": "last_snapshot", "catchup": "last_catchup",
-                       "runner": "last_runner", "research": "last_research",
+
                        "pbook": "last_pbook"}[t]
                 st[key] = str(date.today())
                 _save(st)
@@ -323,19 +297,14 @@ def _selftest():
         with tempfile.TemporaryDirectory() as td:
             STATE, DIGEST, LOCK = (Path(td) / "s.json", Path(td) / "d.md",
                                    Path(td) / "l")
-            # research only on a weekend, and only after the interval
+            # The cycle is data collection plus the book. Nothing runs on a
+            # weekend beyond catch-up, and nothing runs before the close.
             sat = datetime(2026, 8, 15, 10)      # Saturday
-            wed = datetime(2026, 8, 12, 10)      # Wednesday
-            assert "research" in due(sat), due(sat)
-            assert "research" not in due(wed), due(wed)
-            _save({"last_research": "2026-08-14"})
-            assert "research" not in due(sat), "ran research inside the interval"
-            _save({"last_research": "2026-07-01"})
-            assert "research" in due(sat)
-
-            # runner/snapshot are weekday-evening only
-            assert "runner" not in due(datetime(2026, 8, 12, 9)), "ran before close"
-            assert "runner" in due(datetime(2026, 8, 12, 19))
+            assert "pbook" not in due(sat), due(sat)
+            assert "snapshot" not in due(sat), "no bhavcopy is published Saturday"
+            assert "pbook" not in due(datetime(2026, 8, 12, 9)), "ran before close"
+            assert "pbook" in due(datetime(2026, 8, 12, 19))
+            assert "snapshot" in due(datetime(2026, 8, 12, 19))
 
             # lock: held blocks, stale is reclaimed
             assert _lock() is True
@@ -355,9 +324,14 @@ def _selftest():
             assert not any("waiting for a deliberate" in m for m in msgs), msgs
     finally:
         STATE, DIGEST, LOCK = o
-    src = Path(__file__).read_text()
-    assert "--consult" not in src.split("DOES NOT")[1][:400] or True
-    assert '"pipeline.py", "--cycles", "1"' in src, "agent must not pass --consult"
+    # The agent runs only data collection and the book. Assert against the
+    # COMMAND TABLE, not the source text -- a source scan for forbidden names
+    # matches the list of forbidden names itself and can never pass.
+    allowed = {"snapshot.py", "pbook_run.py", "--catchup"}
+    for job in ("snapshot", "catchup", "pbook"):
+        for arg in _cmd_for(job)[1:]:
+            assert arg in allowed, f"{job} runs unexpected {arg!r}"
+    assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook"}, _JOB_NAMES
     print("agent selftest ok")
 
 

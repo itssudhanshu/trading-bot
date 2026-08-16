@@ -1,0 +1,7 @@
+  deploy     per stock     CAGR   maxDD   win  avg held  ~invested   impact     worst
+  60      %  Rs 36,000  +10.85%   24.2%   49%      3.09        37%    0.30%    -82.6%  <- current
+  75      %  Rs 45,000  +13.57%   28.8%   49%      3.09        46%    0.34%    -83.6%
+  90      %  Rs 54,000  +16.96%   34.7%   50%      2.63        47%    0.37%    -84.7%
+  100     %  Rs 60,000  +17.30%   36.3%   49%      2.62        52%    0.39%    -85.1%
+
+  beating current on BOTH return and tail: none

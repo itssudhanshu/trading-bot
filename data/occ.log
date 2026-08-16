@@ -1,0 +1,5 @@
+  variant                  CAGR   maxDD   win     n  avg held  % at 5  % at 0     worst
+  breakout (current)    +10.85%   24.2%   49%   217     3.09     19%      1%    -82.6%
+  no trigger — all 5     +8.88%   31.4%   48%   225     4.40     54%      0%   -111.1%
+  not_overbought         +6.73%   25.7%   49%   241     4.22     51%      0%   -151.9%
+  volume                 -3.00%   34.5%   45%   210     3.07     20%      4%   -111.4%

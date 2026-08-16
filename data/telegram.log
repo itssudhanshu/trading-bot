@@ -188,3 +188,60 @@ listening (pid 84297, 17 commands)
 ./run_listener.sh: line 9: 84297 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 84304, 17 commands)
+changed on disk: clusters.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85352, 17 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85459, 17 commands)
+changed on disk: learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85532, 17 commands)
+changed on disk: tg.py, agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85591, 17 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85636, 17 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85706, 17 commands)
+changed on disk: postmortem.py, runner.py, tg.py, xcheck.py, bucket_test.py, pine.py, fundamentals.py, spec.py, cpcv.py, validate.py, generator.py, split.py, pipeline.py, judge.py, tv.py, psearch.py, dsr.py, backtest.py, report.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85777, 17 commands)
+changed on disk: overview.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85866, 17 commands)
+changed on disk: analysis.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85906, 17 commands)
+changed on disk: tg.py, pbook_run.py -- restarting
+listener exited, restarting in 3s
+listening (pid 85937, 18 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 86134, 18 commands)
+./run_listener.sh: line 9: 86134 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 86164, 18 commands)
+changed on disk: engine.py -- restarting
+listener exited, restarting in 3s
+listening (pid 86718, 18 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 86752, 18 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 86892, 18 commands)
+changed on disk: overview.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 86975, 18 commands)
+./run_listener.sh: line 9: 86975 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 87052, 18 commands)
+./run_listener.sh: line 9: 87052 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 87325, 18 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 87438, 18 commands)

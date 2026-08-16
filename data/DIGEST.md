@@ -1,5 +1,5 @@
 # Agent digest
-_2026-08-16 19:23_
+_2026-08-16 20:41_
 
 ## needs attention
 - nothing
@@ -7,13 +7,6 @@ _2026-08-16 19:23_
 **due now:** nothing
 
 - corpus: **1695** trading days, **3** with surveillance
-- holdout budget: **13/50** spent
-- paper: **0** open, **0** closed, realised **Rs +0**
-
-## research cycles
-- seed `905832` PBO 0.190 promoted 1 — 1 promoted; consultation is a deliberate act
-- seed `763846` PBO 0.250 promoted 2 — 2 promoted; consultation is a deliberate act
-- seed `952281` PBO 0.365 promoted 2 — 2 promoted; consultation is a deliberate act
-- seed `185577` PBO 0.159 promoted 4 — 4 promoted; consultation is a deliberate act
+- book: **0** open, **1** queued, **0** closed, realised **Rs +0** of Rs 300,000
 
 last tasks: {"last_catchup": "2026-08-16", "last_research": "2026-08-16"}

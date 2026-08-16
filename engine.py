@@ -31,6 +31,28 @@ RISK_PER_TRADE = 0.005        # 0.5% of equity at risk per position
 MAX_COST_RATIO = 0.10
 
 
+# Square-root market impact: cost ~ volatility * sqrt(participation), the form
+# repeatedly found in execution data (Almgren et al.; Kyle's lambda in the
+# linear limit). It is NOT calibrated to Indian microcaps -- no trade-level
+# data here to fit it -- so IMPACT_C is a knob that must be reported as a
+# sensitivity, never as a single number pretending to precision.
+IMPACT_C = 1.0
+
+
+def impact_pct(order_value, adv, daily_vol_pct, c=IMPACT_C):
+    """-> one-way cost in PERCENT of the order.
+
+    participation = order value / median daily turnover. At 1% of a day's
+    turnover in a 3%-vol stock this is ~0.3%; at 50% it is ~2.1%; above 100%
+    the order is larger than the day's entire trade and the number stops being
+    a cost estimate and starts being a warning.
+    """
+    import math
+    if adv is None or adv <= 0 or daily_vol_pct is None or daily_vol_pct <= 0:
+        return 5.0                      # unpriceable: charge a deterrent
+    return c * daily_vol_pct * math.sqrt(order_value / adv)
+
+
 @dataclass(frozen=True)
 class Costs:
     """Indian delivery-segment charges. Rates change -- verify against a live

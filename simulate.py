@@ -11,6 +11,7 @@ import sys
 from collections import defaultdict
 
 import clusters
+import engine
 import features
 import portfolio
 
@@ -18,7 +19,20 @@ import portfolio
 # right for both a Rs 1L position and a Rs 5,000 one: brokerage and DP charges
 # are FIXED, so their percentage cost explodes as size falls -- which is
 # exactly the small-cap end where the measured edge lives.
-COSTS = __import__("engine").Costs()
+COSTS = engine.Costs()
+
+
+def _liq(s, i, win=60):
+    """-> (median daily turnover, daily volatility %) at index i."""
+    t = [x for x in s.turnover[max(0, i - win):i + 1] if x > 0]
+    rets = []
+    for k in range(max(1, i - 20), i + 1):
+        p = s.close[k - 1]
+        if p:
+            rets.append(s.close[k] / p - 1.0)
+    if not t or len(rets) < 5:
+        return None, None
+    return statistics.median(t), statistics.pstdev(rets) * 100
 STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
                     # is always short term. Applied per financial year on NET
                     # realised gains, so losses offset -- taxing each winning
@@ -27,7 +41,8 @@ STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
 
 def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
-        start_idx=300, trigger="none", offset=0, max_corr=None):
+        start_idx=300, trigger="none", offset=0, max_corr=None,
+        impact_c=engine.IMPACT_C):
     # Default to the real pocket rather than a hardcoded figure: a simulation
     # run at a different capital from the live book is not a test of the live
     # book, because position size drives the cost percentage.
@@ -36,6 +51,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
     maxdd = 0.0
     open_pos, closed = [], []
     fy_net, taxed = {}, set()
+    occupancy = []
     for di in range(start_idx, len(days)):
         day = days[di]
         still = []
@@ -56,6 +72,12 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                 px, why = s.close[i], "time"
             if px is None:
                 still.append(p); continue
+            # And you do not exit at the printed price either.
+            imp_out = 0.0
+            if impact_c:
+                adv, vol = _liq(s, i)
+                imp_out = engine.impact_pct(p["qty"] * px, adv, vol, impact_c)
+            px *= (1 - imp_out / 100)
             buy_val, sell_val = p["entry"] * p["qty"], px * p["qty"]
             cost = COSTS.charge(buy_val, "BUY") + COSTS.charge(sell_val, "SELL")
             net = (sell_val - buy_val) - cost
@@ -64,8 +86,10 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
             fy_net[fy] = fy_net.get(fy, 0.0) + net
             closed.append({"ret": net / buy_val * 100, "why": why,
                            "clu": p["clu"], "day": day, "sym": p["sym"],
-                           "cost_pct": cost / buy_val * 100})
+                           "cost_pct": cost / buy_val * 100,
+                           "imp": p.get("imp_in", 0.0) + imp_out})
         open_pos = still
+        occupancy.append(len(open_pos))
         # Settle the previous year's tax after 31 March, on net gains only.
         fy = day.year if day.month > 3 else day.year - 1
         for y in [k for k in fy_net if k < fy and k not in taxed]:
@@ -103,15 +127,29 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                 qty, _ = portfolio.position_size(equity, e, stop_pct)
                 if qty < 1:
                     continue
-                open_pos.append({"sym": r["symbol"], "clu": r["cluster"], "entry": e,
-                                 "qty": qty, "stop": e * (1 - stop_pct / 100),
-                                 "tgt": e * (1 + target_pct / 100),
-                                 "entry_day": days[di + 1]})
+                # You do not fill at the printed open. Pay impact on the way in;
+                # stop and target hang off the price actually paid, as they
+                # would off a real fill.
+                imp = 0.0
+                if impact_c:
+                    adv, vol = _liq(s, i)
+                    imp = engine.impact_pct(qty * e, adv, vol, impact_c)
+                e_eff = e * (1 + imp / 100)
+                open_pos.append({"sym": r["symbol"], "clu": r["cluster"],
+                                 "entry": e_eff, "qty": qty,
+                                 "stop": e_eff * (1 - stop_pct / 100),
+                                 "tgt": e_eff * (1 + target_pct / 100),
+                                 "entry_day": days[di + 1], "imp_in": imp})
                 held_clusters[r["cluster"]] += 1
                 room -= 1
     equity -= sum(max(v, 0.0) for k, v in fy_net.items() if k not in taxed) * STCG
     yrs = (days[-1] - days[start_idx]).days / 365.25
-    return {"equity": equity, "capital": capital, "years": yrs,
+    return {"occupancy": (statistics.fmean(occupancy) if occupancy else 0.0),
+            "occ_full": (sum(1 for x in occupancy if x >= max_pos)
+                         / max(len(occupancy), 1) * 100),
+            "occ_empty": (sum(1 for x in occupancy if x == 0)
+                          / max(len(occupancy), 1) * 100),
+            "equity": equity, "capital": capital, "years": yrs,
             "total_pct": (equity / capital - 1) * 100,
             "cagr": ((equity / capital) ** (1 / yrs) - 1) * 100 if yrs > 0.5 else float("nan"),
             "maxdd": maxdd * 100, "trades": closed}

@@ -25,7 +25,13 @@ from datetime import date
 
 import features
 
+# The universe is split into THREE turnover terciles, but only two are traded.
+# That is deliberate and not the same as splitting into halves: a 50/50 split
+# would put Nestle and Titan into "small", redefining the cluster whose results
+# every test in this project measured. Terciles keep micro = bottom third and
+# small = middle third; the top third is simply not tradeable here.
 CLUSTERS = ("micro", "small", "mid")
+TRADEABLE = ("micro", "small")
 # Overridable: widening this re-clusters every downstream reader (pick, build,
 # allocate). Ascending turnover -- first name is the smallest.
 CLUSTER_NAMES = CLUSTERS
@@ -141,6 +147,8 @@ def pick(corpus, as_of, per_cluster=PER_CLUSTER):
     clusters = size_clusters(corpus, as_of, names=CLUSTER_NAMES)
     out = {}
     for b, syms in clusters.items():
+        if b not in TRADEABLE:
+            continue
         sc = score(corpus, syms, as_of)
         out[b] = sorted(sc.items(), key=lambda kv: -kv[1])[:per_cluster]
     return out
@@ -166,7 +174,11 @@ def _selftest():
     assert "S00" in b["micro"]
 
     picks = pick(corpus, days[-1], per_cluster=3)
-    assert set(picks) == set(CLUSTERS)
+    # pick() scores only the TRADEABLE clusters -- mid is still computed by
+    # size_clusters (it defines where the micro/small boundaries fall) but is
+    # never ranked or bought.
+    assert set(picks) == set(TRADEABLE), sorted(picks)
+    assert "mid" in size_clusters(corpus), "mid must still define the terciles"
     for bname, lst in picks.items():
         assert len(lst) <= 3
         scores = [sc for _, sc in lst]
@@ -175,7 +187,7 @@ def _selftest():
     # as-of: a pick on an early date must not use later bars
     early = pick(corpus, days[250], per_cluster=3)
     assert early, "no picks on a mid-history date"
-    assert pick(corpus, days[10], per_cluster=3) == {b: [] for b in CLUSTERS}, \
+    assert pick(corpus, days[10], per_cluster=3) == {b: [] for b in TRADEABLE}, \
         "picked with under 200 bars of history"
     print("clusters selftest ok")
 

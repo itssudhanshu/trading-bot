@@ -36,6 +36,21 @@ def main(day=None):
     print(f"  filled {len(filled)}  closed {len(closed)}  queued {queued}")
     print(f"  open {s['open']}  pending {s['pending']}  closed-total {s['closed']}")
 
+    # Record the findings after every session that closed something, so the
+    # per-stock and per-cluster picture accumulates instead of being recomputed
+    # from scratch and forgotten.
+    if closed:
+        try:
+            import analysis
+            done = [{"sym": r["symbol"], "clu": r["cluster"],
+                     "ret": (r["exit_px"] / r["entry_px"] - 1) * 100}
+                    for r in pbook.summary(conn)["rows"]
+                    if r["status"] == "closed" and r["entry_px"]]
+            analysis.record(f"book through {day}", done,
+                            extra={"realised": s["realised"], "day": str(day)})
+        except Exception as e:
+            print(f"  findings record failed: {type(e).__name__}")
+
     if filled or closed:
         try:
             import tg

@@ -53,8 +53,17 @@ def _call(method, params, timeout=30):
     try:
         with urllib.request.urlopen(url, data=data, timeout=timeout) as r:
             return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        # Telegram explains WHY in the body ("can't parse entities..."), and a
+        # bare exception name hid that: a message rejected for unbalanced
+        # Markdown looked identical to a network failure. The body is safe to
+        # surface; the URL is not, because it carries the bot token.
+        try:
+            return {"ok": False, "error": f"{type(e).__name__}",
+                    "description": json.loads(e.read()).get("description", "")[:200]}
+        except Exception:
+            return {"ok": False, "error": f"{type(e).__name__}"}
     except Exception as e:
-        # Never surface the URL: it contains the bot token.
         return {"ok": False, "error": f"{type(e).__name__}"}
 
 
@@ -130,12 +139,10 @@ def cmd_status(_=None):
 
 
 def cmd_progress(_=None):
-    import judge
     out = [f"*progress* {datetime.now():%d %b %H:%M}", ""]
     days = len(list((ROOT / "data" / "raw").glob("*/bhavcopy_delivery.csv")))
     surv = len(list((ROOT / "data" / "raw").glob("*/asm.json")))
-    out += [f"• corpus: {days} days, {surv} with surveillance",
-            f"• holdout budget: {judge._load()['spent']}/{judge.BUDGET} spent"]
+    out += [f"• corpus: {days} days, {surv} with surveillance"]
     p = ROOT / "data" / "pipeline_state.json"
     if p.exists():
         runs = json.loads(p.read_text()).get("runs", [])
@@ -147,16 +154,11 @@ def cmd_progress(_=None):
 
 
 def cmd_paper(_=None):
-    """The Rs 5L cluster book FIRST -- it is the live one.
-
-    This used to read engine.Journal() only, which is the spec-search book and
-    has never held a position. /paper therefore reported an empty book while
-    the cluster book had five queued. Two books, one command, no label.
-    """
+    """The book. There is only one now -- the spec-search journal is retired."""
     import pbook
     s = pbook.summary()
     out = [f"*paper book* {datetime.now():%d %b %H:%M}", "",
-           f"*Rs 5L cluster book* — your 20/20/20 design",
+           f"*bucket* — 3 micro / 2 small",
            f"• equity: Rs {s['equity']:,.0f}  (realised Rs {s['realised']:+,.0f})",
            f"• {s['open']} open · {s['pending']} queued · {s['closed']} closed"]
     for r in s["rows"]:
@@ -167,13 +169,6 @@ def cmd_paper(_=None):
                        + f"  stop {r['stop']:.2f} → tgt {r['target']:.2f}")
     if not s["closed"]:
         out.append("_no closed trades yet — forward evidence is calendar-bound_")
-    out.append("")
-    import engine
-    j = engine.Journal()
-    op, cl = j.positions("open"), j.positions("closed")
-    out.append(f"*spec-search book* — the earlier track, kept separate")
-    out.append(f"• {len(op)} open · {len(cl)} closed · "
-               f"realised Rs {j.realised_pnl():+,.0f}")
     return "\n".join(out)
 
 
@@ -306,31 +301,29 @@ def cmd_wf(_=None):
 def cmd_overview(_=None):
     """The one-screen answer to 'where are we, is this working?'"""
     import overview
-    s = overview.state()
-    g = overview.gates(s)
-    verdict, why = overview.direction(s, g)
-    b = s["book"]
-    out = [f"*OVERVIEW* — {verdict}", ""]
-    out.append(f"*Data* {s['days']} sessions, {s['span'][0]} → {s['span'][1]}")
-    out.append(f"*Search* {s['n_sims']} sims · {s['n_wf']} walk-forward · "
-               f"{s['n_learn_trades']:,} trades studied")
-    out.append(f"*Holdout* {s['budget_spent']}/{s['budget_total']} spent — "
-               f"{s['holdout_pass']} PASS, {s['holdout_fail']} FAIL")
-    out.append(f"*Book* {b['pending']} queued, {b['open']} open, {b['closed']} closed, "
-               f"realised {b['net']:+,.0f}")
-    out.append("")
-    out.append("*Gates*")
-    mark = {"PASS": "✅", "FAIL": "❌", "PENDING": "⏳", "NONE": "—",
-            "WEAK": "⚠️", "THIN": "⚠️", "MEASURING": "📈"}
+    st = overview.state()
+    g = overview.gates(st)
+    verdict, why = overview.direction(st)
+    b = st["book"]
+    mix = " / ".join(f"{v} {k}" for k, v in st["mix"].items())
+    out = [f"*OVERVIEW* — {verdict}", "",
+           f"*Bucket* {mix} = {sum(st['mix'].values())} stocks",
+           f"*Clusters* {', '.join(st['tradeable'])} (top tercile not traded)",
+           f"*Entry* {st['trigger']} → next open · "
+           f"*Exit* −{st['stop']:.0f}% / +{st['target']:.0f}% / {st['hold']}d",
+           f"*Money* Rs {st['capital']:,}, max {st['deploy']:.0f}% deployed",
+           "",
+           f"*Data* {st['days']} sessions, {st['span'][0]} → {st['span'][1]}",
+           f"*Book* {b['pending']} queued, {b['open']} open, {b['closed']} closed, "
+           f"realised {b['net']:+,.0f}",
+           "", "*Gates*"]
+    mark = {"PASS": "✅", "FAIL": "❌", "PENDING": "⏳", "GAPS": "⚠️",
+            "MEASURING": "📈"}
     for name, vd, ev in g:
         out.append(f"{mark.get(vd, '·')} {name} — _{ev}_")
-    out.append("")
-    out.append("*Why that verdict*")
-    for w in why:
-        out.append(f"• {w}")
-    out.append("")
-    out.append("_The apparatus is trustworthy; the strategy is not yet shown to "
-               "work. Only the first has been earned._")
+    out += ["", "*Why that verdict*"] + [f"• {w}" for w in why]
+    out += ["", "_The apparatus is trustworthy; the strategy is not yet shown to "
+                "work forward. Only the first has been earned._"]
     return "\n".join(out)
 
 
@@ -474,6 +467,27 @@ def cmd_stocks(_=None):
     return "\n".join(out)
 
 
+def cmd_findings(_=None):
+    """The recorded findings, newest first."""
+    import analysis
+    rows = analysis.load_findings()
+    if not rows:
+        return ("*findings*\nNothing recorded yet — findings are written when "
+                "the book closes trades. Nothing has closed.")
+    out = [f"*findings* ({len(rows)} recorded)", ""]
+    for r in rows[-3:][::-1]:
+        c, cfg = r["concentration"], r["config"]
+        mix = "/".join(str(v) for v in cfg["mix"].values())
+        out.append(f"*{r['label']}*  _{r['at'][:10]}_")
+        out.append(f"  mix {mix} · {r['n']} trades · best name "
+                   f"{c.get('top1', 0):.0f}% of gains")
+        for cl, v in sorted(r["by_cluster"].items()):
+            out.append(f"  {cl}: n={v['n']} total {v['total']:+.1f}% "
+                       f"win {v['wins']}/{v['n']}")
+        out.append("")
+    return "\n".join(out)
+
+
 def cmd_help(_=None):
     return ("*commands*\n"
             "/overview – where are we? is this working?\n"
@@ -481,6 +495,7 @@ def cmd_help(_=None):
             "/bucket – the cluster book: clusters, entry logic, why\n"
             "/trades – closed trades with cluster and P&L\n"
             "/stocks – per-stock attribution and concentration\n"
+            "/findings – recorded findings from closed trades\n"
             "/status – what needs attention, what is due\n"
             "/progress – corpus, budget, research cycles\n"
             "/paper – paper trading book\n"
@@ -524,7 +539,7 @@ COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_hea
             "/digest": cmd_digest, "/overview": cmd_overview,
             "/strategies": cmd_strategies, "/wallet": cmd_wallet,
             "/bucket": cmd_bucket, "/trades": cmd_trades,
-            "/stocks": cmd_stocks}
+            "/stocks": cmd_stocks, "/findings": cmd_findings}
 
 
 def _offset(new=None):

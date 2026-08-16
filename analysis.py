@@ -103,3 +103,51 @@ if __name__ == "__main__":
     import sys
     if "--selftest" in sys.argv:
         _selftest()
+
+
+# ------------------------------------------------------------------ findings
+FINDINGS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "findings.jsonl"
+
+
+def record(label, trades, extra=None):
+    """Append one dated finding: what the book did, and what it means.
+
+    Append-only. A finding recorded under one set of rules is not comparable to
+    one recorded under another, so each row carries the configuration that
+    produced it rather than assuming today's constants applied.
+    """
+    import json
+    from datetime import datetime
+    import portfolio
+    c = concentration(trades)
+    row = {"at": datetime.now().isoformat(timespec="seconds"),
+           "label": label,
+           "config": {"mix": dict(portfolio.TAKE_PER_CLUSTER),
+                      "capital": portfolio.CAPITAL,
+                      "deploy_pct": portfolio.DEPLOY_PCT,
+                      "trigger": portfolio.TRIGGER,
+                      "stop": portfolio.STOP_PCT, "target": portfolio.TARGET_PCT,
+                      "hold": portfolio.HOLD_DAYS},
+           "n": len(trades),
+           "by_cluster": {k: {"n": v["n"], "total": round(v["total"], 2),
+                              "avg": round(v["avg"], 3), "wins": v["wins"]}
+                          for k, v in per_cluster(trades).items()},
+           "concentration": {k: round(v, 2) for k, v in c.items()},
+           "top": [{"symbol": r["symbol"], "n": r["n"], "total": round(r["total"], 2)}
+                   for r in per_stock(trades)[:5]],
+           "bottom": [{"symbol": r["symbol"], "n": r["n"], "total": round(r["total"], 2)}
+                      for r in per_stock(trades)[-5:]]}
+    if extra:
+        row.update(extra)
+    FINDINGS.parent.mkdir(parents=True, exist_ok=True)
+    with FINDINGS.open("a") as f:
+        f.write(json.dumps(row) + "\n")
+    return row
+
+
+def load_findings(limit=None):
+    import json
+    if not FINDINGS.exists():
+        return []
+    rows = [json.loads(l) for l in FINDINGS.read_text().splitlines() if l.strip()]
+    return rows[-limit:] if limit else rows

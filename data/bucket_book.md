@@ -1,6 +1,6 @@
 # Bucket Book
 
-Generated 2026-08-16 19:31 · selection as of **2026-08-14**
+Generated 2026-08-16 20:36 · selection as of **2026-08-14**
 
 ---
 
@@ -52,7 +52,7 @@ half-year block from −120.5% to −83.1%.
 Order of operations matters and was measured:
 
 1. Rank every stock inside its cluster
-2. Take the top *k* per cluster (2 micro / 3 small, and 0 from mid), interleaved
+2. Take the top *k* per cluster (3 micro / 2 small, and 0 from mid), interleaved
 3. **Then** require the trigger — drop what has not triggered
 4. Hold cash for the slots that stay empty
 
@@ -87,14 +87,14 @@ Deployed **₹35,523** of ₹300,000 (11.8%) — cash **₹264,477**
 
 | stock | cluster | triggered? | why |
 |---|---|---|---|
-| APOLLOHOSP | mid | no | top-30% in delivery %, near its high, liquidity, relative strength (above 200-DMA, else excluded) |
-| DIVISLAB | mid | no | top-30% in delivery %, near its high, liquidity, relative strength (above 200-DMA, else excluded) |
-| NESTLEIND | mid | no | top-30% in delivery %, liquidity, near its high (above 200-DMA, else excluded) |
-| TITAN | mid | no | top-30% in near its high, liquidity, delivery %, relative strength (above 200-DMA, else excluded) |
 | HCG | small | no | top-30% in delivery %, near its high, liquidity, relative strength (above 200-DMA, else excluded) |
 | TAKE | micro | no | top-30% in near its high, delivery %, relative strength (above 200-DMA, else excluded) |
 | SUNDRMFAST | small | no | top-30% in delivery %, near its high, relative strength (above 200-DMA, else excluded) |
-| PIDILITIND | mid | no | top-30% in near its high, delivery %, liquidity (above 200-DMA, else excluded) |
+| YUKEN | micro | no | top-30% in near its high, liquidity, delivery %, relative strength (above 200-DMA, else excluded) |
+| RPEL | small | yes | top-30% in relative strength, near its high, liquidity, delivery % (above 200-DMA, else excluded) |
+| KRISHIVAL | micro | no | top-30% in delivery %, relative strength, near its high (above 200-DMA, else excluded) |
+| GMMPFAUDLR | small | yes | top-30% in near its high, delivery %, liquidity (above 200-DMA, else excluded) |
+| THELEELA | small | no | top-30% in near its high, liquidity, delivery % (above 200-DMA, else excluded) |
 
 ---
 

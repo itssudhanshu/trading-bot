@@ -67,7 +67,7 @@ def queue(rows, day, conn=None):
 
 def step(corpus, day, conn=None):
     """One session: fill pending at the open, then check exits. -> (filled, closed)."""
-    import runner
+    import learning
     c = conn or db()
     c.row_factory = sqlite3.Row
     filled, closed = [], []
@@ -91,7 +91,7 @@ def step(corpus, day, conn=None):
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, features=? WHERE id=?",
                   (str(day), px, px * (1 - STOP_PCT / 100), px * (1 + TARGET_PCT / 100),
-                   json.dumps(runner.entry_features(s, i)), p["id"]))
+                   json.dumps(learning.entry_features(s, i)), p["id"]))
         filled.append((p["symbol"], px))
 
     for p in c.execute("SELECT * FROM pos WHERE status='open'").fetchall():
@@ -116,7 +116,6 @@ def step(corpus, day, conn=None):
                   " exit_reason=?, net=? WHERE id=?", (str(day), px, why, net, p["id"]))
         closed.append((p["symbol"], why, net))
         try:
-            import learning
             f = json.loads(p["features"] or "{}")
             if f:
                 learning.record([{**f, "ret": (px / p["entry_px"] - 1) * 100,

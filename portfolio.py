@@ -85,10 +85,11 @@ def _why(r):
     return "; ".join(parts) + " (above 200-DMA, else excluded)"
 
 
-# The bucket: 2 micro + 3 small + 0 mid = 5 stocks. Module-level so the
-# generated Bucket Book reads the real mix instead of restating it in prose --
-# it was already describing 2/2/1 one minute after the design changed.
-TAKE_PER_CLUSTER = {"micro": 2, "small": 3}
+# The bucket: 3 micro + 2 small = 5 stocks, drawn from the two tradeable
+# clusters. Module-level so the generated Bucket Book reads the real mix
+# instead of restating it in prose -- it was already describing 2/2/1 one
+# minute after the design changed.
+TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
 
 TRIGGER = "breakout"    # see trigger_test: near-identical CAGR to no trigger
                         # (+11.45 vs +12.53) but worst block -83.1% vs -120.5%.
@@ -116,6 +117,8 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
         ranks.update(clusters.score(corpus, syms, as_of, with_ranks=True)[1])
     rows = []
     for cluster, lst in picks.items():
+        if cluster not in clusters.TRADEABLE:
+            continue
         for sym, score in lst:
             s = corpus[sym]
             i = s.index_of(as_of)

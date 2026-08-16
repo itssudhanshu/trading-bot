@@ -29,6 +29,27 @@ ROOT = Path(__file__).resolve().parent
 LEDGER = ROOT / "data" / "trade_features.jsonl"
 WEIGHTS = ROOT / "data" / "selection_weights.json"
 
+def entry_features(s, i):
+    """Snapshot of what was true at ENTRY. Stored with the position, never
+    recomputed at exit: recomputing would read post-trade values and let the
+    outcome explain itself."""
+    import statistics
+    if i is None or i < 200:
+        return {}
+    prev = s.close[i - 63] if i >= 63 else None
+    hi125 = max(s.high[max(0, i - 125):i + 1])
+    dl = [d for d in s.deliv_pct[max(0, i - 60):i + 1] if d and d > 0]
+    liq = [x for x in s.turnover[max(0, i - 60):i + 1] if x > 0]
+    return {
+        "rs": (s.close[i] / prev - 1) if prev else None,
+        "deliv": statistics.fmean(dl) if dl else None,
+        "liq": statistics.median(liq) if liq else None,
+        "off_high": ((hi125 - s.close[i]) / hi125 * 100) if hi125 else None,
+        "near_high": -((hi125 - s.close[i]) / hi125 * 100) if hi125 else None,
+        "rsi": None,
+    }
+
+
 MIN_TRADES = 200        # before any weight moves
 MAX_STEP = 0.15         # fraction of the way toward a new estimate
 FEATURES = ("rs", "deliv", "liq", "off_high", "near_high", "rsi")
@@ -110,7 +131,6 @@ def unconditioned_test(corpus, days, feature, n_dates=40, hold=15,
     the feature separates outcomes anyway.
     """
     import random
-    import runner
     rng = random.Random(11)
     rows = []
     for di in range(300, len(days) - hold - 1, max(1, (len(days) - 320) // n_dates)):
@@ -126,7 +146,7 @@ def unconditioned_test(corpus, days, feature, n_dates=40, hold=15,
             e = s.open[i + 1]
             if not e:
                 continue
-            f = runner.entry_features(s, i)
+            f = entry_features(s, i)
             if f.get(feature) is None:
                 continue
             stop, tgt = e * (1 - stop_pct / 100), e * (1 + target_pct / 100)

@@ -1,0 +1,16 @@
+impact sensitivity — bucket 3/2, Rs 300,000
+
+  c          CAGR   maxDD   win     n  impact/trade     worst   micro / small
+  0.0     +13.97%   24.5%   51%   215        0.00%    -87.4%   +3.94% / +3.74%  <- old assumption
+  0.5     +11.60%   23.5%   49%   217        0.15%    -77.6%   +3.65% / +2.71%
+  1.0     +10.85%   24.2%   49%   217        0.30%    -82.6%   +3.47% / +2.51%
+  2.0      +7.40%   24.0%   47%   231        0.55%    -91.5%   +1.59% / +2.93%
+  3.0      +4.53%   23.5%   46%   226        0.78%    -91.1%   +1.24% / +1.85%
+
+  worst observed round-trip impact: 20.18%
+  c=0.5: -2.37 points vs the no-impact assumption (83% of it survives)
+  c=1.0: -3.13 points vs the no-impact assumption (78% of it survives)
+  c=2.0: -6.57 points vs the no-impact assumption (53% of it survives)
+  c=3.0: -9.44 points vs the no-impact assumption (32% of it survives)
+
+  still profitable at every c tested
