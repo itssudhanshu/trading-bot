@@ -87,6 +87,8 @@ def due(now=None):
         todo.append("catchup")
     if st.get("last_runner") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("runner")
+    if st.get("last_pbook") != str(today) and now.weekday() < 5 and now.hour >= 18:
+        todo.append("pbook")
 
     last = st.get("last_research")
     if last:
@@ -104,6 +106,7 @@ def run_task(name, log=print):
         "snapshot": [py, "snapshot.py"],
         "catchup":  [py, "snapshot.py", "--catchup"],
         "runner":   [py, "runner.py"],
+        "pbook":    [py, "pbook_run.py"],
         "research": [py, "pipeline.py", "--cycles", "1"],
     }
     logf = ROOT / "data" / f"agent_{name}.log"
@@ -290,7 +293,8 @@ def once(log=print):
             if run_task(t, log=log):
                 done.append(t)
                 key = {"snapshot": "last_snapshot", "catchup": "last_catchup",
-                       "runner": "last_runner", "research": "last_research"}[t]
+                       "runner": "last_runner", "research": "last_research",
+                       "pbook": "last_pbook"}[t]
                 st[key] = str(date.today())
                 _save(st)
     finally:

@@ -68,23 +68,42 @@ def score(corpus, symbols, as_of):
         deliv = [d for d in s.deliv_pct[max(0, i - 60):i + 1] if d and d > 0]
         liq = statistics.median([x for x in s.turnover[max(0, i - 60):i + 1] if x > 0] or [0])
         sma200 = statistics.fmean(s.close[i - 199:i + 1])
+        hi125 = max(s.high[max(0, i - 125):i + 1])
         raw[sym] = {
             "rs": rs,
             "deliv": statistics.fmean(deliv) if deliv else 0.0,
             "liq": liq,
+            # NEGATIVE distance below the 125-day high, so higher = closer to
+            # the high. The learning pass measured -1.49% spread on raw
+            # off_high: stocks nearer their highs outperformed, three times the
+            # information of any feature already scored (learning.py).
+            "near_high": -((hi125 - s.close[i]) / hi125 * 100) if hi125 else 0.0,
             "trend": 1.0 if s.close[i] > sma200 else 0.0,
         }
     if not raw:
         return {}
     ranks = {f: _pct_rank({k: v[f] for k, v in raw.items()})
-             for f in ("rs", "deliv", "liq")}
+             for f in ("rs", "deliv", "liq", "near_high")}
+    # Weights are learned, not fixed. learning.propose() moves them on measured
+    # information; a feature that stops predicting loses influence rather than
+    # staying in the score because it was in the original design.
+    try:
+        import learning
+        W = learning.load_weights()
+    except Exception:
+        W = {}
     out = {}
     for sym, v in raw.items():
         # Trend is a gate, not a score: a stock below its 200-day average is
         # excluded outright rather than compensated for by a high momentum rank.
         if v["trend"] == 0.0:
             continue
-        out[sym] = (ranks["rs"][sym] + ranks["deliv"][sym] + ranks["liq"][sym]) / 3
+        tot = wsum = 0.0
+        for f in ("rs", "deliv", "liq", "near_high"):
+            w = float(W.get(f, 1.0))
+            tot += ranks[f][sym] * w
+            wsum += w
+        out[sym] = tot / (wsum or 1.0)
     return out
 
 

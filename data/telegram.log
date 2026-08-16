@@ -5,3 +5,37 @@ listening (pid 75132, 7 commands)
 changed on disk: tg.py -- restarting
 listener exited, restarting in 3s
 listening (pid 76084, 8 commands)
+poll error: TypeError
+changed on disk: clusters.py, learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 76243, 8 commands)
+changed on disk: learning.py -- restarting
+listener exited, restarting in 3s
+listening (pid 76277, 8 commands)
+changed on disk: runner.py, engine.py -- restarting
+listener exited, restarting in 3s
+listening (pid 76321, 8 commands)
+changed on disk: runner.py -- restarting
+listener exited, restarting in 3s
+listening (pid 76349, 8 commands)
+./run_listener.sh: line 9: 76349 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 76378, 8 commands)
+./run_listener.sh: line 9: 76378 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 76410, 8 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 76504, 8 commands)
+changed on disk: portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 77019, 8 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 77164, 9 commands)
+./run_listener.sh: line 9: 77164 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 77172, 9 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 77323, 9 commands)

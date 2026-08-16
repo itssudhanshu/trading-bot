@@ -192,7 +192,8 @@ class Journal:
           spec_hash TEXT, symbol TEXT, setup TEXT, status TEXT,
           signal_day TEXT, entry_day TEXT, entry_px REAL, qty INTEGER,
           stop REAL, target REAL, max_bars INTEGER,
-          exit_day TEXT, exit_px REAL, exit_reason TEXT, net REAL);
+          exit_day TEXT, exit_px REAL, exit_reason TEXT, net REAL,
+          bucket TEXT, features TEXT);
         CREATE INDEX IF NOT EXISTS ix_pos_status ON positions(status);
         """)
         self.db.commit()

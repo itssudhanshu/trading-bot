@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""Full historical simulation of the cluster book, with variants.
+
+Runs the ACTUAL rules end to end -- selection, per-cluster allocation, sizing,
+gap-aware fills, costs, compounding -- rather than testing components in
+isolation. Component tests hid an allocation bug that made 85% of trades micro
+caps against a 2/2/1 design: each piece was right, the assembly was not.
+"""
+import statistics
+import sys
+from collections import defaultdict
+
+import clusters
+import features
+import portfolio
+
+COST = 0.4          # % round trip
+
+
+def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
+        capital=500_000, per_bucket=None, refresh=5, sector_cap=None,
+        start_idx=300):
+    equity = peak = capital
+    maxdd = 0.0
+    open_pos, closed = [], []
+    for di in range(start_idx, len(days)):
+        day = days[di]
+        still = []
+        for p in open_pos:
+            s = corpus[p["sym"]]
+            i = s.index_of(day)
+            if i is None:
+                still.append(p); continue
+            held = len([d for d in s.days if p["entry_day"] < d <= day])
+            px = why = None
+            # Gap through a level fills at the open: worse on stops, better on
+            # targets. This is where the realised stop cost exceeds nominal.
+            if s.low[i] <= p["stop"]:
+                px, why = min(p["stop"], s.open[i]), "stop"
+            elif s.high[i] >= p["tgt"]:
+                px, why = max(p["tgt"], s.open[i]), "target"
+            elif held >= hold:
+                px, why = s.close[i], "time"
+            if px is None:
+                still.append(p); continue
+            gross = (px - p["entry"]) * p["qty"]
+            cost = (p["entry"] + px) * p["qty"] * COST / 200
+            equity += gross - cost
+            closed.append({"ret": (px / p["entry"] - 1) * 100 - COST, "why": why,
+                           "bkt": p["bkt"], "day": day, "sym": p["sym"]})
+        open_pos = still
+        peak = max(peak, equity)
+        maxdd = max(maxdd, (peak - equity) / peak)
+
+        room = max_pos - len(open_pos)
+        if room > 0 and di % refresh == 0 and di + 1 < len(days):
+            held_syms = {p["sym"] for p in open_pos}
+            held_bkts = defaultdict(int)
+            for p in open_pos:
+                held_bkts[p["bkt"]] += 1
+            rows = portfolio.allocate(
+                portfolio.build(corpus, day, capital=equity), per_bucket)
+            for r in rows:
+                if room <= 0:
+                    break
+                if r["symbol"] in held_syms:
+                    continue
+                if sector_cap and held_bkts[r["bucket"]] >= sector_cap:
+                    continue
+                s = corpus[r["symbol"]]
+                i = s.index_of(day)
+                if i is None or i + 1 >= len(s):
+                    continue
+                e = s.open[i + 1]
+                if not e:
+                    continue
+                qty, _ = portfolio.position_size(equity, e, stop_pct)
+                if qty < 1:
+                    continue
+                open_pos.append({"sym": r["symbol"], "bkt": r["bucket"], "entry": e,
+                                 "qty": qty, "stop": e * (1 - stop_pct / 100),
+                                 "tgt": e * (1 + target_pct / 100),
+                                 "entry_day": days[di + 1]})
+                held_bkts[r["bucket"]] += 1
+                room -= 1
+    yrs = (days[-1] - days[start_idx]).days / 365.25
+    return {"equity": equity, "capital": capital, "years": yrs,
+            "total_pct": (equity / capital - 1) * 100,
+            "cagr": ((equity / capital) ** (1 / yrs) - 1) * 100 if yrs > 0.5 else float("nan"),
+            "maxdd": maxdd * 100, "trades": closed}
+
+
+RESULTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "simulations.jsonl"
+
+
+def store(name, r, batch=None):
+    """Append one simulation result. Append-only and timestamped: a variant run
+    weeks apart under different code is a DIFFERENT result, and overwriting
+    would hide that the parameters or the engine moved underneath it."""
+    import json as _j
+    from collections import defaultdict as _dd
+    from datetime import datetime as _dt
+    t = r["trades"]
+    ex, bk = _dd(list), _dd(list)
+    for x in t:
+        ex[x["why"]].append(x["ret"]); bk[x["bkt"]].append(x["ret"])
+    row = {
+        "at": _dt.now().isoformat(timespec="seconds"),
+        "batch": batch or _dt.now().strftime("%Y%m%d-%H%M"),
+        "variant": name,
+        "cagr": round(r["cagr"], 2), "maxdd": round(r["maxdd"], 1),
+        "total_pct": round(r["total_pct"], 1), "equity": round(r["equity"]),
+        "n": len(t),
+        "win": round(sum(1 for x in t if x["ret"] > 0) / max(len(t), 1) * 100),
+        "avg_stop": round(statistics.fmean(ex["stop"]), 2) if ex["stop"] else None,
+        "mix": {b: len(bk[b]) for b in ("micro", "small", "mid")},
+        "exits": {k: len(v) for k, v in ex.items()},
+    }
+    RESULTS.parent.mkdir(parents=True, exist_ok=True)
+    with RESULTS.open("a") as f:
+        f.write(_j.dumps(row) + "\n")
+    return row
+
+
+def load_results(limit=None, batch=None):
+    import json as _j
+    if not RESULTS.exists():
+        return []
+    rows = [_j.loads(l) for l in RESULTS.read_text().splitlines() if l.strip()]
+    if batch:
+        rows = [r for r in rows if r["batch"] == batch]
+    return rows[-limit:] if limit else rows
+
+
+def report(name, r):
+    t = r["trades"]
+    n = len(t)
+    if not n:
+        print(f"  {name:<26} no trades"); return
+    ex = defaultdict(list); bk = defaultdict(list)
+    for x in t:
+        ex[x["why"]].append(x["ret"]); bk[x["bkt"]].append(x["ret"])
+    win = sum(1 for x in t if x["ret"] > 0) / n * 100
+    print(f"  {name:<26} CAGR {r['cagr']:>+6.2f}%  DD {r['maxdd']:>5.1f}%  "
+          f"n={n:>4}  win {win:>3.0f}%  "
+          f"stop {statistics.fmean(ex['stop']) if ex['stop'] else 0:>+6.2f}%  "
+          f"mix " + "/".join(f"{len(bk[b])}" for b in ("micro", "small", "mid")))
+    store(name, r, batch=BATCH)
+
+
+def walk_forward(corpus, days, param, values, split=0.5, **fixed):
+    """Choose `param` on the FIRST half, then test that choice on the second.
+
+    Picking the best of eleven in-sample variants and reporting its CAGR is the
+    best-of-N inflation this project keeps catching elsewhere. The only honest
+    question is whether the winner on early data still wins on later data it was
+    not chosen from.
+    """
+    cut = int(len(days) * split)
+    early, late = days[:cut], days[cut:]
+    out = {"param": param, "in_sample": {}, "out_sample": {}}
+    for v in values:
+        r = run(corpus, early, **{param: v}, **fixed)
+        out["in_sample"][v] = {"cagr": r["cagr"], "maxdd": r["maxdd"],
+                               "n": len(r["trades"])}
+    best = max(out["in_sample"], key=lambda k: out["in_sample"][k]["cagr"])
+    out["chosen"] = best
+    for v in values:
+        r = run(corpus, late, start_idx=250, **{param: v}, **fixed)
+        out["out_sample"][v] = {"cagr": r["cagr"], "maxdd": r["maxdd"],
+                                "n": len(r["trades"])}
+    ranked = sorted(out["out_sample"], key=lambda k: -out["out_sample"][k]["cagr"])
+    out["oos_rank_of_chosen"] = ranked.index(best) + 1
+    out["oos_best"] = ranked[0]
+    return out
+
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        print("simulate selftest ok (logic shared with portfolio/clusters)")
+        sys.exit()
+    from datetime import datetime as _dt
+    BATCH = _dt.now().strftime("%Y%m%d-%H%M")
+    corpus = features.load_corpus()
+    days = sorted({d for s in corpus.values() for d in s.days})
+    print(f"CLUSTER BOOK SIMULATIONS  {days[300]} .. {days[-1]}  (Rs 5,00,000)")
+    print(f"batch {BATCH}\n")
+    print("  variant                    CAGR      DD     n   win    avg-stop  micro/small/mid")
+    report("baseline 10/20/15d", run(corpus, days))
+    report("stop 12%", run(corpus, days, stop_pct=12.0))
+    report("stop 15%", run(corpus, days, stop_pct=15.0))
+    report("target 15%", run(corpus, days, target_pct=15.0))
+    report("target 25%", run(corpus, days, target_pct=25.0))
+    report("hold 10d", run(corpus, days, hold=10))
+    report("hold 25d", run(corpus, days, hold=25))
+    report("3 positions", run(corpus, days, max_pos=3))
+    report("8 positions", run(corpus, days, max_pos=8,
+                              per_bucket={"micro": 3, "small": 3, "mid": 2}))
+    report("cap 2/bucket", run(corpus, days, sector_cap=2))
+    report("small+mid only", run(corpus, days,
+                                 per_bucket={"small": 3, "mid": 2}))

@@ -31,8 +31,8 @@ WEIGHTS = ROOT / "data" / "selection_weights.json"
 
 MIN_TRADES = 200        # before any weight moves
 MAX_STEP = 0.15         # fraction of the way toward a new estimate
-FEATURES = ("rs", "deliv", "liq", "off_high", "rsi")
-DEFAULT_WEIGHTS = {f: 1.0 for f in ("rs", "deliv", "liq")}
+FEATURES = ("rs", "deliv", "liq", "off_high", "near_high", "rsi")
+DEFAULT_WEIGHTS = {f: 1.0 for f in ("rs", "deliv", "liq", "near_high")}
 
 
 def record(rows, path=None):
@@ -111,8 +111,22 @@ def propose(trades, current=None):
 
 
 def load_weights():
+    """-> the weights dict ONLY.
+
+    The file also stores `updated` and `note`; returning the whole document fed
+    those into propose() as though they were features, and save_weights() then
+    nested the previous document inside the new one.
+    """
     if WEIGHTS.exists():
-        return json.loads(WEIGHTS.read_text())
+        doc = json.loads(WEIGHTS.read_text())
+        w = doc.get("weights", doc) if isinstance(doc, dict) else {}
+        # tolerate the nested form written before this was fixed
+        while isinstance(w, dict) and isinstance(w.get("weights"), dict):
+            w = w["weights"]
+        out = dict(DEFAULT_WEIGHTS)
+        out.update({k: float(v) for k, v in w.items()
+                    if k in DEFAULT_WEIGHTS and isinstance(v, (int, float))})
+        return out
     return dict(DEFAULT_WEIGHTS)
 
 
@@ -150,6 +164,25 @@ def _selftest():
              "rsi": None, "ret": 0.0} for i in range(300)]
     nw, nn = propose(flat, {"rs": 1.0, "deliv": 1.0, "liq": 1.0})
     assert nw == {"rs": 1.0, "deliv": 1.0, "liq": 1.0}, (nw, nn)
+
+    # load_weights must return features only, never the file's metadata, and
+    # must survive the nested document the earlier bug wrote.
+    import tempfile as _tf
+    global WEIGHTS
+    _ow = WEIGHTS
+    try:
+        with _tf.TemporaryDirectory() as td:
+            WEIGHTS = Path(td) / "w.json"
+            WEIGHTS.write_text(json.dumps(
+                {"weights": {"weights": {"rs": 1.3, "deliv": 0.85},
+                             "updated": "x", "note": "y"},
+                 "updated": "z", "note": "w"}))
+            got = load_weights()
+            assert set(got) == set(DEFAULT_WEIGHTS), got
+            assert got["rs"] == 1.3 and got["deliv"] == 0.85, got
+            assert all(isinstance(v, float) for v in got.values()), got
+    finally:
+        WEIGHTS = _ow
 
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "t.jsonl"

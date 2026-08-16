@@ -134,9 +134,13 @@ def cmd_learning(_=None):
                        key=lambda kv: -abs(kv[1]["spread"])):
         arrow = "↑" if v["spread"] > 0 else "↓"
         out.append(f"• `{f}` {arrow} {v['spread']:+.2f}%")
+    # Defensive: a status command must never crash on a missing field. Records
+    # come from several sources (historical seed, forward trades, ad-hoc) and
+    # not all carry every key -- a KeyError here takes out the whole report.
     by = defaultdict(list)
     for x in t:
-        by[x["bucket"]].append(x["ret"])
+        if x.get("ret") is not None:
+            by[x.get("bucket") or "unknown"].append(x["ret"])
     out += ["", "*by cluster*"]
     for b, v in sorted(by.items(), key=lambda kv: -statistics.fmean(kv[1])):
         out.append(f"• {b}: {statistics.fmean(v):+.2f}%/trade, "
@@ -152,6 +156,23 @@ def push_learning(headline, lines):
     return send(f"*{headline}*\n" + "\n".join(f"• {l}" for l in lines[:8]))
 
 
+def cmd_sims(_=None):
+    import simulate
+    rows = simulate.load_results()
+    if not rows:
+        return "*simulations*\n\n_none stored yet_"
+    batches = sorted({r["batch"] for r in rows})
+    latest = [r for r in rows if r["batch"] == batches[-1]]
+    latest.sort(key=lambda r: -r["cagr"])
+    out = [f"*simulations* batch `{batches[-1]}`",
+           f"_{len(rows)} results across {len(batches)} batches_", ""]
+    for r in latest[:12]:
+        out.append(f"`{r['cagr']:>+6.2f}%` DD `{r['maxdd']:>4.1f}%` n={r['n']:<4} "
+                   f"{r['variant']}")
+    out += ["", "_CAGR ranked. A best-of-N pick is inflated -- see /learning_"]
+    return "\n".join(out)
+
+
 def cmd_help(_=None):
     return ("*commands*\n"
             "/status – what needs attention, what is due\n"
@@ -159,6 +180,7 @@ def cmd_help(_=None):
             "/paper – paper trading book\n"
             "/health – is the agent actually running?\n"
             "/learning – what the bot has learned from its trades\n"
+            "/sims – stored simulation results\n"
             "/digest – full digest\n\n"
             "_read-only: I never start a search or spend holdout budget from here_")
 
@@ -187,7 +209,7 @@ def cmd_health(_=None):
 
 
 COMMANDS = {"/status": cmd_status, "/progress": cmd_progress, "/health": cmd_health,
-            "/learning": cmd_learning,
+            "/learning": cmd_learning, "/sims": cmd_sims,
             "/paper": cmd_paper, "/help": cmd_help, "/start": cmd_help,
             "/digest": cmd_digest}
 
@@ -250,6 +272,16 @@ def _selftest():
 
     for fn in (cmd_help,):
         assert isinstance(fn(None), str) and fn(None)
+
+    # every command must survive records missing optional fields
+    import learning as _l
+    _orig = _l.load
+    try:
+        _l.load = lambda *a, **k: [{"ret": 1.0}, {"rs": 0.5}, {}]
+        out = cmd_learning(None)
+        assert isinstance(out, str) and "learning" in out, out
+    finally:
+        _l.load = _orig
     print("tg selftest ok")
 
 

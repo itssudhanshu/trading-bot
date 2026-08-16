@@ -94,9 +94,17 @@ def allocate(rows, per_bucket=None):
     allocation is per band.
     """
     per_bucket = per_bucket or {"micro": 2, "small": 2, "mid": 1}
-    out = []
-    for bucket, k in per_bucket.items():
-        out += [r for r in rows if r["bucket"] == bucket][:k]
+    # ROUND-ROBIN, not bucket-blocks. Returning micro's picks first and then
+    # slicing rows[:room] took two micro whenever only two slots were free and
+    # never reached small or mid -- the book traded 178 micro / 28 small / 3 mid
+    # against a 2/2/1 design. Interleaving means any prefix of the result is
+    # still spread across clusters.
+    per = {b: [r for r in rows if r["bucket"] == b][:k] for b, k in per_bucket.items()}
+    out, depth = [], max(per_bucket.values())
+    for d in range(depth):
+        for b in per_bucket:
+            if d < len(per[b]):
+                out.append(per[b][d])
     return out
 
 
@@ -123,6 +131,12 @@ def _selftest():
     for r in book:
         got[r["bucket"]] = got.get(r["bucket"], 0) + 1
     assert got == {"micro": 2, "small": 2, "mid": 1}, got
+
+    # ANY PREFIX must stay spread: this is what the slice bug violated
+    for room in (1, 2, 3, 4):
+        pre = allocate(fake)[:room]
+        buckets = {r["bucket"] for r in pre}
+        assert len(buckets) == min(room, 3), (room, [r["bucket"] for r in pre])
     print("portfolio selftest ok")
 
 

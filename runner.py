@@ -46,6 +46,27 @@ def _bar_on(series, day):
     return (backtest._B(series, i), i) if i is not None else (None, None)
 
 
+def entry_features(s, i):
+    """Snapshot of what was true at ENTRY. Stored with the position, never
+    recomputed at exit: recomputing would read post-trade values and let the
+    outcome explain itself."""
+    import statistics
+    if i is None or i < 200:
+        return {}
+    prev = s.close[i - 63] if i >= 63 else None
+    hi125 = max(s.high[max(0, i - 125):i + 1])
+    dl = [d for d in s.deliv_pct[max(0, i - 60):i + 1] if d and d > 0]
+    liq = [x for x in s.turnover[max(0, i - 60):i + 1] if x > 0]
+    return {
+        "rs": (s.close[i] / prev - 1) if prev else None,
+        "deliv": statistics.fmean(dl) if dl else None,
+        "liq": statistics.median(liq) if liq else None,
+        "off_high": ((hi125 - s.close[i]) / hi125 * 100) if hi125 else None,
+        "near_high": -((hi125 - s.close[i]) / hi125 * 100) if hi125 else None,
+        "rsi": None,
+    }
+
+
 def process_exits(j, corpus, day, costs):
     """Close positions whose stop, target or time limit is hit today."""
     closed = []
@@ -72,8 +93,23 @@ def process_exits(j, corpus, day, costs):
         px *= (1 - slip)
         gross = (px - p["entry_px"]) * qty
         cost = (costs.charge(p["entry_px"] * qty, "BUY") + costs.charge(px * qty, "SELL"))
-        j.close_position(p["id"], day, px, reason, gross - cost)
-        closed.append((p["symbol"], reason, gross - cost))
+        net = gross - cost
+        j.close_position(p["id"], day, px, reason, net)
+        closed.append((p["symbol"], reason, net))
+
+        # Feed the learning loop. Features come from the entry bar; only the
+        # OUTCOME is known now.
+        try:
+            import learning
+            feats = json.loads(p.get("features") or "{}")
+            if feats:
+                learning.record([{**feats, "ret": (px / p["entry_px"] - 1) * 100,
+                                  "net": net, "exit": reason,
+                                  "symbol": p["symbol"], "date": str(day),
+                                  "bucket": p.get("bucket") or "unknown",
+                                  "source": "forward"}])
+        except Exception as e:
+            print(f"  learning record failed: {type(e).__name__}", flush=True)
     return closed
 
 
@@ -130,7 +166,8 @@ def generate_pending(j, corpus, bd, day, equity, specs):
             if why:
                 continue
             pid = j.open_position(h, sig, day, qty, hold)
-            j.db.execute("UPDATE positions SET entry_px=? WHERE id=?", (sig.entry, pid))
+            j.db.execute("UPDATE positions SET entry_px=?, features=? WHERE id=?",
+                         (sig.entry, json.dumps(entry_features(s, i)), pid))
             j.db.commit()
             queued.append((sym, sig))
     return queued
@@ -160,6 +197,25 @@ def run(day, plot=False, dry=False):
     print(f"  expired  {len(expired)} " + ", ".join(f"{s}:{r}" for s, r in expired[:5]))
     print(f"  queued   {len(queued)}  " + ", ".join(s for s, _ in queued[:5]))
     print(f"  open     {len(j.positions('open'))}")
+
+    if closed:
+        try:
+            import learning
+            import tg
+            t = learning.load()
+            fwd = [x for x in t if x.get("source") == "forward"]
+            lines = [f"{s} {r} Rs {n:+,.0f}" for s, r, n in closed[:5]]
+            lines.append(f"forward trades learned from: {len(fwd)}")
+            if len(fwd) >= learning.MIN_TRADES:
+                w, _ = learning.propose(t)
+                learning.save_weights(w, f"after {len(fwd)} forward trades")
+                lines.append("weights updated: " +
+                             ", ".join(f"{k} {v:.2f}" for k, v in w.items()))
+            else:
+                lines.append(f"weights hold until {learning.MIN_TRADES} forward trades")
+            tg.push_learning(f"{len(closed)} trade(s) closed {day}", lines)
+        except Exception as e:
+            print(f"  telegram push failed: {type(e).__name__}", flush=True)
 
     if plot and queued:
         import tv
