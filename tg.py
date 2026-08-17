@@ -144,6 +144,34 @@ def _title(name, sub=""):
     return f"*{name}*" + (f" — {sub}" if sub else "")
 
 
+def _lag_note():
+    """-> one line explaining the end-of-day lag, or '' when there is none.
+
+    The book fills from the bhavcopy, which NSE cuts after the close. So on a
+    weekday morning an order that has already entered the real market is still
+    'waiting' here. Saying so is the difference between a system that looks
+    broken and one that is merely a day behind on purpose.
+    """
+    from datetime import datetime as _dt
+    import features
+    now = _dt.now()
+    try:
+        corpus = features.load_corpus()
+        last = max(d for s in corpus.values() for d in s.days)
+    except Exception:
+        return ""
+    if last >= now.date():
+        return ""
+    if now.weekday() >= 5:
+        return ""
+    if now.hour < 18:
+        return (f"_Prices only go to {last}. Today's close is published after "
+                f"18:00 IST, so anything that entered the market this morning "
+                f"is recorded tonight, at the price it actually got._")
+    return (f"_Prices only go to {last}. Tonight's data has not been collected "
+            f"yet — the agent runs after 18:00._")
+
+
 def _px_now(corpus, sym, day):
     s = corpus.get(sym)
     i = s.index_of(day) if s else None
@@ -250,7 +278,11 @@ def cmd_next_orders(_=None):
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
     out = [_title("NEXT ORDERS", f"{len(pend)} waiting"),
-           "_These enter at the next session's open._", ""]
+           "_These enter at the next session's open._"]
+    note = _lag_note()
+    if note:
+        out.append(note)
+    out.append("")
     total = 0.0
     for r in pend:
         px = _px_now(corpus, r["symbol"], days[-1]) or 0
@@ -274,9 +306,13 @@ def cmd_open_orders(_=None):
     live = [r for r in s["rows"] if r["status"] == "open"]
     if not live:
         pend = s["pending"]
-        return (_title("OPEN ORDERS") + "\nNo trades are live yet."
-                + (f"\n\n{pend} waiting to enter — see /next\\_orders."
-                   if pend else ""))
+        out = [_title("OPEN ORDERS"), "Nothing recorded as live yet."]
+        if pend:
+            out += ["", f"{pend} order(s) queued — see /next\\_orders."]
+        note = _lag_note()
+        if note:
+            out += ["", note]
+        return "\n".join(out)
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
     out = [_title("OPEN ORDERS", f"{len(live)} live"), ""]
