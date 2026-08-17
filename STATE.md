@@ -92,6 +92,37 @@ book, and a best-of-40 figure is inflated by construction.
 - The impact constant is uncalibrated; profitable across c=0.5..3.0, but that
   is a range, not a measurement.
 
+## Brokers for paper trading — researched 2026-08-17
+
+**No Indian broker offers realistic paper trading through an API.** Checked
+before choosing one:
+
+| broker | paper trading via API | verdict |
+|---|---|---|
+| Zerodha (Kite Connect) | none — no sandbox at all | confirmed on their own developer forum |
+| Dhan | Sandbox, free, no account needed | fills EVERY order at Rs 100, no live quotes, capital resets daily; their docs say "performance cannot be benchmarked here" |
+| Angel One, Upstox, Fyers, Alice Blue, Shoonya, Pocketful | free live APIs | paper trading is web-based and manual, not API-driven |
+
+So a broker cannot replace this book's own fill engine. What the engine already
+does is the part that matters: it fills at the REAL opening price from the
+official NSE bhavcopy, charges the full cost stack, and models market impact.
+
+What a broker would add is execution realism the engine cannot invent --
+rejections, partial fills, margin blocks, true slippage -- and intraday
+visibility. Those need REAL orders; every simulator, ours included, is guessing.
+
+**The plan, if this is taken further:**
+
+1. `Dhan Sandbox` to prove the plumbing: that the code can place, track,
+   modify and cancel orders correctly. Free, no account. It cannot tell us
+   anything about whether the strategy makes money.
+2. A free live-data API (any of the above) for intraday prices, so a stop can
+   be checked against real ticks rather than the daily low.
+3. This engine stays the source of truth for P&L. No sandbox will give an
+   honest number.
+
+Whether to progress to real money is the user's decision, not a technical one.
+
 ## Daily operation
 
 launchd runs `agent.py --once` hourly. On a weekday after 18:00 it does
