@@ -118,7 +118,18 @@ visibility. Those need REAL orders; every simulator, ours included, is guessing.
 | paper engine | replays real prices — minute OHLC, real option premiums — not a static fill |
 | costs | brokerage, slippage, STT, exchange, SEBI, GST, stamp configured once; gross and net shown side by side |
 | execution modes | can be run against best-case, worst-case or average fills |
-| cost | Free tier has no deployments and no API; Starter Rs 300/month, Retail Rs 1,200 |
+| cost | Starter Rs 300/month is the MINIMUM that works; Retail Rs 1,200 |
+
+**The free tier does not work, and the reason is easy to misread.** Free lists
+"paper trading executions" as included, which makes it look sufficient. It is
+not: Free allows *0 algo strategy deployments* and has no "API to connect from
+other platforms". The paper engine exists but there is no way to put a strategy
+on it and no way to feed it signals. Starter adds exactly those two -- one
+deployment and API access -- and one deployment is all this needs.
+
+Confirm at signup that Starter's API feature is the same API MODE that
+suppresses Tradetron's own condition checking. The pricing page names the
+feature without tying it to the mode.
 
 The part that matters for THIS system is **API mode**: an external program
 generates the signal and Tradetron only executes it. Their own documentation is
