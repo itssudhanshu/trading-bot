@@ -88,6 +88,23 @@ def _pct_rank(vals):
 W = None
 INVERTED = None
 
+# --- literature-derived knobs, both OFF by default -------------------------
+# These change SELECTION, so they default to the current behaviour and are
+# switched on only by a test. Anything that silently altered the live book
+# would invalidate every measurement taken before it.
+
+# Jegadeesh & Titman momentum is measured to t-1 MONTH, not to t: the most
+# recent month carries short-term reversal, which is a different (and
+# opposite-signed) effect from momentum. Our `rs` runs to the signal day, so it
+# mixes the two. RS_SKIP is how many sessions to leave out at the recent end.
+RS_SKIP = 0
+
+# Bali, Cakici & Whitelaw: stocks with an extreme MAX daily return in the
+# recent past subsequently UNDERPERFORM -- lottery-like payoffs get overpriced.
+# The effect is strongest in small, illiquid names, which is this entire
+# universe. MAX_SCREEN drops that fraction of the cluster before scoring.
+MAX_SCREEN = None
+
 
 def _weights():
     """-> (weights, inverted). Module overrides win; otherwise read the file."""
@@ -108,10 +125,12 @@ def score(corpus, symbols, as_of, with_ranks=False):
         i = s.index_of(as_of)
         if i is None or i < 200:
             continue
-        prev = s.close[i - 125] if i >= 125 else None
-        if not prev:
+        # Momentum window ends RS_SKIP sessions back (0 = at the signal day).
+        j = i - RS_SKIP
+        prev = s.close[j - 125] if j >= 125 else None
+        if not prev or j < 0:
             continue
-        rs = s.close[i] / prev - 1.0
+        rs = s.close[j] / prev - 1.0
         deliv = [d for d in s.deliv_pct[max(0, i - 60):i + 1] if d and d > 0]
         liq = statistics.median([x for x in s.turnover[max(0, i - 60):i + 1] if x > 0] or [0])
         sma200 = statistics.fmean(s.close[i - 199:i + 1])
@@ -129,6 +148,21 @@ def score(corpus, symbols, as_of, with_ranks=False):
         }
     if not raw:
         return {}
+    if MAX_SCREEN:
+        # Drop the lottery tail: the names with the largest single-day gain in
+        # the last month. Computed from bars up to as_of only, like everything
+        # else here.
+        mx = {}
+        for sym in raw:
+            s = corpus[sym]
+            i = s.index_of(as_of)
+            r = [s.close[k] / s.close[k - 1] - 1.0
+                 for k in range(max(1, i - 20), i + 1) if s.close[k - 1]]
+            mx[sym] = max(r) if r else 0.0
+        drop = set(sorted(mx, key=lambda k: -mx[k])[:int(len(mx) * MAX_SCREEN)])
+        raw = {k: v for k, v in raw.items() if k not in drop}
+        if not raw:
+            return {}
     ranks = {f: _pct_rank({k: v[f] for k, v in raw.items()})
              for f in ("rs", "deliv", "liq", "near_high")}
     # Weights are learned, not fixed. learning.propose() moves them on measured

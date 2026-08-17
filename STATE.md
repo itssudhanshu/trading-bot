@@ -94,6 +94,8 @@ Do not re-add these without evidence that addresses the stated reason.
 | stop to entry at half the target | +8.27%, maxDD 33.2% | RISKIER, not safer: worst block -121.5% vs -83.6%, win 49->40%. Damage is monotone in how often it fires: 10/34/110 firings cost 0.4/5.3/9.1 CAGR points (L51) |
 | multiple targets (ladder) | +9.92 to +6.57% | monotone in rung count: 83->340 partial orders cost 3.6->7.0 CAGR points. Two rungs DO cut the tail (-57.8% vs -83.6%) -- a real trade, not a free win (L51) |
 | ladder AND stop move together | +4.63%, maxDD 32.9% | worst of everything tested; the stop move fires on the same pullbacks that the ladder was protecting (L51) |
+| skip-month momentum (21d / 42d) | +10.39 / +11.05% | 3-4 CAGR points worse; the breakout trigger already fires on recent strength, so skipping it in the score puts ranking and timing in disagreement (L53) |
+| MAX / lottery screen (drop top 10-20%) | +14.31 / +15.23% | LOOKS like a win on CAGR and per-trade; worst block -126.7% vs -49.4% because it cuts breadth 143 -> 118 symbols (L53) |
 | pooled ranking (all stocks in one pool) | +16.61% CAGR, 0.553 CAGR/DD | wins headline return, loses tail (-119.4%), concentration (15.4% in one name), breadth (119 vs 136 symbols) and the recent 30-session replay |
 
 **Shortening the hold alone is the one change that did NOT fail**, and it is

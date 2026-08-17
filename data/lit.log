@@ -1,0 +1,26 @@
+literature-derived selection tests — 6 variants x 1696 sessions, at the live book's exit rules (10/20/10d)
+
+  variant                            CAGR   maxDD   win    n   per-trade  std err  worst blk  syms
+  baseline (no skip, no screen)   +14.18%   25.8%   50%  231      +2.96%    0.98%     -49.4%   143
+  skip 21d (1 month)              +10.39%   25.0%   49%  209      +2.38%    0.94%    -101.7%   127
+  skip 42d (2 months)             +11.05%   16.2%   47%  196      +2.70%    1.07%     -55.2%   123
+  drop top 10% by MAX             +14.31%   25.3%   53%  193      +3.42%    0.98%    -126.7%   129
+  drop top 20% by MAX             +15.23%   24.4%   53%  178      +3.90%    1.15%    -122.7%   118
+  skip 21d + drop 10% MAX         +12.86%   24.2%   49%  196      +3.09%    1.08%    -124.7%   124
+
+  against the current score (+2.96% per trade, n=231):
+    skip 21d (1 month)              -3.79 CAGR pts   -0.58% / trade  +/- 2.67  t -0.43  inside the noise
+    skip 42d (2 months)             -3.13 CAGR pts   -0.26% / trade  +/- 2.85  t -0.18  inside the noise
+    drop top 10% by MAX             +0.13 CAGR pts   +0.46% / trade  +/- 2.72  t +0.33  inside the noise
+    drop top 20% by MAX             +1.05 CAGR pts   +0.93% / trade  +/- 2.97  t +0.62  inside the noise
+    skip 21d + drop 10% MAX         -1.32 CAGR pts   +0.13% / trade  +/- 2.87  t +0.09  inside the noise
+
+  per cluster (micro / small), average per trade:
+    baseline (no skip, no screen) micro +3.37% (n=137)   small +2.36% (n=94)
+    skip 21d (1 month)            micro +1.92% (n=126)   small +3.08% (n=83)
+    skip 42d (2 months)           micro +3.19% (n=118)   small +1.97% (n=78)
+    drop top 10% by MAX           micro +3.89% (n=121)   small +2.64% (n=72)
+    drop top 20% by MAX           micro +3.82% (n=121)   small +4.06% (n=57)
+    skip 21d + drop 10% MAX       micro +2.99% (n=121)   small +3.24% (n=75)
+
+  105 trades are needed to resolve a 3.1%/trade edge. 6 variants were run, so a single |t| near 2 is worth about half what it looks like.

@@ -1267,3 +1267,52 @@ step apart.
 **Note the disagreement between metrics, because it decides the answer.**
 CAGR-per-drawdown favours 10-20 days; worst-block favours 5-8. They are
 measuring different risks -- one the average path, the other the bad one.
+
+## L53 — Two published cross-sectional effects, neither transfers (and one is a trap)
+
+Motivated by paperswithbacktest.com, whose value to this project is NOT its
+dataset (it has no NSE coverage at all) but its premise: test hypotheses
+someone else pre-registered, so the hypothesis and the sample stop sharing an
+author. Both knobs live in `clusters.py`, default OFF, tested by `lit_test.py`
+at the live exit rules (10/20/10d).
+
+| variant | CAGR | maxDD | worst block | symbols | per-trade vs base |
+|---|---|---|---|---|---|
+| baseline | +14.18% | 25.8% | -49.4% | 143 | — |
+| skip 21d | +10.39% | 25.0% | -101.7% | 127 | -0.58% (t -0.43) |
+| skip 42d | +11.05% | **16.2%** | -55.2% | 123 | -0.26% (t -0.18) |
+| drop top 10% MAX | +14.31% | 25.3% | **-126.7%** | 129 | +0.46% (t +0.33) |
+| drop top 20% MAX | +15.23% | 24.4% | **-122.7%** | 118 | +0.93% (t +0.62) |
+
+**1. Skip-month momentum (Jegadeesh & Titman) does not transfer.** Measuring
+momentum to t-1 month instead of t costs 3-4 CAGR points and doubles the worst
+block at 21 days. The likely reason is specific to this book: the breakout
+trigger fires ON recent strength, so removing the recent month from the score
+puts the ranking and the timing rule in disagreement. The literature's
+construction assumes the score is the whole system; here it is not.
+
+**2. The MAX/lottery screen is the interesting failure.** On the two numbers
+most people would look at it WINS -- CAGR +15.23% and +0.93% per trade at the
+20% screen, win rate 50 -> 53%, drawdown slightly better. On the metric this
+project has repeatedly found generalises, it is a disaster: worst half-year
+block -122.7% against -49.4%.
+
+**The mechanism is breadth.** The screen removes 25 of 143 traded symbols. A
+book of five names drawn from a shallower pool concentrates, and concentration
+is what turns a bad half-year into a very bad one. The screen is removing names
+the score wanted -- `rs` and `near_high` both correlate with having had a big
+up-day, so "drop the biggest one-day gainers" and "buy strength" fight.
+
+**This is the third time in this project that a positive headline number came
+with a worse tail** (pooled ranking, the breakeven stop, now the MAX screen).
+Ranking candidates on CAGR would have adopted all three.
+
+Neither knob is adopted. Both stay in the tree, defaulted off, because the
+negative result is worth keeping and re-deriving it later would cost another
+six backtests.
+
+**Standing conclusion:** published US large-cap cross-sectional effects are
+hypotheses here, not findings, and this book's own structure (a trigger, a
+5-name bucket, a shallow pool) decides whether they survive. That is the same
+lesson as the rs t-statistic in CLAUDE.md: univariate significance elsewhere is
+not marginal portfolio value here.
