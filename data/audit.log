@@ -1,0 +1,61 @@
+
+DATA INTEGRITY
+--------------
+  [PASS] no unexplained weekday gaps
+         1695 sessions 2019-10-01..2026-08-14, 0 gaps
+  [PASS] stored bhavcopy matches its folder date
+         last 40 snapshots checked; 0 mismatched (this is the holiday stale-serve trap)
+  [PASS] delisted symbols retained in history
+         498 symbols stop before the last 40 sessions and are kept
+  [PASS] no bar dated in the future
+         0 offenders
+
+SELECTION
+---------
+  [PASS] clusters are disjoint
+         {'micro': 629, 'small': 629}, 0 overlap
+  [PASS] most liquid names are excluded
+         top-turnover name HDFCBANK is not tradeable; 1258 of 2486 are (51%)
+  [PASS] only tradeable clusters are scored
+         scored: ['micro', 'small']
+  [PASS] no pick sits below its 200-day average
+         0 of 40 picks below the gate
+  [PASS] no restricted stock is a candidate
+         none
+  [PASS] bucket never exceeds its per-cluster quota
+         selected {'small': 1} against {'micro': 3, 'small': 2}
+  [PASS] bucket never exceeds MAX_POSITIONS
+         1 of 5
+  [PASS] every selected name has triggered
+         none
+
+MONEY
+-----
+  [PASS] position size matches the deployment cap
+         Rs 45,000 per stock vs cap Rs 45,000
+  [PASS] a full book stays inside the deployment cap
+         Rs 225,000 of Rs 300,000
+  [PASS] the risk rule caps any single position
+         hard cap Rs 60,000 = 20% of capital
+  [PASS] buy-side cost matches a hand calculation
+         Rs 142.22 vs Rs 142.22 computed independently
+  [PASS] sell side pays DP and no stamp duty
+         sell Rs 143.15
+
+FILLS AND EXITS
+---------------
+  [PASS] an order cannot fill on its own signal day
+         queued and stepped on 2026-08-14; filled 0
+  [PASS] gapped stops fill worse than the nominal stop
+         85 stops, mean -11.96% against a -10% nominal
+  [PASS] every trade exits by stop, target or time
+         Counter({'stop': 85, 'target': 70, 'time': 62})
+
+HEADLINE NUMBER
+---------------
+  [PASS] the recorded baseline still reproduces
+         CAGR +13.57% (recorded +13.57), n=217 (recorded 217), maxDD 28.8%
+
+SUMMARY
+-------
+  21 passed, 0 failed, 0 skipped

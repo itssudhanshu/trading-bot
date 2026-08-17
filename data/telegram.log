@@ -432,3 +432,21 @@ listening (pid 98256, 14 commands)
 ./run_listener.sh: line 9: 98256 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 98353, 14 commands)
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 99928, 14 commands)
+changed on disk: pbook.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 99973, 14 commands)
+changed on disk: engine.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 99995, 14 commands)
+changed on disk: engine.py -- restarting
+listener exited, restarting in 3s
+listening (pid 117, 14 commands)
+changed on disk: audit.py, engine.py -- restarting
+listener exited, restarting in 3s
+listening (pid 146, 14 commands)
+changed on disk: engine.py -- restarting
+listener exited, restarting in 3s
+listening (pid 184, 14 commands)
