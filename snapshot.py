@@ -245,9 +245,26 @@ def main():
         e = m[name]
         print(f"  {name:20} {e['status']:>4}  {e['bytes']:>9,} B")
 
-    # No bhavcopy => market was shut. Surveillance lists still move, so we keep them.
+    # A 404 means the file is not there YET, which is not the same as the
+    # market being shut. On a weekday before the evening publication the
+    # bhavcopy simply has not been cut; calling that a "non-trading day" is
+    # wrong on every trading day until roughly 18:00 IST.
     if m["bhavcopy_delivery"]["status"] == 404:
-        print(f"{a.date}: no bhavcopy, non-trading day")
+        from datetime import datetime as _dt
+        d = a.date
+        weekend = d.weekday() >= 5
+        _hf = RAW.parent / "holidays.json"
+        _hol = set(json.loads(_hf.read_text())) if _hf.exists() else set()
+        holiday = d.isoformat() in _hol
+        early = (not weekend and not holiday
+                 and d == _dt.now().date() and _dt.now().hour < 18)
+        if early:
+            print(f"{d}: bhavcopy not published yet — trading day, "
+                  f"it is cut after the close (~18:00 IST)")
+        elif weekend or holiday:
+            print(f"{d}: no bhavcopy — {'weekend' if weekend else 'holiday'}")
+        else:
+            print(f"{d}: no bhavcopy, non-trading day")
         return
 
     failed = [n for n in CRITICAL if m[n]["status"] != 200]

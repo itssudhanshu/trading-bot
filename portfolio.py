@@ -189,6 +189,16 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
             i = s.index_of(as_of)
             if i is None:
                 continue
+            # Surveillance: ASM, GSM or an F&O ban means the exchange has
+            # singled the stock out, usually with tighter price bands or
+            # trade-to-trade settlement. universe.py has always computed this
+            # and the corpus was dropping it, so a flagged name could be
+            # ranked and bought. Only skip when the flag is KNOWN -- backfilled
+            # history carries no surveillance lists, and treating unknown as
+            # restricted would empty the universe.
+            if (i < len(s.restricted) and s.restricted[i]
+                    and i < len(s.surveillance_known) and s.surveillance_known[i]):
+                continue
             ref = s.close[i]
             qty, risk = position_size(capital, ref)
             if qty < 1:

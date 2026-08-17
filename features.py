@@ -32,6 +32,7 @@ class Series:
     turnover: list = field(default_factory=list)
     deliv_pct: list = field(default_factory=list)
     surveillance_known: list = field(default_factory=list)
+    restricted: list = field(default_factory=list)   # ASM / GSM / F&O ban that day
     rs: dict = field(default_factory=dict)      # lookback -> [percentile per bar]
     fund: list = field(default_factory=list)    # as-of filing timeline (see fundamentals.py)
 
@@ -87,6 +88,7 @@ def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict
             s.turnover.append(b.turnover)
             s.deliv_pct.append(b.deliv_pct)
             s.surveillance_known.append(b.surveillance_known)
+            s.restricted.append(b.restricted)
     out = {k: v for k, v in out.items() if len(v) >= min_bars}
     attach_fundamentals(out)
     return attach_rs(out)
