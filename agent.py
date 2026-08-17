@@ -79,6 +79,10 @@ _JOBS = {
     # Morning: fill pending orders at the day's actual open, rather than
     # leaving the book nine hours behind the market.
     "fill":     ["pbook_run.py", "--fill-live"],
+    # Evening, after the book has stepped: push the day's ranking, the bucket,
+    # the evidence so far, and any weight change that has EARNED itself. It
+    # proposes and never applies -- see tg.cmd_review.
+    "review":   ["tg.py", "--review"],
 }
 _JOB_NAMES = tuple(_JOBS)
 
@@ -146,6 +150,9 @@ def due(now=None):
         todo.append("catchup")
     if st.get("last_pbook") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("pbook")
+    # After pbook, so the review reads a book that has already stepped today.
+    if st.get("last_review") != str(today) and now.weekday() < 5 and now.hour >= 18:
+        todo.append("review")
     # The open is at 09:15; give it a few minutes to print before reading it.
     if (st.get("last_fill") != str(today) and now.weekday() < 5
             and 9 <= now.hour < 18):
@@ -314,10 +321,11 @@ def once(log=print):
             log(f"running {t}")
             if run_task(t, log=log):
                 done.append(t)
-                key = {"snapshot": "last_snapshot", "catchup": "last_catchup",
-
-                       "pbook": "last_pbook"}[t]
-                st[key] = str(date.today())
+                # Every job name must be here. "fill" was missing: the lookup
+                # raised KeyError after a successful morning fill, so digest()
+                # never ran and last_fill was never stored -- due() then
+                # re-queued the job on every hourly tick.
+                st[f"last_{t}"] = str(date.today())
                 _save(st)
     finally:
         _unlock()
@@ -383,6 +391,22 @@ def _selftest():
             _unlock()
             assert not LOCK.exists()
 
+            # Every job must record its own completion. "fill" did not: the
+            # state key was looked up in a table that omitted it, so a
+            # successful morning fill raised KeyError and re-ran hourly.
+            _save({})
+            o_run, o_due, o_busy = run_task, due, _busy
+            try:
+                globals()["run_task"] = lambda name, log=print: True
+                globals()["_busy"] = lambda: False
+                for job in _JOB_NAMES:
+                    globals()["due"] = lambda now=None, j=job: [j]
+                    assert once(log=lambda m: None) == [job], job
+                    assert _state().get(f"last_{job}") == str(date.today()), \
+                        f"{job} ran but recorded nothing; it would re-run every tick"
+            finally:
+                globals().update(run_task=o_run, due=o_due, _busy=o_busy)
+
             # attention() must judge DATA, not bookkeeping: a fresh agent with
             # snapshots on disk is healthy and must stay silent about them.
             _save({})
@@ -396,11 +420,16 @@ def _selftest():
     # The agent runs only data collection and the book. Assert against the
     # COMMAND TABLE, not the source text -- a source scan for forbidden names
     # matches the list of forbidden names itself and can never pass.
-    allowed = {"snapshot.py", "pbook_run.py", "--catchup", "--fill-live"}
-    for job in ("snapshot", "catchup", "pbook", "fill"):
+    allowed = {"snapshot.py", "pbook_run.py", "tg.py", "--catchup",
+               "--fill-live", "--review"}
+    for job in ("snapshot", "catchup", "pbook", "fill", "review"):
         for arg in _cmd_for(job)[1:]:
             assert arg in allowed, f"{job} runs unexpected {arg!r}"
-    assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill"}, _JOB_NAMES
+    assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill",
+                              "review"}, _JOB_NAMES
+    # review must run AFTER pbook on the same tick, or it reports yesterday's book
+    _t = due(datetime(2026, 8, 12, 19))
+    assert "review" in _t and _t.index("review") > _t.index("pbook"), _t
     print("agent selftest ok")
 
 

@@ -25,18 +25,25 @@ backfill.py    historical bhavcopy; holidays detected by CONTENT, not URL
 universe.py    -> point-in-time universe, surveillance flags, ETF exclusion
 features.py    -> per-symbol series + indicator primitives + market breadth
      |
-spec.py        bounded predicate vocabulary; generator emits DATA, never code
-engine.py      invariant gate, gap-aware fills, India cost stack, journal
+clusters.py    turnover terciles -> micro/small; composite score, 200-DMA gate
+entry.py       breakout trigger, evaluated on the signal day
+portfolio.py   rank -> interleave 3 micro / 2 small -> trigger -> size
+engine.py      invariant gate, gap-aware fills, India cost stack, impact model
      |
-backtest.py    cross-sectional walk-forward, purge, portfolio capacity
-generator.py   seeded search; screens testability + selectivity BEFORE P&L
-validate.py    pre-registered promotion criteria
-judge.py       sealed holdout; returns one bit and a budget count
+simulate.py    the backtest, over the same portfolio/clusters code paths
+pbook.py       the live paper book: queue -> fill at the next open -> exit
+pbook_run.py   daily driver (morning fill, evening step + re-select)
+learning.py    per-trade feature ledger; proposes score weights on evidence
      |
-runner.py      daily forward paper loop (the only renewable evidence)
-postmortem.py  deterministic aggregation -> lessons.md
-tv.py          render signals on a live TradingView chart (review surface)
+agent.py       what is due right now; launchd calls it hourly
+tg.py          Telegram: read-only reporting and the daily push
+audit.py       cross-checks the real system, and mutation-tests its own checks
+overview.py    the one honest status page; backtests cannot make it say YES
 ```
+
+The spec-search track (`spec.py`, `generator.py`, `backtest.py`, `validate.py`,
+`judge.py`, `runner.py`, `postmortem.py`, `tv.py`) is RETIRED and archived in
+`data/retired/`. It never held a position; `lessons.md` L1-L47 is its record.
 
 ## The three rules that matter
 
@@ -45,15 +52,15 @@ floor, surveillance exclusion, liquidity cap, portfolio heat, cost viability. A
 generator that can vary its own risk limits will discover that removing them
 improves backtest returns. Every optimiser does.
 
-**2. The holdout returns one bit.** `judge.py` answers PASS/FAIL plus budget
-remaining — never a metric. A judge that returns a Sharpe gets hill-climbed
-across runs, leaking the holdout one decimal at a time. Lifetime budget: 50
-consultations. Re-testing an identical spec is free and returns the cached
-verdict.
+**2. Only forward trades are evidence.** `overview.py` encodes this: no number
+of positive backtests can produce a YES, because a search returns some
+positives by construction. It needs 30 closed PAPER trades to say anything.
 
-**3. Screen for evidence before looking at returns.** A spec with n=8 and a
-beautiful backtest is not a finding. `generator.py` rejects on instance count
-and signal frequency before computing P&L.
+**3. A gap between two backtests is not a finding.** Per-trade returns here have
+a ~16% standard deviation, so at ~220 trades nothing under about 3 points per
+trade is resolvable. Every design decision carries its own error bars in
+`CLAUDE.md`; most of them sit inside the noise, and the one that does not —
+rank depth predicts return — is the one worth keeping.
 
 ## Data honesty
 
@@ -74,10 +81,11 @@ and signal frequency before computing P&L.
 python3 snapshot.py                  # today's capture
 python3 snapshot.py --catchup        # recover missed days, report what cannot be
 python3 backfill.py --years 4        # historical bars
-python3 generator.py -n 200          # search (train only; holdout asserted sealed)
-python3 validate.py                  # walk-forward promotion gate
-python3 postmortem.py                # aggregate -> feeds lessons.md
-python3 runner.py                    # daily paper loop
+python3 clusters.py                  # today's selection, per cluster
+python3 pbook_run.py                 # evening: fill, exit, re-select
+python3 pbook_run.py --fill-live     # morning: fill pending at the open
+python3 audit.py                     # 24 cross-checks against the real system
+python3 overview.py                  # status, gates, and the honest verdict
 ```
 
 Scheduling: use `deploy/*.plist` with launchd, not cron — cron skips jobs when
@@ -87,19 +95,23 @@ point-in-time record.
 ## lessons.md
 
 Accumulated structural findings, each with evidence and sample size. This is the
-system's memory and the generator's constraint set. Entries are failure modes
-and constraints, never tuned parameters: *"3R is unreachable at 30 bars"* is a
+system's memory and the constraint set on any future change. Entries are
+failure modes and constraints, never tuned parameters: *"3R is unreachable at 30 bars"* is a
 property of the market; *"lookback=47 worked"* is overfitting.
 
 ## Status
 
-No strategy has established an edge. The harness has found several real defects
-in its own results — an unreachable target rule, ETF contamination, a
-float-precision R:R rejection, R-multiple blow-ups from unviable position sizes,
-and a ranking that measured trades the portfolio could never take. That is the
-harness working as intended.
+No strategy has established an edge. The recorded baseline is +14.18% CAGR,
+25.8% max drawdown, 231 trades over 1,696 sessions with impact at c=1.0, and
+`audit.py` fails if it stops reproducing -- or if the exit rules change without
+the baseline being re-recorded deliberately (`--rebaseline`). It is a BACKTEST, and not evidence
+the approach works forward. Forward paper trades closed: 0. Run `overview.py`
+for the current figures rather than trusting this paragraph.
 
-Judge budget spent: 0/50.
+The harness has found several real defects in its own results — an unreachable
+target rule, ETF contamination, a float-precision R:R rejection, R-multiple
+blow-ups from unviable position sizes, and a ranking that measured trades the
+portfolio could never take. That is the harness working as intended.
 
 ## Not included, deliberately
 

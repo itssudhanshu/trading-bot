@@ -22,6 +22,18 @@ import portfolio
 COSTS = engine.Costs()
 
 
+_ATR_CACHE = {}
+
+
+def _atr_at(s, i, n=14):
+    """ATR(14) on the signal bar. Cached per symbol -- recomputing a full
+    Wilder series per candidate per session dominated the run otherwise."""
+    a = _ATR_CACHE.get(s.symbol)
+    if a is None:
+        a = _ATR_CACHE[s.symbol] = features.atr(s.high, s.low, s.close, n)
+    return a[i] if 0 <= i < len(a) else None
+
+
 def _liq(s, i, win=60):
     """-> (median daily turnover, daily volatility %) at index i."""
     t = [x for x in s.turnover[max(0, i - win):i + 1] if x > 0]
@@ -42,7 +54,27 @@ STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
 def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
         start_idx=300, trigger="none", offset=0, max_corr=None,
-        impact_c=engine.IMPACT_C, sizing="equal"):
+        impact_c=engine.IMPACT_C, sizing="equal", targets=None, stop_to=None,
+        atr_stop=None):
+    """`targets` = [(pct, fraction), ...]: a ladder of PARTIAL exits, each
+    selling `fraction` of the original quantity at entry*(1 + pct/100).
+    `stop_to` = (trigger_pct, new_stop_pct): once price touches
+    entry*(1 + trigger_pct/100) the stop moves to entry*(1 + new_stop_pct/100).
+
+    The two are INDEPENDENT on purpose. An earlier version coupled them into a
+    single `scale` rule, which meant "sell half and move the stop" was the only
+    thing that could be measured -- so a loss could not be attributed to the
+    selling or to the stop move. They are different bets and get tested apart.
+
+    A partial sell is a real order and pays its own brokerage, STT and DP
+    charge -- laddering out of a Rs 45,000 position is not free, and that cost
+    is a real part of what the test measures.
+
+    `atr_stop` = k places the stop k x ATR(14) below the fill instead of a flat
+    `stop_pct`. A fixed percentage asks a 6%-daily-vol microcap and a 2%-vol
+    name to survive the same distance; ATR asks each to survive the same amount
+    of ITS OWN noise. Position size still comes from `stop_pct`, so the two can
+    be varied independently."""
     # Default to the real pocket rather than a hardcoded figure: a simulation
     # run at a different capital from the live book is not a test of the live
     # book, because position size drives the cost percentage.
@@ -50,6 +82,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
     equity = peak = capital
     maxdd = 0.0
     open_pos, closed = [], []
+    next_pid = 0                 # both legs of a scaled exit share one id
     fy_net, taxed = {}, set()
     occupancy = []
     for di in range(start_idx, len(days)):
@@ -65,11 +98,56 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
             # Gap through a level fills at the open: worse on stops, better on
             # targets. This is where the realised stop cost exceeds nominal.
             if s.low[i] <= p["stop"]:
-                px, why = min(p["stop"], s.open[i]), "stop"
-            elif s.high[i] >= p["tgt"]:
-                px, why = max(p["tgt"], s.open[i]), "target"
-            elif held >= hold:
-                px, why = s.close[i], "time"
+                # Label by WHICH stop fired. Without this a moved stop that is
+                # hit the next day is indistinguishable from the original stop
+                # in the exit mix, which is the one diagnostic that says
+                # whether moving it did anything at all.
+                px = min(p["stop"], s.open[i])
+                why = "stop-moved" if p.get("moved") else "stop"
+            else:
+                # Everything below runs only if the ORIGINAL stop survived the
+                # day. Order within the day is unknown, so the stop is always
+                # read first and the worse reading is taken.
+                if stop_to and not p.get("moved") and s.high[i] >= p["trig"]:
+                    p["moved"] = True
+                    p["stop"] = p["entry"] * (1 + stop_to[1] / 100)
+                    # The moved stop can fire the SAME day: a name that touched
+                    # +10% and closed back through entry did both. Pretending
+                    # the new stop only becomes live tomorrow would book a free
+                    # option nobody had.
+                    if s.low[i] <= p["stop"]:
+                        px, why = min(p["stop"], s.open[i]), "stop-moved"
+                # Ladder rungs, cheapest first. A single wide day can take out
+                # more than one, and it really would have.
+                while px is None and p.get("rungs") and s.high[i] >= p["rungs"][0][0]:
+                    lvl, frac = p["rungs"].pop(0)
+                    sold = min(int(p["qty0"] * frac), p["qty"])
+                    if sold < 1:
+                        continue
+                    _px = max(lvl, s.open[i])
+                    _imp = (engine.impact_pct(sold * _px, *_liq(s, i), impact_c)
+                            if impact_c else 0.0)
+                    _px *= (1 - _imp / 100)
+                    _buy, _sell = p["entry"] * sold, _px * sold
+                    _cost = (COSTS.charge(_buy, "BUY") + COSTS.charge(_sell, "SELL"))
+                    _net = (_sell - _buy) - _cost
+                    equity += _net
+                    _fy = day.year if day.month > 3 else day.year - 1
+                    fy_net[_fy] = fy_net.get(_fy, 0.0) + _net
+                    closed.append({"ret": _net / _buy * 100, "why": "partial",
+                                   "clu": p["clu"], "day": day, "sym": p["sym"],
+                                   "cost_pct": _cost / _buy * 100,
+                                   "imp": p.get("imp_in", 0.0) + _imp,
+                                   "pid": p["pid"], "net": _net, "buy": _buy,
+                                   "held": held, "stop_dist": p.get("stop_dist")})
+                    p["qty"] -= sold
+                if p["qty"] < 1:
+                    continue
+                if px is None:
+                    if s.high[i] >= p["tgt"]:
+                        px, why = max(p["tgt"], s.open[i]), "target"
+                    elif held >= hold:
+                        px, why = s.close[i], "time"
             if px is None:
                 still.append(p); continue
             # And you do not exit at the printed price either.
@@ -87,7 +165,9 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
             closed.append({"ret": net / buy_val * 100, "why": why,
                            "clu": p["clu"], "day": day, "sym": p["sym"],
                            "cost_pct": cost / buy_val * 100,
-                           "imp": p.get("imp_in", 0.0) + imp_out})
+                           "imp": p.get("imp_in", 0.0) + imp_out,
+                           "pid": p["pid"], "net": net, "buy": buy_val,
+                           "stop_dist": p.get("stop_dist"), "held": held})
         open_pos = still
         occupancy.append(len(open_pos))
         # Settle the previous year's tax after 31 March, on net gains only.
@@ -142,10 +222,28 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                     adv, vol = _liq(s, i)
                     imp = engine.impact_pct(qty * e, adv, vol, impact_c)
                 e_eff = e * (1 + imp / 100)
-                open_pos.append({"sym": r["symbol"], "clu": r["cluster"],
+                _stop_px = e_eff * (1 - stop_pct / 100)
+                if atr_stop:
+                    a = _atr_at(s, i)
+                    # No ATR yet means the stop distance is unknown. Skip the
+                    # name rather than fall back to a flat percentage -- a
+                    # silent fallback would make part of the ATR book a
+                    # flat-stop book and the comparison meaningless.
+                    if not a or e_eff - atr_stop * a <= 0:
+                        continue
+                    _stop_px = e_eff - atr_stop * a
+                next_pid += 1
+                open_pos.append({"pid": next_pid,
+                                 "sym": r["symbol"], "clu": r["cluster"],
                                  "entry": e_eff, "qty": qty,
-                                 "stop": e_eff * (1 - stop_pct / 100),
+                                 "stop": _stop_px,
                                  "tgt": e_eff * (1 + target_pct / 100),
+                                 "qty0": qty,
+                                 "rungs": ([(e_eff * (1 + t / 100), f)
+                                            for t, f in targets] if targets else None),
+                                 "trig": (e_eff * (1 + stop_to[0] / 100)
+                                          if stop_to else None),
+                                 "stop_dist": (e_eff - _stop_px) / e_eff * 100,
                                  "entry_day": days[di + 1], "imp_in": imp})
                 held_clusters[r["cluster"]] += 1
                 taken_n += 1
@@ -322,15 +420,84 @@ def walk_forward(corpus, days, param, values, split=0.5, **fixed):
     return out
 
 
+def _selftest():
+    """The scale-out path is money logic and had no check.
+
+    One synthetic path, chosen so the property is unambiguous: every name runs
+    +30% and then bleeds back down through both stops. The base book must give
+    the whole move back at its -10% stop; the scaled book must bank half at the
+    first target and stop the rest out near breakeven. Asserts the PROPERTY --
+    partial booked, stop moved up, book ahead -- not the exact returns, which
+    move with the cost stack.
+    """
+    from datetime import date, timedelta
+    d0 = date(2024, 1, 1)
+    days = [d0 + timedelta(days=k) for k in range(420)]
+    corpus = {}
+    for j in range(30):
+        s = features.Series(f"S{j:02d}", list(days))
+        for k in range(420):
+            px = 100.0 + j * 0.001 * k              # near-flat, slight spread
+            if k >= 301:
+                px = 100.0 + min(k - 300, 10) * 3.0  # +30% over 10 sessions
+            if k >= 311:
+                px = max(130.0 - (k - 310), 60.0)    # then bleed 1/day, no gaps
+            s.open.append(px); s.high.append(px); s.low.append(px)
+            s.close.append(px); s.volume.append(1000)
+            s.turnover.append(1e6 * (j + 1)); s.deliv_pct.append(40.0 + j)
+            s.surveillance_known.append(True); s.restricted.append(False)
+        corpus[s.symbol] = s
+
+    kw = dict(start_idx=300, trigger="none", impact_c=0.0, stop_pct=10.0,
+              target_pct=100.0, hold=60)
+    base = run(corpus, days, **kw)
+    sc = run(corpus, days, targets=[(10.0, 0.5)], stop_to=(10.0, 0.0), **kw)
+    # The two rules must also work ALONE -- that separation is the point.
+    only_t = run(corpus, days, targets=[(10.0, 0.5)], **kw)
+    only_s = run(corpus, days, stop_to=(10.0, 0.0), **kw)
+
+    assert base["trades"], "control took no trades; the fixture is broken"
+    assert all(t["why"] == "stop" for t in base["trades"]), \
+        [t["why"] for t in base["trades"]]
+    parts = [t for t in sc["trades"] if t["why"] == "partial"]
+    assert parts, "targets set but no partial was ever booked"
+    assert all(t["ret"] > 0 for t in parts), parts
+    rest = [t for t in sc["trades"] if t["why"].startswith("stop")]
+    assert rest, "the remainder never exited"
+    # The whole point: the moved stop must sit near entry, not 10% below it.
+    assert all(t["ret"] > -2.0 for t in rest), \
+        f"stop did not move up after the first target: {rest}"
+
+    # targets alone must sell, and must NOT move the stop
+    assert [t for t in only_t["trades"] if t["why"] == "partial"], "no partial"
+    tail = [t for t in only_t["trades"] if t["why"].startswith("stop")]
+    assert tail and all(t["ret"] < -9.0 for t in tail), \
+        f"targets alone moved the stop; it must stay at -10%: {tail}"
+    # stop_to alone must move the stop, and must NOT sell anything
+    assert not [t for t in only_s["trades"] if t["why"] == "partial"], \
+        "stop_to alone sold a partial; it must only move the stop"
+    moved = [t for t in only_s["trades"] if t["why"] == "stop-moved"]
+    assert moved and all(t["ret"] > -2.0 for t in moved), moved
+    # and one position must still be ONE row when nothing is laddered
+    assert len({t["pid"] for t in only_s["trades"]}) == len(only_s["trades"])
+    assert all(t["ret"] < -9.0 for t in base["trades"]), base["trades"][:2]
+    assert sc["equity"] > base["equity"], (sc["equity"], base["equity"])
+    # A partial is a real order: it must pay its own way, not ride for free.
+    assert all(t["cost_pct"] > 0 for t in parts), "partial sell paid no costs"
+    print("simulate selftest ok (scale-out verified; rest shared with "
+          "portfolio/clusters)")
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        print("simulate selftest ok (logic shared with portfolio/clusters)")
+        _selftest()
         sys.exit()
     from datetime import datetime as _dt
     BATCH = _dt.now().strftime("%Y%m%d-%H%M")
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
-    print(f"CLUSTER BOOK SIMULATIONS  {days[300]} .. {days[-1]}  (Rs 5,00,000)")
+    print(f"CLUSTER BOOK SIMULATIONS  {days[300]} .. {days[-1]}  "
+          f"(Rs {portfolio.CAPITAL:,})")
     print(f"batch {BATCH}\n")
     print("  variant                    CAGR      DD     n   win    avg-stop  micro/small/mid")
     report("baseline 10/20/15d", run(corpus, days))

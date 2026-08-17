@@ -194,7 +194,8 @@ def main():
         shutil.rmtree(tmp, ignore_errors=True)
 
     # gap handling, on the real simulator
-    r = simulate.run(corpus, days, stop_pct=10.0, target_pct=20.0, hold=15,
+    r = simulate.run(corpus, days, stop_pct=portfolio.STOP_PCT,
+                     target_pct=portfolio.TARGET_PCT, hold=portfolio.HOLD_DAYS,
                      max_pos=5, refresh=5, trigger="breakout", impact_c=1.0)
     t = r["trades"]
     stops = [x["ret"] for x in t if x["why"] == "stop"]
@@ -232,6 +233,23 @@ def main():
     check("every tg.* call from the daily runner resolves", not missing,
           f"{missing or 'none'}")
 
+    # ...and tg.py against ITSELF. The check above only looked at other files,
+    # so `tg.py --overview` called a cmd_overview() that had been deleted and
+    # the audit stayed green. A CLI branch nobody runs daily is exactly where a
+    # dead name survives.
+    own = []
+    for node in ast.walk(ast.parse((features.ROOT / "tg.py").read_text())):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id.startswith("cmd_") and not hasattr(tg, node.func.id)):
+            own.append(f"tg.py: {node.func.id}()")
+    check("every cmd_* called inside tg.py exists", not own, f"{own or 'none'}")
+
+    # Every advertised command must dispatch, and every dispatchable one must be
+    # advertised or deliberately aliased -- /help is the only map the operator has.
+    undoc = sorted(set(tg.COMMANDS) - tg.ALIASES
+                   - {c for c in tg.COMMANDS if c.replace("_", "\\_") in tg.cmd_help()})
+    check("every command appears in /help", not undoc, f"{undoc or 'none'}")
+
     # -------------------------------------------------------- REPRODUCES
     section("HEADLINE NUMBER")
     # A hardcoded number cannot tell a REGRESSION from ordinary drift: every new
@@ -241,14 +259,29 @@ def main():
     import json as _j
     bf = features.ROOT / "data" / "baseline.json"
     now_b = {"sessions": len(days), "cagr": round(r["cagr"], 2),
-             "n": len(t), "maxdd": round(r["maxdd"], 1)}
+             "n": len(t), "maxdd": round(r["maxdd"], 1),
+             "config": f"{portfolio.STOP_PCT:g}/{portfolio.TARGET_PCT:g}/"
+                       f"{portfolio.HOLD_DAYS}d"}
     if not bf.exists():
         bf.write_text(_j.dumps(now_b, indent=1))
         skip("the recorded baseline still reproduces",
              f"no baseline stored; recorded {now_b}")
     else:
         old = _j.loads(bf.read_text())
-        if old["sessions"] == now_b["sessions"]:
+        if old.get("config", now_b["config"]) != now_b["config"]:
+            # A rule change is NOT drift. Absorbing it would quietly re-record
+            # whatever the new rules produce, which is how a regression and a
+            # deliberate change become indistinguishable. Re-record on purpose:
+            #     python3 audit.py --rebaseline
+            check("the recorded baseline still reproduces", False,
+                  f"exit rules changed {old.get('config', '?')} -> "
+                  f"{now_b['config']}; CAGR {old['cagr']:+.2f}% -> "
+                  f"{now_b['cagr']:+.2f}%. Re-record deliberately with "
+                  f"`python3 audit.py --rebaseline` once the change is intended")
+            if "--rebaseline" in sys.argv:
+                bf.write_text(_j.dumps(now_b, indent=1))
+                print(f"         REBASELINED to {now_b}")
+        elif old["sessions"] == now_b["sessions"]:
             check("the recorded baseline still reproduces",
                   abs(now_b["cagr"] - old["cagr"]) < 0.01 and now_b["n"] == old["n"],
                   f"CAGR {now_b['cagr']:+.2f}% vs {old['cagr']:+.2f}%, "

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Rs 5,00,000 cluster book -- executed and tracked SEPARATELY.
+"""The Rs 3,00,000 cluster book -- executed and tracked SEPARATELY.
 
 Kept apart from the generated-spec book on purpose. Merging them would make it
 impossible to say which approach worked, and they carry different risk rules:
@@ -10,7 +10,7 @@ Rules (operator's design, one parameter changed on evidence):
   entry     next session's OPEN after selection
   stop      10% below entry, fixed        (3% measured -0.6%/trade; see L-notes)
   target    20% above entry
-  time exit 15 trading days
+  time exit 10 trading days
   trail     none -- every trailing variant tested lowered expectancy
 
 Every closed trade feeds learning.py tagged `source: portfolio`, so this book's
@@ -27,8 +27,15 @@ import features
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "pbook.db"
 
-CAPITAL = 300_000    # must match portfolio.CAPITAL
-STOP_PCT, TARGET_PCT, HOLD_DAYS = 10.0, 20.0, 15
+# The exit rules are READ from portfolio, never restated. A second copy of
+# these constants would let the live book and the simulation that validates it
+# drift apart silently -- and the whole point of matching cost models and exit
+# rules is that a divergence between the two is readable.
+import portfolio
+
+CAPITAL = portfolio.CAPITAL
+STOP_PCT, TARGET_PCT, HOLD_DAYS = (portfolio.STOP_PCT, portfolio.TARGET_PCT,
+                                   portfolio.HOLD_DAYS)
 # Same charge model as the simulation. A paper book that costs differently
 # from the backtest cannot validate it -- any divergence would be unreadable.
 COSTS = __import__("engine").Costs()

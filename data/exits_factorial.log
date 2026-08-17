@@ -1,0 +1,56 @@
+exit rules — 9 pre-registered variants x 1696 sessions, Rs 300,000
+
+  variant                        CAGR   maxDD   win    n   per-trade  std err  worst blk
+  hold 15d, no ladder         +13.54%   28.8%   49%  217      +3.07%    1.09%     -83.6%
+  hold 8d, no ladder           +9.47%   25.8%   52%  245      +1.91%    0.82%     -51.7%
+  hold 8d, half @+10           +7.36%   26.3%   55%  247      +1.56%    0.68%     -48.4%
+  hold 8d, third @+7/+14       +5.80%   23.0%   55%  247      +1.26%    0.63%     -53.4%
+  hold 10d, no ladder         +14.18%   25.8%   50%  231      +2.96%    0.98%     -49.4%
+  hold 10d, half @+10          +9.82%   26.2%   53%  232      +2.13%    0.77%     -44.1%
+  hold 10d, third @+7/+14      +8.39%   22.7%   55%  232      +1.83%    0.70%     -38.6%
+  hold 15d, half @+10          +9.39%   29.1%   51%  218      +2.24%    0.84%     -75.8%
+  hold 15d, third @+7/+14      +8.15%   24.6%   53%  218      +1.94%    0.77%     -57.8%
+
+  against the baseline (+3.07% per trade, n=217):
+    hold 8d, no ladder          -4.07 CAGR pts   -1.16% / trade  +/- 2.68  t -0.85  inside the noise
+    hold 8d, half @+10          -6.19 CAGR pts   -1.51% / trade  +/- 2.52  t -1.17  inside the noise
+    hold 8d, third @+7/+14      -7.74 CAGR pts   -1.82% / trade  +/- 2.48  t -1.44  inside the noise
+    hold 10d, no ladder         +0.64 CAGR pts   -0.11% / trade  +/- 2.88  t -0.07  inside the noise
+    hold 10d, half @+10         -3.73 CAGR pts   -0.94% / trade  +/- 2.62  t -0.70  inside the noise
+    hold 10d, third @+7/+14     -5.15 CAGR pts   -1.24% / trade  +/- 2.54  t -0.96  inside the noise
+    hold 15d, half @+10         -4.16 CAGR pts   -0.83% / trade  +/- 2.70  t -0.60  inside the noise
+    hold 15d, third @+7/+14     -5.40 CAGR pts   -1.13% / trade  +/- 2.62  t -0.85  inside the noise
+
+  stop distance actually placed (p10 / median / p90 of entries):
+    hold 15d, no ladder        10.0% / 10.0% / 10.0%
+    hold 8d, no ladder         10.0% / 10.0% / 10.0%
+    hold 8d, half @+10         10.0% / 10.0% / 10.0%
+    hold 8d, third @+7/+14     10.0% / 10.0% / 10.0%
+    hold 10d, no ladder        10.0% / 10.0% / 10.0%
+    hold 10d, half @+10        10.0% / 10.0% / 10.0%
+    hold 10d, third @+7/+14    10.0% / 10.0% / 10.0%
+    hold 15d, half @+10        10.0% / 10.0% / 10.0%
+    hold 15d, third @+7/+14    10.0% / 10.0% / 10.0%
+
+  when the baseline's 70 target hits actually landed:
+    by day  5   34 of 70 ( 49%)  ███████████████
+    by day  6   41 of 70 ( 59%)  ██████████████████
+    by day  7   44 of 70 ( 63%)  ███████████████████
+    by day  8   49 of 70 ( 70%)  █████████████████████
+    by day 10   58 of 70 ( 83%)  █████████████████████████
+    by day 12   66 of 70 ( 94%)  ████████████████████████████
+    by day 15   70 of 70 (100%)  ██████████████████████████████
+    median target lands on day 6; a book that leaves earlier forfeits the rest.
+
+  exit mix (how each book actually ended its positions):
+    hold 15d, no ladder       stop 85  target 70  time 62
+    hold 8d, no ladder        stop 76  target 50  time 119
+    hold 8d, half @+10        partial 97  stop 76  target 50  time 119
+    hold 8d, third @+7/+14    partial 203  stop 76  target 50  time 119
+    hold 10d, no ladder       stop 77  target 60  time 94
+    hold 10d, half @+10       partial 100  stop 77  target 60  time 94
+    hold 10d, third @+7/+14   partial 209  stop 77  target 60  time 94
+    hold 15d, half @+10       partial 108  stop 85  target 70  time 62
+    hold 15d, third @+7/+14   partial 221  stop 85  target 70  time 62
+
+  105 trades are needed to resolve a 3.1%/trade edge; the gaps above are read against that, not against the CAGR column.

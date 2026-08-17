@@ -1,0 +1,50 @@
+exit rules — 14 pre-registered variants x 1696 sessions, Rs 300,000
+
+  variant                        CAGR   maxDD   win    n   per-trade  std err  worst blk
+  baseline 10% / 20% / 15d    +13.54%   28.8%   49%  217      +3.07%    1.09%     -83.6%
+  stop 5% only                 +0.04%   26.4%   27%  273      +0.28%    0.75%     -55.5%
+  hold 7d only                 +8.40%   25.2%   51%  246      +1.72%    0.80%     -41.2%
+  GOAL 5% / 20% / 7d           -0.20%   25.9%   32%  294      +0.19%    0.68%     -50.5%
+  goal, target 10%             -4.81%   33.1%   36%  317      -0.49%    0.44%     -79.9%
+  goal, target 15%             -6.98%   41.3%   31%  315      -0.79%    0.47%     -79.5%
+  goal, hold 6d                -1.93%   30.5%   33%  301      -0.03%    0.63%     -59.3%
+  goal, hold 8d                -0.15%   26.7%   30%  294      +0.20%    0.69%     -52.3%
+  base + T1 10%, half, BE      +5.84%   31.6%   55%  226      +1.52%    0.81%    -111.1%
+  base + T1 10%, half, +5%     +5.37%   30.6%   56%  240      +1.33%    0.75%     -97.3%
+  goal + T1 10%, half, BE      -3.99%   29.9%   36%  300      -0.41%    0.50%     -77.8%
+  goal + T1 7%, half, BE       -5.02%   31.3%   42%  305      -0.57%    0.44%     -76.8%
+  goal + T1 5%, third, BE      -6.70%   36.7%   42%  305      -0.80%    0.47%     -81.8%
+  goal + T1 7%, half, +3%      -5.80%   31.6%   42%  311      -0.69%    0.42%     -75.5%
+
+  against the baseline (+3.07% per trade, n=217):
+    stop 5% only               -13.51 CAGR pts   -2.79% / trade  +/- 2.60  t -2.10  RESOLVED
+    hold 7d only                -5.14 CAGR pts   -1.35% / trade  +/- 2.66  t -1.00  inside the noise
+    GOAL 5% / 20% / 7d         -13.75 CAGR pts   -2.88% / trade  +/- 2.52  t -2.24  RESOLVED
+    goal, target 10%           -18.35 CAGR pts   -3.56% / trade  +/- 2.31  t -3.02  RESOLVED
+    goal, target 15%           -20.52 CAGR pts   -3.86% / trade  +/- 2.33  t -3.24  RESOLVED
+    goal, hold 6d              -15.47 CAGR pts   -3.11% / trade  +/- 2.47  t -2.47  RESOLVED
+    goal, hold 8d              -13.69 CAGR pts   -2.87% / trade  +/- 2.53  t -2.22  RESOLVED
+    base + T1 10%, half, BE     -7.70 CAGR pts   -1.55% / trade  +/- 2.66  t -1.14  inside the noise
+    base + T1 10%, half, +5%    -8.18 CAGR pts   -1.74% / trade  +/- 2.60  t -1.31  inside the noise
+    goal + T1 10%, half, BE    -17.54 CAGR pts   -3.48% / trade  +/- 2.36  t -2.90  RESOLVED
+    goal + T1 7%, half, BE     -18.56 CAGR pts   -3.64% / trade  +/- 2.31  t -3.08  RESOLVED
+    goal + T1 5%, third, BE    -20.25 CAGR pts   -3.87% / trade  +/- 2.33  t -3.25  RESOLVED
+    goal + T1 7%, half, +3%    -19.34 CAGR pts   -3.76% / trade  +/- 2.30  t -3.21  RESOLVED
+
+  exit mix (how each book actually ended its positions):
+    baseline 10% / 20% / 15d  stop 85  target 70  time 62
+    stop 5% only              stop 190  target 46  time 37
+    hold 7d only              stop 73  target 47  time 126
+    GOAL 5% / 20% / 7d        stop 181  target 39  time 74
+    goal, target 10%          stop 185  target 80  time 52
+    goal, target 15%          stop 195  target 54  time 66
+    goal, hold 6d             stop 183  target 38  time 80
+    goal, hold 8d             stop 184  target 41  time 69
+    base + T1 10%, half, BE   stop 113  target 58  target1 108  time 54
+    base + T1 10%, half, +5%  stop 146  target 47  target1 117  time 46
+    goal + T1 10%, half, BE   stop 198  target 33  target1 74  time 68
+    goal + T1 7%, half, BE    stop 220  target 29  target1 107  time 55
+    goal + T1 5%, third, BE   stop 232  target 25  target1 123  time 47
+    goal + T1 7%, half, +3%   stop 247  target 23  target1 110  time 41
+
+  105 trades are needed to resolve a 3.1%/trade edge; the gaps above are read against that, not against the CAGR column.

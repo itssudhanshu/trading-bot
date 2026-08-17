@@ -1,0 +1,52 @@
+exit rules — 8 pre-registered variants x 1696 sessions, Rs 300,000
+
+  variant                        CAGR   maxDD   win    n   per-trade  std err  worst blk
+  baseline, hold 15d          +13.54%   28.8%   49%  217      +3.07%    1.09%     -83.6%
+  hold 5d                      +7.45%   19.5%   50%  260      +1.49%    0.79%     -21.2%
+  hold 6d                      +5.86%   24.2%   51%  252      +1.24%    0.73%     -38.2%
+  hold 7d                      +8.40%   25.2%   51%  246      +1.72%    0.80%     -41.2%
+  hold 8d                      +9.47%   25.8%   52%  245      +1.91%    0.82%     -51.7%
+  hold 10d                    +14.18%   25.8%   50%  231      +2.96%    0.98%     -49.4%
+  hold 12d                    +15.10%   28.6%   51%  231      +3.16%    1.01%     -70.8%
+  hold 20d                    +16.18%   27.6%   50%  204      +3.80%    1.17%     -86.3%
+
+  against the baseline (+3.07% per trade, n=217):
+    hold 5d                     -6.10 CAGR pts   -1.58% / trade  +/- 2.64  t -1.17  inside the noise
+    hold 6d                     -7.68 CAGR pts   -1.83% / trade  +/- 2.58  t -1.39  inside the noise
+    hold 7d                     -5.14 CAGR pts   -1.35% / trade  +/- 2.66  t -1.00  inside the noise
+    hold 8d                     -4.07 CAGR pts   -1.16% / trade  +/- 2.68  t -0.85  inside the noise
+    hold 10d                    +0.64 CAGR pts   -0.11% / trade  +/- 2.88  t -0.07  inside the noise
+    hold 12d                    +1.56 CAGR pts   +0.09% / trade  +/- 2.92  t +0.06  inside the noise
+    hold 20d                    +2.64 CAGR pts   +0.73% / trade  +/- 3.13  t +0.45  inside the noise
+
+  stop distance actually placed (p10 / median / p90 of entries):
+    baseline, hold 15d         10.0% / 10.0% / 10.0%
+    hold 5d                    10.0% / 10.0% / 10.0%
+    hold 6d                    10.0% / 10.0% / 10.0%
+    hold 7d                    10.0% / 10.0% / 10.0%
+    hold 8d                    10.0% / 10.0% / 10.0%
+    hold 10d                   10.0% / 10.0% / 10.0%
+    hold 12d                   10.0% / 10.0% / 10.0%
+    hold 20d                   10.0% / 10.0% / 10.0%
+
+  when the baseline's 70 target hits actually landed:
+    by day  5   34 of 70 ( 49%)  ███████████████
+    by day  6   41 of 70 ( 59%)  ██████████████████
+    by day  7   44 of 70 ( 63%)  ███████████████████
+    by day  8   49 of 70 ( 70%)  █████████████████████
+    by day 10   58 of 70 ( 83%)  █████████████████████████
+    by day 12   66 of 70 ( 94%)  ████████████████████████████
+    by day 15   70 of 70 (100%)  ██████████████████████████████
+    median target lands on day 6; a book that leaves earlier forfeits the rest.
+
+  exit mix (how each book actually ended its positions):
+    baseline, hold 15d        stop 85  target 70  time 62
+    hold 5d                   stop 65  target 40  time 155
+    hold 6d                   stop 70  target 45  time 137
+    hold 7d                   stop 73  target 47  time 126
+    hold 8d                   stop 76  target 50  time 119
+    hold 10d                  stop 77  target 60  time 94
+    hold 12d                  stop 81  target 68  time 82
+    hold 20d                  stop 83  target 74  time 47
+
+  105 trades are needed to resolve a 3.1%/trade edge; the gaps above are read against that, not against the CAGR column.

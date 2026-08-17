@@ -12,7 +12,7 @@
       -> breakout trigger, filled at the NEXT open
       -> Rs 3,00,000 capital, max 75% deployed (Rs 45k/stock)
          open risk 7.5% at a full book, ~4.6% typical (occupancy averages 3.09/5)
-      -> exit: -10% stop / +20% target / 15 trading days
+      -> exit: -10% stop / +20% target / 10 trading days
       -> analyse per stock AND per bucket -> record findings -> Telegram
 
 **Vocabulary, and it matters** — a wrong reading here already produced one
@@ -103,6 +103,9 @@ Univariate significance is not marginal portfolio value. Weights unchanged.
 A CAGR gap between two backtests is not evidence unless the per-trade edge
 behind it clears its own noise. Checked at current settings:
 
+These were measured at the 15-day hold. The hold is now 10 (L52); the verdicts
+below are about the OTHER knobs and none of them was re-decided by that change.
+
 | decision | CAGR gap | edge per trade | std err | t | verdict |
 |---|---|---|---|---|---|
 | adopted the breakout trigger | +2.91 | +0.05% | 2.22% | 0.02 | inside the noise |
@@ -155,9 +158,14 @@ number:
 |---|---|---|
 | 0.0 | +13.97% | the old, wrong assumption |
 | 0.5 | +11.60% | 83% |
-| **1.0** | **+13.57%** | the standing baseline at 75% deployment |
+| **1.0** | **+13.57%** | the then-baseline at 75% deployment |
 | 2.0 | +7.40% | 53% |
 | 3.0 | +4.53% | 32% |
+
+**Measured at the 15-day hold, which is no longer the book's rule** (10 days
+since L52). The shape of the sensitivity is what matters here and that does not
+depend on the hold; the absolute figures are the old configuration's. Re-run
+`impact_test.py` before quoting any single number from this table.
 
 Profitable across the whole range, which is the useful finding. At c=1.0 the
 median trade pays 0.30% and p90 pays 1.02%; five trades (2.3%) pay over 2% and

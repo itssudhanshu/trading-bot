@@ -452,6 +452,62 @@ def cmd_health(_=None):
     return "\n".join(out)
 
 
+def cmd_review(_=None):
+    """The daily read: what the book holds, what it would buy next, and whether
+    anything has EARNED a change.
+
+    Suggestions are printed, never applied. This project's own record (L47) is
+    that parameter tuning on this book anti-predicts out of sample, so a daily
+    job that quietly retunes the strategy would be the single most damaging
+    thing to automate here. It proposes; a person decides and re-simulates.
+    """
+    import analysis
+    import learning
+    import pbook
+    s = pbook.summary()
+    closed = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
+    out = [_title("DAILY REVIEW", str(datetime.now().date())), "",
+           f"*Book*  {s['open']} running · {s['pending']} queued · "
+           f"{s['closed']} closed · equity {_rs(s['equity'])}"]
+
+    trades = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100} for r in closed]
+    out += ["", "*Evidence*", "_" + analysis.verdict(trades) + "_"]
+
+    out += ["", "*Suggestions*"]
+    try:
+        led = learning.load()
+        cur = learning.load_weights()
+        new, notes = learning.propose(led, current=dict(cur))
+        moved = {k: (cur.get(k, 1.0), v) for k, v in new.items()
+                 if abs(v - cur.get(k, v)) > 1e-6}
+        # A uniform rescale changes nothing -- the score is a weighted average,
+        # so one common factor cancels. propose() says so in its notes and this
+        # must repeat it, not print four numbers that move the book nowhere.
+        # Reporting an update that changes nothing is a failure this project
+        # has already shipped once (learning.py, the decayed-weights loop).
+        noop = [n for n in notes if n.startswith("NO-OP")]
+        if noop:
+            out.append(f"  none — {noop[0].split('--')[-1].strip()}")
+        elif moved:
+            for k, (a, b) in sorted(moved.items()):
+                out.append(f"  {k}: {a:.2f} → {b:.2f}  _(proposed, NOT applied)_")
+            out.append("_Re-run the simulation before adopting any of these._")
+        else:
+            out.append(f"  none — {len(led)} trades in the ledger, "
+                       f"{learning.MIN_TRADES} needed before a weight may move")
+    except Exception as e:
+        out.append(f"  unavailable ({type(e).__name__})")
+
+    log = ROOT / "data" / "audit.log"
+    if log.exists():
+        tail = [l.strip() for l in log.read_text().splitlines() if "passed," in l]
+        if tail:
+            ok = "failed, 0" in tail[-1] or ", 0 failed" in tail[-1]
+            out += ["", f"*Self-audit*  {'✅' if ok else '❌'} {tail[-1]}"]
+
+    return "\n".join(out) + "\n\n" + cmd_bucket()
+
+
 def notify(title, lines):
     """Push an event the user should see without asking. Never raises.
 
@@ -478,7 +534,8 @@ def cmd_help(_=None):
             "/open\\_orders — trades live in the market now\n"
             "/closed\\_orders — finished trades and their profit or loss\n\n"
             "*Evidence*\n"
-            "/findings — what has been recorded\n\n"
+            "/findings — what has been recorded\n"
+            "/review — the daily read: book, evidence, suggestions\n\n"
             "*System*\n"
             "/health — is everything running\n\n"
             "_Hyphens work too: /next-orders, /open-orders, /closed-orders._\n"
@@ -496,7 +553,8 @@ COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
             "/portfolio": cmd_open_orders,
             "/closed_orders": cmd_closed_orders,
             "/closed-orders": cmd_closed_orders,
-            "/findings": cmd_findings, "/health": cmd_health,
+            "/findings": cmd_findings, "/review": cmd_review,
+            "/health": cmd_health,
             "/help": cmd_help, "/start": cmd_help}
 
 # Spellings that work but are deliberately not advertised: the hyphen forms
@@ -607,8 +665,8 @@ if __name__ == "__main__":
     elif "--send" in sys.argv:
         i = sys.argv.index("--send")
         print(json.dumps(send(sys.argv[i + 1]).get("ok")))
-    elif "--overview" in sys.argv:
-        print(json.dumps(send(cmd_overview()).get("ok")))
+    elif "--review" in sys.argv:
+        print(json.dumps(send(cmd_review()).get("ok")))
     elif "--listen" in sys.argv:
         # Watch EVERY project module, not just this file. tg.py imports agent,
         # judge and engine at request time and holds them in memory, so editing

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Daily driver for the Rs 5,00,000 cluster book.
+"""Daily driver for the Rs 3,00,000 cluster book.
 
 Re-selects only when the book has room. Re-running the screen every session and
 queueing the new top-5 would churn the book daily and never let a 15-day thesis

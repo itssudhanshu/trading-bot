@@ -1,0 +1,38 @@
+exit rules — 7 pre-registered variants x 1696 sessions, Rs 300,000
+
+  variant                        CAGR   maxDD   win    n   per-trade  std err  worst blk
+  baseline 10% / 20% / 15d    +13.54%   28.8%   49%  217      +3.07%    1.09%     -83.6%
+  atr 1.5x, hold 7d            +2.89%   22.5%   39%  283      +0.64%    0.75%     -44.0%
+  atr 2.0x, hold 7d            +5.15%   25.6%   45%  268      +1.12%    0.83%     -64.8%
+  atr 2.5x, hold 7d            +7.28%   24.3%   51%  245      +1.52%    0.81%     -62.2%
+  atr 3.0x, hold 7d            +7.33%   26.2%   52%  249      +1.51%    0.81%     -67.0%
+  atr 2.5x, hold 15d          +10.55%   29.2%   50%  211      +2.52%    1.03%    -129.1%
+  atr 3.0x, hold 15d           +9.42%   29.8%   51%  202      +2.50%    1.09%    -113.5%
+
+  against the baseline (+3.07% per trade, n=217):
+    atr 1.5x, hold 7d          -10.66 CAGR pts   -2.43% / trade  +/- 2.60  t -1.83  inside the noise
+    atr 2.0x, hold 7d           -8.40 CAGR pts   -1.96% / trade  +/- 2.69  t -1.43  inside the noise
+    atr 2.5x, hold 7d           -6.27 CAGR pts   -1.55% / trade  +/- 2.67  t -1.14  inside the noise
+    atr 3.0x, hold 7d           -6.21 CAGR pts   -1.56% / trade  +/- 2.67  t -1.15  inside the noise
+    atr 2.5x, hold 15d          -2.99 CAGR pts   -0.55% / trade  +/- 2.95  t -0.36  inside the noise
+    atr 3.0x, hold 15d          -4.13 CAGR pts   -0.57% / trade  +/- 3.03  t -0.37  inside the noise
+
+  stop distance actually placed (p10 / median / p90 of entries):
+    baseline 10% / 20% / 15d   10.0% / 10.0% / 10.0%
+    atr 1.5x, hold 7d           4.1% /  6.4% /  7.8%
+    atr 2.0x, hold 7d           5.2% /  8.5% / 10.5%
+    atr 2.5x, hold 7d           6.0% / 10.7% / 13.1%
+    atr 3.0x, hold 7d           7.6% / 12.8% / 15.7%
+    atr 2.5x, hold 15d          7.1% / 10.7% / 13.1%
+    atr 3.0x, hold 15d          7.9% / 12.8% / 15.9%
+
+  exit mix (how each book actually ended its positions):
+    baseline 10% / 20% / 15d  stop 85  target 70  time 62
+    atr 1.5x, hold 7d         stop 145  target 44  time 94
+    atr 2.0x, hold 7d         stop 106  target 46  time 116
+    atr 2.5x, hold 7d         stop 68  target 46  time 131
+    atr 3.0x, hold 7d         stop 48  target 45  time 156
+    atr 2.5x, hold 15d        stop 80  target 67  time 64
+    atr 3.0x, hold 15d        stop 61  target 66  time 75
+
+  105 trades are needed to resolve a 3.1%/trade edge; the gaps above are read against that, not against the CAGR column.

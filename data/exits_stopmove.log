@@ -1,0 +1,48 @@
+exit rules — 7 pre-registered variants x 1696 sessions, Rs 300,000
+
+  variant                        CAGR   maxDD   win    n   per-trade  std err  worst blk
+  baseline, stop never moves  +13.54%   28.8%   49%  217      +3.07%    1.09%     -83.6%
+  at +10% -> stop to entry     +8.27%   33.2%   40%  225      +2.04%    1.00%    -121.5%
+  at +10% -> stop to +5%       +6.19%   33.0%   52%  239      +1.54%    0.91%    -103.2%
+  at +5%  -> stop to entry     +4.41%   23.7%   26%  243      +1.08%    0.85%     -79.0%
+  at +15% -> stop to entry    +13.13%   29.1%   47%  217      +2.98%    1.08%     -83.8%
+  at +10% -> stop to -5%      +13.04%   28.1%   47%  218      +2.96%    1.08%     -84.1%
+  at +10% -> entry, hold 8d    +4.74%   28.8%   44%  257      +1.07%    0.75%     -84.8%
+
+  against the baseline (+3.07% per trade, n=217):
+    at +10% -> stop to entry    -5.28 CAGR pts   -1.03% / trade  +/- 2.90  t -0.69  inside the noise
+    at +10% -> stop to +5%      -7.36 CAGR pts   -1.53% / trade  +/- 2.79  t -1.08  inside the noise
+    at +5%  -> stop to entry    -9.13 CAGR pts   -1.99% / trade  +/- 2.71  t -1.44  inside the noise
+    at +15% -> stop to entry    -0.42 CAGR pts   -0.09% / trade  +/- 3.02  t -0.06  inside the noise
+    at +10% -> stop to -5%      -0.50 CAGR pts   -0.12% / trade  +/- 3.01  t -0.08  inside the noise
+    at +10% -> entry, hold 8d   -8.80 CAGR pts   -2.00% / trade  +/- 2.60  t -1.51  inside the noise
+
+  stop distance actually placed (p10 / median / p90 of entries):
+    baseline, stop never moves 10.0% / 10.0% / 10.0%
+    at +10% -> stop to entry   10.0% / 10.0% / 10.0%
+    at +10% -> stop to +5%     10.0% / 10.0% / 10.0%
+    at +5%  -> stop to entry   10.0% / 10.0% / 10.0%
+    at +15% -> stop to entry   10.0% / 10.0% / 10.0%
+    at +10% -> stop to -5%     10.0% / 10.0% / 10.0%
+    at +10% -> entry, hold 8d  10.0% / 10.0% / 10.0%
+
+  when the baseline's 70 target hits actually landed:
+    by day  5   34 of 70 ( 49%)  ███████████████
+    by day  6   41 of 70 ( 59%)  ██████████████████
+    by day  7   44 of 70 ( 63%)  ███████████████████
+    by day  8   49 of 70 ( 70%)  █████████████████████
+    by day 10   58 of 70 ( 83%)  █████████████████████████
+    by day 12   66 of 70 ( 94%)  ████████████████████████████
+    by day 15   70 of 70 (100%)  ██████████████████████████████
+    median target lands on day 6; a book that leaves earlier forfeits the rest.
+
+  exit mix (how each book actually ended its positions):
+    baseline, stop never movesstop 85  target 70  time 62
+    at +10% -> stop to entry  stop 79  stop-moved 34  target 58  time 54
+    at +10% -> stop to +5%    stop 83  stop-moved 63  target 47  time 46
+    at +5%  -> stop to entry  stop 60  stop-moved 110  target 45  time 28
+    at +15% -> stop to entry  stop 81  stop-moved 10  target 69  time 57
+    at +10% -> stop to -5%    stop 75  stop-moved 16  target 68  time 59
+    at +10% -> entry, hold 8d stop 76  stop-moved 31  target 43  time 107
+
+  105 trades are needed to resolve a 3.1%/trade edge; the gaps above are read against that, not against the CAGR column.

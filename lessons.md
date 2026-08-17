@@ -1083,3 +1083,187 @@ their sign flips between halves.
 +12.66% CAGR / 38.9% DD, better than the +6.37% / 48.2% the tuned weights
 produced. Four hours of weight learning ended up worse than not learning at all,
 and the honest response is to say so and keep the neutral weights.
+
+## L49 — The 5% stop is not a parameter choice, it is a bet on entry precision (decisive)
+
+Requested: cut the hold to 6-8 sessions and the stop to 5%. Fourteen
+pre-registered variants, `exit_test.py`, compared per POSITION (a scaled exit
+books two rows; counting them as two trades would corrupt the comparison).
+
+**Factorial, so each change is attributable:**
+
+| variant | CAGR | maxDD | win | per-trade vs baseline | worst block |
+|---|---|---|---|---|---|
+| baseline 10 / 20 / 15d | +13.54% | 28.8% | 49% | — | -83.6% |
+| stop 5% only | +0.04% | 26.4% | 27% | -2.79% (t -2.10) | -55.5% |
+| hold 7d only | +8.40% | 25.2% | 51% | -1.35% (t -1.00) | -41.2% |
+| both (the goal) | -0.20% | 25.9% | 32% | -2.88% (t -2.24) | -50.5% |
+
+**The stop is the whole effect; the hold is nearly free.** Cutting the hold
+costs 5 CAGR points that sit inside the noise and IMPROVES both drawdown and
+the worst half-year block, which is the ranking that has generalised here
+(L45/L46). Cutting the stop halves the win rate.
+
+**The mechanism is visible in the exit mix, which is not a noisy statistic.**
+Stops go from 85 of 217 exits to 181 of 294 -- 62% of positions stopped out.
+A 5% stop sits inside these microcaps' daily range, so it is hit by noise
+before the thesis can resolve. This is the same finding as the 3% test
+(70-77% stopped), one notch wider.
+
+**A volatility-scaled stop says what distance the book can actually carry:**
+
+| stop | median distance | CAGR | worst block |
+|---|---|---|---|
+| 1.5 x ATR | 6.4% | +2.89% | -44.0% |
+| 2.0 x ATR | 8.5% | +5.15% | -64.8% |
+| 2.5 x ATR | 10.7% | +7.28% | -62.2% |
+| 3.0 x ATR | 12.8% | +7.33% | -67.0% |
+
+At 2.5x ATR the median stop is 10.7% -- the current fixed 10% is already the
+right distance, arrived at by a different route. Every ATR variant is inside
+the noise against the baseline (t -1.15 to -1.83), so ATR is not an
+improvement; it is a MEASUREMENT of what these names need, and the answer is
+roughly 10%.
+
+**So `portfolio.py`'s standing note is now evidence, not a plan:** "a tight
+stop needs a precise entry to survive". 5% is unreachable at current entry
+quality. It becomes reachable only by making entries that need less room --
+better timing, not a smaller number.
+
+## L50 — Multiple targets and a moved stop lose money the same way a trail does
+
+Requested alongside L49: book part of the position at a first target, then move
+the stop up under the rest. Implemented in `simulate.run(scale=...)` with the
+partial charged its own brokerage, STT and DP -- a scale-out of a Rs 45,000
+position is two orders, not one.
+
+| variant | CAGR | win | target hits | worst block |
+|---|---|---|---|---|
+| baseline | +13.54% | 49% | 70 | -83.6% |
+| + T1 10%, half out, stop to breakeven | +5.84% | 55% | 58 | -111.1% |
+| + T1 10%, half out, stop to +5% | +5.37% | 56% | 47 | -97.3% |
+
+**Win rate rises and the book gets worse** -- exactly the pattern `portfolio.py`
+recorded for trailing stops, reached by a different mechanism. Moving the stop
+up converts losers into smaller losers (49% -> 55-56% win) while cutting full
+target hits from 70 to 47-58. The winners pay for everything else here, and
+both rules sell half of every winner at +10% on the way to +20%.
+
+**The tail gets worse, not better,** which is the opposite of the intuition
+that motivates a breakeven stop: -111.1% worst block against -83.6%. A stop at
+breakeven is still a stop, and it fires during the pullback that precedes the
+move -- at which point the position is closed and the recovery happens without
+it.
+
+Per-trade the difference is inside the noise (t -1.14, -1.31). The CAGR gap and
+the worst-block gap point the same way as the mechanism, so this is recorded as
+REJECTED rather than unresolved -- but the honest statement is that one path
+cannot separate -7.7 CAGR points from luck at this trade count.
+
+At the 5%/7d settings every scale variant is resolved-negative (t -2.90 to
+-3.25). Nothing here rescues the tight stop.
+
+## L51 — The three exit rules, decoupled. Dose-response beats the t-statistic. (decisive)
+
+L50 tested "sell half AND move the stop" as one rule, so a loss could not be
+attributed. `simulate.run` now takes `targets` (a ladder of partial exits) and
+`stop_to` (move the stop once a trigger is touched) as INDEPENDENT arguments,
+and each was measured alone.
+
+**Every comparison here is inside its per-trade error bar** (|t| < 1.5). At
+~220 trades and a 16% per-trade standard deviation, nothing under ~3 points
+per trade is resolvable, and none of these clear it. What DOES carry
+information is dose-response: each rule was run at several intensities, and
+the cost tracks how often the rule fires.
+
+### Moving the stop to entry — the damage is proportional to how often it acts
+
+| trigger | times the moved stop fired | CAGR | maxDD | worst block |
+|---|---|---|---|---|
+| never (baseline) | — | +13.54% | 28.8% | -83.6% |
+| at +15% | 10 | +13.13% | 29.1% | -83.8% |
+| at +10% | 34 | +8.27% | **33.2%** | **-121.5%** |
+| at +5% | 110 | +4.41% | 23.7% | -79.0% |
+
+Monotone: 10 -> 34 -> 110 firings gives -0.42 -> -5.28 -> -9.13 CAGR points.
+A rule whose cost scales cleanly with its own activity is not a noise artefact;
+this project rejects ideas for being NON-monotonic (the ADV participation cap,
+the position floor), and the same standard has to be applied when the gradient
+points down.
+
+**It makes the book riskier, which is the opposite of the intent.** At the
++10% trigger, maximum drawdown rises 28.8 -> 33.2% and the worst half-year
+block nearly halves again, -83.6 -> -121.5%. Win rate FALLS, 49 -> 40%,
+because a breakeven exit is not a win after costs.
+
+**The mechanism:** a pullback to entry after a +10% run is ordinary behaviour
+in these names, not a warning. Target hits drop 70 -> 58, so twelve positions
+that would have paid +20% were closed at zero instead. Removing the winners
+removes the thing that repairs the equity curve, and the drawdown gets worse
+even though each individual trade was "protected".
+
+### Multiple targets alone — a clean intervention, and it also costs
+
+The ladder does not change WHEN a position exits, only how much is left: the
+stop/target/time mix is identical to baseline (85 / 70 / 62) in every pure
+ladder variant. That makes this the cleanest comparison in the file.
+
+| ladder | partial orders | CAGR | maxDD | worst block | win |
+|---|---|---|---|---|---|
+| none (baseline) | 0 | +13.54% | 28.8% | -83.6% | 49% |
+| half at +15% | 83 | +9.92% | 28.7% | -93.4% | 51% |
+| half at +10% | 108 | +9.39% | 29.1% | -75.8% | 51% |
+| third at +7 and +14 | 221 | +8.15% | **24.6%** | **-57.8%** | 53% |
+| quarter at +5/+10/+15 | 340 | +6.57% | 25.4% | -64.2% | 54% |
+
+Monotone again: 83 -> 340 partial orders gives -3.62 -> -6.98 CAGR points.
+Every rung sells part of a winner below the target and pays its own brokerage,
+STT and DP charge on the way out.
+
+**This is the only one of the three that behaves like the operator expected.**
+Two rungs cut the worst block -83.6 -> -57.8% and drawdown 28.8 -> 24.6%, for
+5.4 CAGR points. It buys real tail protection with real return. It is still
+worse on CAGR-per-drawdown (0.331 vs 0.470), so it is a trade, not a free win.
+
+### Combining them is the worst option tested
+
+"Half at +10% and move the stop": +4.63% CAGR, 32.9% drawdown, -120.9% worst
+block. The ladder's tail benefit is destroyed by the stop move, which fires on
+the same pullbacks.
+
+## L52 — Shorter holds buy a large tail improvement with return that is not resolvable
+
+Isolated properly this time: the stop stays at 10%, only the clock moves. (The
+earlier 6d/8d runs in L49 were at a 5% stop and so measured the stop.)
+
+| hold | CAGR | maxDD | worst block | CAGR/DD | per-trade vs base |
+|---|---|---|---|---|---|
+| 5d | +7.45% | **19.5%** | **-21.2%** | 0.382 | -1.58% (t -1.17) |
+| 6d | +5.86% | 24.2% | -38.2% | 0.242 | -1.83% (t -1.39) |
+| 7d | +8.40% | 25.2% | -41.2% | 0.333 | -1.35% (t -1.00) |
+| 8d | +9.47% | 25.8% | -51.7% | 0.367 | -1.16% (t -0.85) |
+| 10d | +14.18% | 25.8% | -49.4% | **0.550** | -0.11% (t -0.07) |
+| 12d | +15.10% | 28.6% | -70.8% | 0.528 | +0.09% (t +0.06) |
+| 15d (current) | +13.54% | 28.8% | -83.6% | 0.470 | — |
+| 20d | +16.18% | 27.6% | -86.3% | 0.586 | +0.73% (t +0.45) |
+
+**Nothing here is statistically resolvable** -- every t is inside +/-1.5. But
+two structural facts are not statistics:
+
+**1. The tail shortens with the clock, hard.** Worst half-year block runs
+-21.2% at 5 days to -86.3% at 20. That is monotone across eight settings and
+is the metric this project has found generalises (L45/L46).
+
+**2. When winners pay says what a short hold forfeits.** Of the baseline's 70
+target hits: 49% land by day 5, 63% by day 7, 70% by day 8, 83% by day 10,
+94% by day 12. The MEDIAN target lands on day 6.
+
+So a 8-day book collects 70% of the winners and carries roughly 60% of the
+tail risk. A 10-day book collects 83% and has the best CAGR-per-drawdown of
+any setting tested. The 6-8 day window the operator asked for is defensible;
+10 days is where the risk-adjusted number actually peaks, and the two are one
+step apart.
+
+**Note the disagreement between metrics, because it decides the answer.**
+CAGR-per-drawdown favours 10-20 days; worst-block favours 5-8. They are
+measuring different risks -- one the average path, the other the bad one.

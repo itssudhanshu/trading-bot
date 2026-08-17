@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Paper portfolio: Rs 5,00,000 across three size clusters.
+"""Paper portfolio: Rs 3,00,000 across two size clusters.
 
 RULES (fixed here, measured not guessed)
-  universe   20 per cluster: micro / small / mid, by median turnover
+  universe   20 per cluster: micro / small, by median turnover. The universe
+             splits into three turnover terciles and the most liquid third is
+             discarded outright, never traded.
   selection  composite of 6-month RS + delivery% + liquidity,
              gated on close > its own 200-day average
   entry      next session's OPEN after selection (never the signal bar's close --
              you cannot trade a price that has already printed)
   stop       10% below entry, FIXED
   target     20% above entry
-  time exit  15 trading days
+  time exit  10 trading days
   trailing   NONE
 
 Why no trailing stop, despite it being requested: measured across six
@@ -39,7 +41,20 @@ CAPITAL = 300_000    # the whole paper pocket, not a deployable target
 RISK_PCT = 2.0          # of capital, per position
 STOP_PCT = 10.0
 TARGET_PCT = 20.0
-HOLD_DAYS = 15
+# 10 sessions, not 15. Measured across eight hold lengths at the current 10%
+# stop (L52) and then as a 3x3 factorial against the partial-exit ladder (L51):
+# 10 days beats 15 on every axis at once -- CAGR +14.18 vs +13.54, drawdown
+# 25.8 vs 28.8%, worst half-year block -49.4 vs -83.6%, CAGR-per-drawdown 0.550
+# vs 0.470 -- with a per-trade difference of -0.11% (t -0.07), i.e. none.
+#
+# It is not adopted because it won a search. It is adopted because 83% of this
+# book's target hits land by day 10 and the median lands on day 6, so sessions
+# 11-15 carry tail risk for winners that have almost all already paid.
+#
+# 8 days was asked for and is available; it is strictly worse than 10 here
+# (+9.47% CAGR, same 25.8% drawdown, -51.7% worst block), so there is no
+# trade-off between them to weigh -- 10 dominates.
+HOLD_DAYS = 10
 MAX_POSITIONS = 5
 
 # Cash is a position. A fully-invested book has no capacity to add when a

@@ -17,7 +17,7 @@ Last updated: 2026-08-16 — approach finalised, repo reduced to the single trac
       -> rank within cluster, keep the top 20 of each
       -> bucket = 3 micro + 2 small = 5 stocks
       -> entry: breakout trigger, filled at the NEXT session open
-      -> exit: -10% stop / +20% target / 15 trading days
+      -> exit: -10% stop / +20% target / 10 trading days
       -> analyse per stock and per bucket -> record findings -> Telegram
 
 **Vocabulary.** A *cluster* is a size band (micro, small). A *bucket* is the
@@ -46,17 +46,25 @@ There is no TDS on resident equity delivery.
 
 ## Historical baseline
 
-**+13.57% CAGR, 28.8% max drawdown, 217 trades** over 1695 sessions
-(2019-10-01 to 2026-08-14), with impact at c=1.0. It is a BACKTEST. It is not
-evidence the approach works forward.
+**+14.18% CAGR, 25.8% max drawdown, 231 trades** over 1696 sessions
+(2019-10-01 to 2026-08-17), with impact at c=1.0, at the adopted 10-day hold.
+It is a BACKTEST. It is not evidence the approach works forward.
 
-Occupancy: the book holds 3.09 stocks on average. Distribution:
-  0 stocks:   1.2% of sessions
-  1 stocks:  14.3% of sessions
-  2 stocks:  19.9% of sessions
-  3 stocks:  21.9% of sessions
-  4 stocks:  24.3% of sessions
-  5 stocks:  18.5% of sessions
+Per trade: +2.96% +/- 1.93 (std err 0.98, t 3.01, n=231).
+
+The 15-day hold this replaced gave +13.54% / 28.8% / 217 trades on the same
+corpus. The change was adopted on L51/L52: 10 days beats 15 on CAGR, drawdown,
+worst half-year block (-49.4 vs -83.6%) and CAGR-per-drawdown, with a per-trade
+difference of -0.11% (t -0.07). `audit.py` now fails loudly if the exit rules
+move without the baseline being re-recorded on purpose.
+
+Occupancy: the book holds 2.83 stocks on average. Distribution:
+  0 stocks:   1.8% of sessions
+  1 stocks:  17.3% of sessions
+  2 stocks:  22.6% of sessions
+  3 stocks:  25.6% of sessions
+  4 stocks:  19.9% of sessions
+  5 stocks:  12.8% of sessions
 
 A book holding 1 stock is normal, not broken.
 
@@ -79,7 +87,24 @@ Do not re-add these without evidence that addresses the stated reason.
 | participation cap on ADV | non-monotonic | 2% cap gave HIGHER max impact than no cap |
 | mid cluster in the bucket | -149.9% over 57 trades | the only negative cluster |
 | widening/narrowing the tradeable universe | 33%: +4.81, 50%: +10.61, 85%: +5.11, 100%: +6.07 | inverted U peaking at the current 67% |
+| stop 5% (fixed) | +0.04% CAGR, 27% win | 62% of positions stop out; 5% is inside these names' daily range (L49) |
+| hold 6-8 sessions WITH a 5% stop | -1.93 to -0.15% | the stop is the effect, not the hold |
+| target 10% or 15% at a 5% stop | -4.81 / -6.98% | a tighter target does not rescue a stop hit by noise |
+| ATR-scaled stops (1.5-3.0x) | +2.89 to +7.33% | all inside the noise vs baseline; 2.5x ATR = a 10.7% median stop, i.e. what the book already uses (L49) |
+| stop to entry at half the target | +8.27%, maxDD 33.2% | RISKIER, not safer: worst block -121.5% vs -83.6%, win 49->40%. Damage is monotone in how often it fires: 10/34/110 firings cost 0.4/5.3/9.1 CAGR points (L51) |
+| multiple targets (ladder) | +9.92 to +6.57% | monotone in rung count: 83->340 partial orders cost 3.6->7.0 CAGR points. Two rungs DO cut the tail (-57.8% vs -83.6%) -- a real trade, not a free win (L51) |
+| ladder AND stop move together | +4.63%, maxDD 32.9% | worst of everything tested; the stop move fires on the same pullbacks that the ladder was protecting (L51) |
 | pooled ranking (all stocks in one pool) | +16.61% CAGR, 0.553 CAGR/DD | wins headline return, loses tail (-119.4%), concentration (15.4% in one name), breadth (119 vs 136 symbols) and the recent 30-session replay |
+
+**Shortening the hold alone is the one change that did NOT fail**, and it is
+now measured across eight settings at the current 10% stop (L52). Nothing is
+statistically resolvable, but the tail shortens monotonically with the clock:
+worst half-year block runs -21.2% at 5 days to -86.3% at 20. Of the baseline's
+70 target hits, 70% land by day 8 and 83% by day 10; the median lands on day 6.
+
+CAGR-per-drawdown peaks at 10 days (0.550 vs 0.470 at the current 15). The
+6-8 day window asked for is defensible on tail risk; 10 days is where the
+risk-adjusted number peaks. Not adopted -- the hold is the operator's design.
 
 Five consecutive negative results. The design is at a local optimum; further
 parameter search mostly inflates selection bias. Trial count is ~40 on this
