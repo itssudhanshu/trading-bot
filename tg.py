@@ -185,15 +185,24 @@ def cmd_wallet(_=None):
     s = pbook.summary()
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
-    invested = unreal = 0.0
+    import quotes
+    q = quotes.live([r["symbol"] for r in s["rows"]
+                     if r["status"] in ("open", "pending")])
+    invested = unreal = spent = 0.0
     for r in s["rows"]:
         if r["status"] not in ("open", "pending"):
             continue
-        px = _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"] or 0
+        px = ((q.get(r["symbol"]) or {}).get("ltp")
+              or _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"] or 0)
         invested += (r["qty"] or 0) * px
+        # Cash left the account at the FILL price, not today's price. Deducting
+        # the current value instead made unrealised profit cancel itself out,
+        # so the book showed +1,405 on paper and a total value of exactly the
+        # starting capital.
+        spent += (r["qty"] or 0) * (r["entry_px"] or px)
         if r["status"] == "open" and r["entry_px"]:
             unreal += r["qty"] * (px - r["entry_px"])
-    cash = portfolio.CAPITAL + s["realised"] - invested
+    cash = portfolio.CAPITAL + s["realised"] - spent
     out = [_title("WALLET"), "",
            f"*Total value*  {_rs(cash + invested)}",
            f"*Cash*         {_rs(cash)}",
@@ -441,6 +450,21 @@ def cmd_health(_=None):
     except Exception as e:
         out.append(f"· agent state unavailable ({type(e).__name__})")
     return "\n".join(out)
+
+
+def notify(title, lines):
+    """Push an event the user should see without asking. Never raises.
+
+    The command rewrite dropped the old push_learning() and left two callers in
+    pbook_run.py pointing at nothing, so the very first forward fill reported
+    "telegram push failed: AttributeError" and no message went out. The audit
+    now checks that these callers resolve.
+    """
+    body = "*" + str(title) + "*\n" + "\n".join(f"• {l}" for l in lines)
+    try:
+        return send(body)
+    except Exception as e:
+        return {"ok": False, "error": type(e).__name__}
 
 
 def cmd_help(_=None):

@@ -468,3 +468,23 @@ listening (pid 8351, 14 commands)
 ./run_listener.sh: line 9:  8351 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 8467, 14 commands)
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+recv '/open_orders' -> /open_orders -> cmd_open_orders
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 9574, 14 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 9643, 14 commands)
+changed on disk: tg.py, audit.py, pbook_run.py -- restarting
+listener exited, restarting in 3s
+listening (pid 9737, 14 commands)
+changed on disk: tg.py, audit.py -- restarting
+listener exited, restarting in 3s
+listening (pid 9840, 14 commands)
+changed on disk: audit.py -- restarting
+listener exited, restarting in 3s
+listening (pid 10052, 14 commands)
+./run_listener.sh: line 9: 10052 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 10078, 14 commands)

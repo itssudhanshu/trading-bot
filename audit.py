@@ -206,12 +206,60 @@ def main():
     check("every trade exits by stop, target or time",
           set(holds) <= {"stop", "target", "time"}, f"{Counter(holds)}")
 
+    # the wallet must add up: total value = capital + realised + unrealised
+    import tg as _tg
+    txt = _tg.COMMANDS["/wallet"]()
+    import re as _re
+    nums = {k: float(v.replace(",", "")) for k, v in
+            _re.findall(r"\*(Total value|Cash|Invested)\*\s+Rs ([\d,\-]+)", txt)}
+    if len(nums) == 3:
+        check("wallet total equals cash plus holdings",
+              abs(nums["Total value"] - (nums["Cash"] + nums["Invested"])) < 2,
+              f"total {nums['Total value']:,.0f} vs cash {nums['Cash']:,.0f} "
+              f"+ invested {nums['Invested']:,.0f}")
+    else:
+        skip("wallet total equals cash plus holdings", "could not parse /wallet")
+
+    # every tg.* call made from the daily runner must actually resolve
+    import ast, tg
+    missing = []
+    for f in ("pbook_run.py", "agent.py"):
+        src = (features.ROOT / f).read_text()
+        for node in ast.walk(ast.parse(src)):
+            if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                    and node.value.id == "tg" and not hasattr(tg, node.attr)):
+                missing.append(f"{f}: tg.{node.attr}")
+    check("every tg.* call from the daily runner resolves", not missing,
+          f"{missing or 'none'}")
+
     # -------------------------------------------------------- REPRODUCES
     section("HEADLINE NUMBER")
-    check("the recorded baseline still reproduces",
-          abs(r["cagr"] - 13.57) < 0.01 and len(t) == 217,
-          f"CAGR {r['cagr']:+.2f}% (recorded +13.57), n={len(t)} (recorded 217), "
-          f"maxDD {r['maxdd']:.1f}%")
+    # A hardcoded number cannot tell a REGRESSION from ordinary drift: every new
+    # trading session shifts the result slightly. Store the session count with
+    # the baseline. Same corpus and a different number is a break; a bigger
+    # corpus and a small change is just Monday happening.
+    import json as _j
+    bf = features.ROOT / "data" / "baseline.json"
+    now_b = {"sessions": len(days), "cagr": round(r["cagr"], 2),
+             "n": len(t), "maxdd": round(r["maxdd"], 1)}
+    if not bf.exists():
+        bf.write_text(_j.dumps(now_b, indent=1))
+        skip("the recorded baseline still reproduces",
+             f"no baseline stored; recorded {now_b}")
+    else:
+        old = _j.loads(bf.read_text())
+        if old["sessions"] == now_b["sessions"]:
+            check("the recorded baseline still reproduces",
+                  abs(now_b["cagr"] - old["cagr"]) < 0.01 and now_b["n"] == old["n"],
+                  f"CAGR {now_b['cagr']:+.2f}% vs {old['cagr']:+.2f}%, "
+                  f"n={now_b['n']} vs {old['n']}, same {old['sessions']} sessions")
+        else:
+            grew = now_b["sessions"] - old["sessions"]
+            moved = abs(now_b["cagr"] - old["cagr"])
+            check("baseline drift is proportionate to new data", moved < 0.5 * grew + 0.5,
+                  f"corpus grew {grew} session(s); CAGR {old['cagr']:+.2f}% -> "
+                  f"{now_b['cagr']:+.2f}% (moved {moved:.2f})")
+            bf.write_text(_j.dumps(now_b, indent=1))
 
     # ------------------------------------------------------------ SUMMARY
     section("SUMMARY")

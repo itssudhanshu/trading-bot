@@ -28,8 +28,8 @@ def fill_live_main():
         print(f"{today}: FILLED {sym} at {px:,.2f} (live)")
     try:
         import tg
-        tg.push_learning(f"filled at the open {today}",
-                         [f"{s} at {p:,.2f}" for s, p in filled])
+        tg.notify(f"Filled at the open — {today}",
+                  [f"{s} at {p:,.2f}" for s, p in filled])
     except Exception as e:
         print(f"  telegram push failed: {type(e).__name__}")
 
@@ -80,7 +80,7 @@ def main(day=None):
             lines = [f"filled {sym} @ {px:.2f}" for sym, px in filled[:4]]
             lines += [f"closed {sym} {why} Rs {net:+,.0f}" for sym, why, net in closed[:4]]
             lines.append(f"equity Rs {s['equity']:,.0f} ({s['realised']:+,.0f} realised)")
-            tg.push_learning(f"cluster book {day}", lines)
+            tg.notify(f"Book update — {day}", lines)
         except Exception as e:
             print(f"  telegram push failed: {type(e).__name__}")
 

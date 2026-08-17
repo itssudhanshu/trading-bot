@@ -88,20 +88,61 @@ def _cmd_for(job):
     return [_s.executable] + _JOBS[job]
 
 
+def _gaps_outstanding(now=None):
+    """-> True if a weekday inside the collected range has no bhavcopy.
+
+    Today counts only after 18:00, since the file does not exist before then.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    now = now or _dt.now()
+    raw = ROOT / "data" / "raw"
+    if not raw.exists():
+        return False
+    have = {p.name for p in raw.iterdir()
+            if (p / "bhavcopy_delivery.csv").exists()}
+    if not have:
+        return True
+    hol = set()
+    hf = ROOT / "data" / "holidays.json"
+    if hf.exists():
+        try:
+            hol = {str(x) for x in json.loads(hf.read_text())}
+        except Exception:
+            pass
+    last = date.fromisoformat(max(have))
+    d, end = last + _td(days=1), now.date()
+    if now.hour < 18:
+        end -= _td(days=1)
+    while d <= end:
+        if d.weekday() < 5 and d.isoformat() not in hol and d.isoformat() not in have:
+            return True
+        d += _td(days=1)
+    return False
+
+
 def due(now=None):
     """-> list of task names outstanding right now."""
     now = now or datetime.now()
     st = _state()
     todo = []
 
-    # Data collection: driven by what is MISSING, not by the clock. A weekday
-    # with no snapshot is outstanding whether or not 19:00 has passed today.
+    # Data collection: driven by what is MISSING, not by the clock.
+    #
+    # This used to test for asm.json, which is served all day. Running the
+    # snapshot once in the MORNING therefore created asm.json while the
+    # bhavcopy was still 404 -- and the evening check then saw asm.json, judged
+    # the day collected, and never fetched the prices. The book sat unfilled
+    # with the job reporting "ok". Test for the file that actually matters.
     raw = ROOT / "data" / "raw"
     today = now.date()
     if now.weekday() < 5 and now.hour >= 18:
-        if not (raw / today.isoformat() / "asm.json").exists():
+        if not (raw / today.isoformat() / "bhavcopy_delivery.csv").exists():
             todo.append("snapshot")
-    if st.get("last_catchup") != str(today):
+
+    # Catch-up must be driven by whether gaps REMAIN, not by whether it has run
+    # today: a morning run cannot collect an evening file, and once-per-day
+    # bookkeeping made it look done.
+    if st.get("last_catchup") != str(today) or _gaps_outstanding(now):
         todo.append("catchup")
     if st.get("last_pbook") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("pbook")
@@ -311,7 +352,28 @@ def _selftest():
             assert "snapshot" not in due(sat), "no bhavcopy is published Saturday"
             assert "pbook" not in due(datetime(2026, 8, 12, 9)), "ran before close"
             assert "pbook" in due(datetime(2026, 8, 12, 19))
-            assert "snapshot" in due(datetime(2026, 8, 12, 19))
+
+            # Snapshot is due on the FILE, not the clock, and specifically on
+            # the bhavcopy. Regression for the bug where a morning run created
+            # asm.json, the evening check saw it and declared the day
+            # collected, and the day's prices were never fetched.
+            global ROOT
+            oroot = ROOT
+            try:
+                ROOT = Path(td)
+                (ROOT / "data").mkdir(parents=True, exist_ok=True)
+                day = datetime(2026, 8, 12, 19)
+                folder = ROOT / "data" / "raw" / "2026-08-12"
+                folder.mkdir(parents=True)
+                assert "snapshot" in due(day), "missing bhavcopy must be due"
+                (folder / "asm.json").write_text("{}")
+                assert "snapshot" in due(day), \
+                    "asm.json alone must NOT count as collected"
+                (folder / "bhavcopy_delivery.csv").write_text("x")
+                assert "snapshot" not in due(day), \
+                    "a present bhavcopy must settle the day"
+            finally:
+                ROOT = oroot
 
             # lock: held blocks, stale is reclaimed
             assert _lock() is True
