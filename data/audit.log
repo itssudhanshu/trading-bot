@@ -63,12 +63,14 @@ FILLS AND EXITS
 
 PARALLEL PORTFOLIOS
 -------------------
-  [PASS] pooled books hold disjoint positions
+  [PASS] counted-together portfolios share no stocks
          none
-  [PASS] rank cohorts select disjoint names
-         {'main': 1, 'cohort1': 0, 'cohort2': 1, 'cohort3': 1}, overlaps none
-  [PASS] every book runs identical rules
-         none; books differ only by rank depth
+  [PASS] the portfolios pick different stocks
+         {'main': 1, 'second': 0, 'third': 1, 'fourth': 1}, overlaps none
+  [PASS] every stored position belongs to a known portfolio
+         ['fourth', 'main', 'third']; orphaned none
+  [PASS] every portfolio runs identical rules
+         none; they differ only by rank depth
   [PASS] the shadow stop sits below every real entry
          1 positions checked, 0 malformed
 
@@ -79,4 +81,4 @@ HEADLINE NUMBER
 
 SUMMARY
 -------
-  30 passed, 0 failed, 0 skipped
+  31 passed, 0 failed, 0 skipped

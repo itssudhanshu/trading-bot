@@ -264,7 +264,8 @@ def main():
                    if r["status"] in ("open", "pending")}
     dupes = [(a, b, sorted(live[a] & live[b])) for i, a in enumerate(pooled)
              for b in pooled[i + 1:] if live[a] & live[b]]
-    check("pooled books hold disjoint positions", not dupes, f"{dupes or 'none'}")
+    check("counted-together portfolios share no stocks", not dupes,
+          f"{dupes or 'none'}")
 
     # Disjoint BY CONSTRUCTION, not just today by luck.
     sel = {n: {r["symbol"] for r in
@@ -272,16 +273,24 @@ def main():
            for n in pooled}
     over = [(a, b) for i, a in enumerate(pooled) for b in pooled[i + 1:]
             if sel[a] & sel[b]]
-    check("rank cohorts select disjoint names", not over,
+    check("the portfolios pick different stocks", not over,
           f"{ {k: len(v) for k, v in sel.items()} }, overlaps {over or 'none'}")
 
-    # No book may run its own parameters. A book with different rules is a
+    # Every stored label must map to a portfolio that exists. Two renames have
+    # now left rows pointing at a name the code no longer defines, and both
+    # times the position simply stopped being counted anywhere.
+    stored = {r[0] for r in conn.execute("SELECT DISTINCT portfolio FROM pos")}
+    orphans = stored - set(pbook.PORTFOLIOS)
+    check("every stored position belongs to a known portfolio", not orphans,
+          f"{sorted(stored)}; orphaned {sorted(orphans) or 'none'}")
+
+    # No portfolio may run its own parameters. One with different rules is a
     # competitor, a leaderboard forms, and the leaderboard gets picked from --
     # which contaminates the one evidence stream a search cannot reach.
     variants = [n for n, c in pbook.PORTFOLIOS.items()
                 if c["stop_pct"] not in (None, portfolio.STOP_PCT)]
-    check("every book runs identical rules", not variants,
-          f"{variants or 'none'}; books differ only by rank depth")
+    check("every portfolio runs identical rules", not variants,
+          f"{variants or 'none'}; they differ only by rank depth")
 
     # The tighter-stop counterfactual must be exact, i.e. computed on positions
     # that really existed, and must refuse a level at or above the entry.

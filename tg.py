@@ -135,6 +135,9 @@ def send(text, chat_id=None):
 
 # --- command handlers: all read-only -------------------------------------
 
+SIZE = {"micro": "smallest", "small": "small"}
+
+
 def _rs(x):
     """Rupees, always the same way."""
     return f"Rs {x:,.0f}"
@@ -236,9 +239,9 @@ def cmd_clusters(_=None):
     # different top 5 than the bucket taken from it.
     rows = portfolio.build(corpus, as_of)
     trig = {r["symbol"] for r in rows if r.get("triggered")}
-    # Which BOOK takes each name. The rank cohorts reach deeper than the top 5,
-    # so a name being absent here used to look like it had not been ranked at
-    # all when it had simply been taken by a deeper book.
+    # Which PORTFOLIO buys each stock. The deeper ones reach past the top 5,
+    # so a name absent from a short list used to look unranked when it had
+    # simply been taken further down.
     owner = {}
     for name, cfg in pbook.PORTFOLIOS.items():
         for r in portfolio.allocate(rows, offset=cfg["offset"]):
@@ -282,38 +285,40 @@ def cmd_bucket(_=None):
     rows = portfolio.build(corpus, as_of)
     book = {r["symbol"]: r["status"] for r in pbook.summary()["rows"]}
     mix = portfolio.TAKE_PER_CLUSTER
-    out = [_title("BUCKET", f"{' + '.join(f'{v} {k}' for k, v in mix.items())}"),
-           f"_The top {sum(mix.values())} by score. Each is bought only when it "
-           f"breaks out; otherwise that money stays in cash._", ""]
+    out = [_title("TODAY'S PICKS",
+                  " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),
+           f"_The {sum(mix.values())} best-ranked. Each is bought only once its "
+           f"price breaks above its recent high; until then that money stays in "
+           f"cash._", ""]
     n = 0
     for c, k in mix.items():
         for r in [x for x in rows if x["cluster"] == c][:k]:
             n += 1
             st = book.get(r["symbol"])
             state = ("🟢 running" if st == "open" else
-                     "🟡 order placed" if st == "pending" else
-                     "⚪ waiting for breakout")
+                     "🟡 buying tomorrow" if st == "pending" else
+                     "⚪ waiting for the price to break higher")
             out.append(f"*{n}. {r['symbol']}* ({c})  {state}")
             out.append(f"    score {r['score']:.0f} · {r['why']}")
     if not n:
         out.append("_No candidates today._")
     import pbook
     live = sum(1 for v in book.values() if v in ("open", "pending"))
-    out += ["", f"_{live} of {sum(mix.values())} are live. The rest have not "
-                f"broken out._"]
-    # This is cohort 0. The other books take names further down the same list,
-    # which is why a queued name can be absent from here -- the question that
-    # prompted the tag.
+    out += ["", f"_{live} of {sum(mix.values())} bought so far. The rest are "
+                f"waiting for their price to break higher._"]
+    # This is the main portfolio. The others buy further down the same list,
+    # which is why a stock being bought can be absent from here -- the
+    # question that prompted the tag.
     others = {n: [r["symbol"] for r in
                   portfolio.allocate(rows, offset=c["offset"])]
               for n, c in pbook.PORTFOLIOS.items() if n != pbook.MAIN}
     if any(others.values()):
         out.append("")
-        out.append("*Deeper cohorts take these:*")
+        out.append("*The other portfolios are buying:*")
         for n, syms in others.items():
             out.append(f"  {n}: {', '.join(syms) if syms else '_nothing_'}")
         out.append("_Same rules, further down the same ranking. /clusters "
-                   "shows where each sits._")
+                   "shows where each one sits._")
     return "\n".join(out)
 
 
@@ -347,7 +352,7 @@ def cmd_next_orders(_=None):
         total += val
         risk += val * sp / 100
         tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
-        out.append(f"*{r['symbol']}* ({r['cluster']}){tag}")
+        out.append(f"*{r['symbol']}* ({SIZE.get(r['cluster'], r['cluster'])}){tag}")
         out.append(f"   buy {r['qty']} at about {px:,.2f}   = {_rs(val)}")
         out.append(f"   sell if it falls to {r['stop']:,.2f}  (−{sp:g}%)")
         out.append(f"   sell if it rises to {r['target']:,.2f}  "
@@ -399,15 +404,19 @@ def cmd_open_orders(_=None):
         to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
         to_tgt = (r["target"] / px - 1) * 100 if px else 0
         tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
-        out.append(f"{icon} *{r['symbol']}* ({r['cluster']}){tag}  {pct:+.1f}%")
+        out.append(f"{icon} *{r['symbol']}* "
+                   f"({SIZE.get(r['cluster'], r['cluster'])}){tag}  {pct:+.1f}%")
         out.append(f"   in at {r['entry_px']:,.2f} → now {px:,.2f}")
-        out.append(f"   value {_rs(val)}   P/L Rs {pl:+,.0f}")
-        out.append(f"   stop {r['stop']:,.2f} ({to_stop:+.1f}% away) · "
-                   f"target {r['target']:,.2f} ({to_tgt:+.1f}% away)")
-        out.append(f"   day {held} of {portfolio.HOLD_DAYS}")
+        out.append(f"   worth {_rs(val)}   profit Rs {pl:+,.0f}")
+        out.append(f"   sells if it falls to {r['stop']:,.2f} "
+                   f"({to_stop:+.1f}% away)")
+        out.append(f"   sells if it rises to {r['target']:,.2f} "
+                   f"({to_tgt:+.1f}% away)")
+        out.append(f"   held {held} of {portfolio.HOLD_DAYS} days, then sold "
+                   f"either way")
         out.append("")
-    out.append(f"*Total value*  {_rs(tot_val)}")
-    out.append(f"*Total P/L*    Rs {tot_pl:+,.0f}  "
+    out.append(f"*Total worth*  {_rs(tot_val)}")
+    out.append(f"*Total profit* Rs {tot_pl:+,.0f}  "
                f"({tot_pl / (tot_val - tot_pl) * 100 if tot_val != tot_pl else 0:+.1f}%)")
     return "\n".join(out)
 
@@ -419,8 +428,9 @@ def cmd_closed_orders(_=None):
     s = pbook.summary(which=None)
     done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     if not done:
-        return (_title("CLOSED ORDERS") + "\nNothing has closed yet. Only real "
-                "forward trades appear here — nothing is copied from a backtest.")
+        return (_title("CLOSED ORDERS") + "\nNothing has been sold yet. Only "
+                "real trades made going forward show up here — never anything "
+                "replayed from past data.")
     # Statistics come from the POOLED books only. `tight` holds the same names
     # as main, so its trades are not independent -- including them would count
     # the same price path twice and overstate the evidence, which is exactly
@@ -485,9 +495,9 @@ def cmd_findings(_=None):
         st = r.get("stats") or {}
         if st.get("se"):
             tag = "measurable" if st.get("significant") else "inside the noise"
-            out.append(f"  {st['mean']:+.2f}% per trade "
-                       f"[{st['lo']:+.2f}, {st['hi']:+.2f}] — {tag}"
-                       f"{' _on simulated trades_' if sim else ''}")
+            give = (st["hi"] - st["lo"]) / 2
+            out.append(f"  {st['mean']:+.2f}% average per trade, give or "
+                       f"take {give:.2f}% — {tag}")
         for cl, v in sorted(r.get("by_cluster", {}).items()):
             out.append(f"  {cl}: {v['n']} trades {v['total']:+.1f}%")
         out.append("")
@@ -700,7 +710,7 @@ def cmd_help(_=None):
             "/wallet — cash, holdings, profit\n\n"
             "*The pipeline*, in order\n"
             "/clusters — the ranking, and who buys what\n"
-            "/bucket — the 5 stocks chosen to trade\n"
+            "/bucket — today's 5 picks, and why each one\n"
             "/next\\_orders — waiting to enter, with entry, stop, target, value\n"
             "/open\\_orders — trades live in the market now\n"
             "/closed\\_orders — finished trades and their profit or loss\n\n"

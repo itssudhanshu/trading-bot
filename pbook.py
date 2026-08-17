@@ -67,13 +67,16 @@ COSTS = __import__("engine").Costs()
 PORTFOLIOS = {
     "main":  dict(offset=0, stop_pct=None, pool=True,
                   note="the one we judge results by"),
-    # NOT "rank1/2/3". A book called `rank2` displayed beside a name sitting at
-    # rank 5 put two meanings of "rank" in one line saying different numbers.
-    # A cohort is a slice of the ranking; a rank is a position in it. This
-    # project has a standing rule about exactly this kind of collision.
-    "cohort1": dict(offset=1, stop_pct=None, pool=True, note=""),
-    "cohort2": dict(offset=2, stop_pct=None, pool=True, note=""),
-    "cohort3": dict(offset=3, stop_pct=None, pool=True, note=""),
+    # Plain ordinals (rules.md R2), and never "rank1/2/3": a portfolio called
+    # `rank2` printed beside a stock at rank 5 put two meanings of "rank" on
+    # one line saying different numbers.
+    #
+    # The ordinal names the SET, not the offset -- `second` has offset 1
+    # because it holds the second-best set of picks. "cohort1" invited that
+    # off-by-one every time it was read.
+    "second": dict(offset=1, stop_pct=None, pool=True, note=""),
+    "third":  dict(offset=2, stop_pct=None, pool=True, note=""),
+    "fourth": dict(offset=3, stop_pct=None, pool=True, note=""),
 }
 # There is deliberately NO variant book. A `tight` book running a 5% stop was
 # built and removed: to be a paired test it must enter the same name at the
@@ -426,15 +429,15 @@ def __selftest_body():
             # queueing the same symbol twice must not double it
             assert queue([row_in], days[200], c) == 0
             # ...but a DIFFERENT book must still take it. Dedup is per portfolio,
-            # so a rank cohort is never blocked by what another book holds.
-            assert queue([row_in], days[200], c, which="cohort1") == 1
+            # so one portfolio is never blocked by what another holds.
+            assert queue([row_in], days[200], c, which="second") == 1
 
             filled, closed = step(corpus, days[201], c)
             assert len(filled) == 2 and not closed, (filled, closed)
             got = dict(c.execute(
                 "SELECT portfolio, stop FROM pos WHERE status='open'").fetchall())
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
-            assert abs(got["cohort1"] - 90.0) < 1e-9, got
+            assert abs(got["second"] - 90.0) < 1e-9, got
 
             # The shadow stop replaces the variant book: exact, same entry,
             # same bars. A 5% stop sits at 95 and this path never trades below
@@ -457,7 +460,7 @@ def __selftest_body():
             s2 = summary(c)                       # defaults to main only
             assert s2["closed"] == 1 and s2["realised"] > 0, s2
             assert summary(c, which=None)["closed"] == 2, "which=None must pool"
-            assert summary(c, which="cohort1")["closed"] == 1
+            assert summary(c, which="second")["closed"] == 1
         finally:
             DB = _odb
     print("pbook selftest ok")

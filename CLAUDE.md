@@ -24,10 +24,11 @@ wrong build:
   Never "book" — that was a third word for something already named (rules.md
   R1) and it is gone from the code, the database column and every screen.
 - **rank** = a position in the score-sorted list, within a cluster.
-- **cohort** = a SLICE of ranks that one paper book takes. Never "rank1/2/3":
-  a book named `rank2` printed beside a name sitting at rank 5 put two
-  meanings of "rank" on one line saying different numbers, which is how this
-  was caught. `cohort2` takes ranks 7-9 micro and 5-6 small.
+- The four portfolios are named by ordinal -- `main`, `second`, `third`,
+  `fourth` -- for the SET of picks each holds, not for its offset. Never
+  "rank1/2/3" (a portfolio named `rank2` printed beside a stock at rank 5 put
+  two meanings of "rank" on one line) and never "cohort1/2/3", which invited an
+  off-by-one every time it was read. `third` buys ranks 7-9 micro, 5-6 small.
 - Do not say "slot". Say stock, or position.
 
 ## Autonomy

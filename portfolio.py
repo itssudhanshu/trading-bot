@@ -119,18 +119,20 @@ def _why(r):
     """-> plain-language reason this name ranked where it did."""
     if not r:
         return "no rank detail"
-    label = {"rs": "relative strength", "deliv": "delivery %",
-             "liq": "liquidity", "near_high": "near its high"}
+    # rules.md R2: these labels are read by a person, not a trader. Say what
+    # the feature IS, not what a factor sheet calls it.
+    label = {"rs": "6-month price gain", "deliv": "shares actually kept",
+             "liq": "easy to trade", "near_high": "near its recent high"}
     strong = [label[f] for f, v in sorted(r.items(), key=lambda kv: -kv[1]) if v >= 70]
     weak = [label[f] for f, v in r.items() if v <= 30]
     parts = []
     if strong:
-        parts.append("top-30% in " + ", ".join(strong))
+        parts.append("among the best 30% for " + ", ".join(strong))
     if weak:
-        parts.append("weak on " + ", ".join(weak))
+        parts.append("poor on " + ", ".join(weak))
     if not parts:
-        parts.append("mid-pack on every feature")
-    return "; ".join(parts) + " (above 200-DMA, else excluded)"
+        parts.append("middling on everything")
+    return "; ".join(parts) + " (only bought above its 200-day average price)"
 
 
 # The bucket: 3 micro + 2 small = 5 stocks, drawn from the two tradeable
