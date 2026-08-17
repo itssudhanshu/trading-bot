@@ -20,6 +20,11 @@ wrong build:
 
 - **cluster** = a size band (micro, small). Never called a bucket.
 - **bucket** = the 5-stock portfolio. Never called a cluster.
+- **rank** = a position in the score-sorted list, within a cluster.
+- **cohort** = a SLICE of ranks that one paper book takes. Never "rank1/2/3":
+  a book named `rank2` printed beside a name sitting at rank 5 put two
+  meanings of "rank" on one line saying different numbers, which is how this
+  was caught. `cohort2` takes ranks 7-9 micro and 5-6 small.
 - Do not say "slot". Say stock, or position.
 
 ## Autonomy
@@ -134,6 +139,21 @@ Rs 5L at 60% deployment with no impact model; at Rs 3L, 75% and c=1.0, the 2/3
 mix leads by 4.47 points instead of trailing by 1.19. Neither gap is
 significant. Left at 3/2 because re-choosing on a number that is inside the
 noise would just be churn.
+
+## Score vs rank
+
+`rank` is the position in `score` order -- they are not competing criteria and
+"top N by rank" selects exactly what "top N by score" selects.
+
+The score averages percentile ranks WITHIN a cluster's qualifying set, so it is
+relative by construction and cannot express absolute quality. Measured at 70
+dates: in the weakest quartile of markets the rank-1 score is 94.5 against 89.3
+in the strongest, i.e. scores go UP as the market weakens. A minimum-score rule
+would therefore admit more names exactly when it was meant to admit fewer (L55).
+
+Absolute filtering is the 200-DMA gate and the breakout trigger, and it stays
+there. Scores are also not comparable ACROSS clusters, since each is a
+percentile in its own pool; nothing in the selection path compares them.
 
 ## Reporting
 

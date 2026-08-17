@@ -250,14 +250,17 @@ def cmd_clusters(_=None):
     for c in clusters.CLUSTERS:
         take = portfolio.TAKE_PER_CLUSTER.get(c, 0)
         inc = [r for r in rows if r["cluster"] == c]
-        out.append(f"*{c.upper()}*  — each book takes {take}  "
-                   f"({len(inc)} tradeable)")
+        spans = "  ".join(
+            f"{n}:{cfg['offset'] * take + 1}-{cfg['offset'] * take + take}"
+            for n, cfg in pbook.BOOKS.items())
+        out.append(f"*{c.upper()}*  — {len(inc)} tradeable, {take} per book")
+        out.append(f"  _{spans}_")
         for n, r in enumerate(inc[:depth], 1):
             sym, who = r["symbol"], owner.get(r["symbol"])
             mark = ("🟢" if who == pbook.MAIN else "📊" if who
                     else "🔸" if sym in trig else "▫️")
-            tag = f"  ·  _{who}_" if who and who != pbook.MAIN else ""
-            out.append(f"  {n}. {mark} {sym}  score {r['score']:.0f}{tag}")
+            tag = f"  →  _{who}_" if who else ""
+            out.append(f"  rank {n}. {mark} {sym}  score {r['score']:.0f}{tag}")
         if len(inc) > depth:
             out.append(f"  _...{len(inc) - depth} more, below every book's reach_")
         out.append("")
@@ -545,7 +548,7 @@ def cmd_books(_=None):
         s = pbook.summary(conn, book=name)
         tot_closed += s["closed"]
         mark = "⭐" if name == pbook.MAIN else ("🔬" if not cfg["pool"] else "📊")
-        out.append(f"{mark} *{name}*  _{cfg['role']}_")
+        out.append(f"{mark} *{name}*  _{pbook.role_of(name)}_")
         out.append(f"    {s['open']} open · {s['pending']} queued · "
                    f"{s['closed']} closed · realised {_rs(s['realised'])}")
     pooled = [n for n, c in pbook.BOOKS.items() if c["pool"]]

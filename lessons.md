@@ -1359,3 +1359,41 @@ real gap.
 different parameters, reported side by side, is a leaderboard. A leaderboard
 gets picked from. The design constraint that makes it safe is that the pooled
 books have nothing to choose between -- they run identical rules.
+
+## L55 — The score cannot express absolute quality, so a score threshold is inverted
+
+Asked why the bucket takes a top-N quota rather than requiring a minimum score.
+First, a clarification that is not a quibble: rank and score are not competing
+criteria. Rank IS the position in score order, so "top 3 by rank" and "top 3 by
+score" select the same names. The bucket is already built on score.
+
+The real proposal -- require a minimum SCORE, so a weak market produces a
+smaller book -- cannot work, and the reason is structural.
+
+`clusters.score` averages PERCENTILE ranks computed within the cluster's
+qualifying set. A percentile is relative by construction: the best name scores
+high whether ten names qualified or four hundred. Sampled at 70 dates across
+the full history, split by how many micro names were above their 200-DMA:
+
+| | weakest quartile | strongest quartile |
+|---|---|---|
+| names qualifying | 146 | 413 |
+| rank-1 score | **94.5** | 89.3 |
+| rank-3 score | **89.0** | 85.7 |
+
+**Scores are HIGHER when the market is weaker.** Fewer survivors means a more
+selected pool, and the top of a selected pool still ranks at the top of it. A
+threshold set to bind in a bad market binds harder in a good one. It would
+admit more names precisely when it was meant to admit fewer.
+
+**The absolute filtering already exists and lives where it can work:** the
+200-DMA gate collapses the pool from 421 names to 56 between regimes, and the
+breakout trigger is why occupancy averages 2.83 of 5 rather than 5. The score
+orders what qualified; the gate and the trigger decide whether to be in the
+market. Do not move that responsibility onto a percentile.
+
+**A minor artifact found while checking:** ties are broken by sort order alone.
+On 2026-08-17, SHAHALLOYS and WORTHPERI both scored 76.2 and took micro ranks 3
+and 4 -- so one entered the bucket and the other went to the next cohort on
+nothing but list position. Harmless between adjacent cohorts, but it means a
+rank boundary is not always a real distinction.

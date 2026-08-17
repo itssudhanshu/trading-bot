@@ -66,10 +66,14 @@ COSTS = __import__("engine").Costs()
 # wrong and every backtest built on it moves. It may never be promoted on P&L.
 BOOKS = {
     "main":  dict(offset=0, stop_pct=None, pool=True,
-                  role="the record; STATE.md, overview.py and audit key off it"),
-    "rank1": dict(offset=1, stop_pct=None, pool=True, role="rank cohort 1"),
-    "rank2": dict(offset=2, stop_pct=None, pool=True, role="rank cohort 2"),
-    "rank3": dict(offset=3, stop_pct=None, pool=True, role="rank cohort 3"),
+                  note="the record; STATE.md, overview.py and audit key off it"),
+    # NOT "rank1/2/3". A book called `rank2` displayed beside a name sitting at
+    # rank 5 put two meanings of "rank" in one line saying different numbers.
+    # A cohort is a slice of the ranking; a rank is a position in it. This
+    # project has a standing rule about exactly this kind of collision.
+    "cohort1": dict(offset=1, stop_pct=None, pool=True, note=""),
+    "cohort2": dict(offset=2, stop_pct=None, pool=True, note=""),
+    "cohort3": dict(offset=3, stop_pct=None, pool=True, note=""),
 }
 # There is deliberately NO variant book. A `tight` book running a 5% stop was
 # built and removed: to be a paired test it must enter the same name at the
@@ -82,6 +86,25 @@ BOOKS = {
 # a tighter stop either was or was not touched between the real entry and the
 # real exit, and main's own bars settle it. Exact beats approximately-paired.
 MAIN = "main"
+
+
+def slice_of(name):
+    """-> 'ranks 7-9 micro, 5-6 small' for a book, DERIVED not restated.
+
+    Written out by hand this went stale the moment the mix changed -- the same
+    way a comment describing a 2/2/1 bucket survived a minute past the design
+    that made it true.
+    """
+    import portfolio
+    off = (BOOKS.get(name) or BOOKS[MAIN])["offset"]
+    return ", ".join(f"ranks {off * k + 1}-{off * k + k} {c}"
+                     for c, k in portfolio.TAKE_PER_CLUSTER.items())
+
+
+def role_of(name):
+    """-> the slice, plus any standing note about the book."""
+    n = (BOOKS.get(name) or BOOKS[MAIN]).get("note")
+    return slice_of(name) + (f" — {n}" if n else "")
 
 
 def book_cfg(name):
@@ -394,14 +417,14 @@ def __selftest_body():
             assert queue([row_in], days[200], c) == 0
             # ...but a DIFFERENT book must still take it. Dedup is per book,
             # so a rank cohort is never blocked by what another book holds.
-            assert queue([row_in], days[200], c, book="rank1") == 1
+            assert queue([row_in], days[200], c, book="cohort1") == 1
 
             filled, closed = step(corpus, days[201], c)
             assert len(filled) == 2 and not closed, (filled, closed)
             got = dict(c.execute(
                 "SELECT book, stop FROM pos WHERE status='open'").fetchall())
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
-            assert abs(got["rank1"] - 90.0) < 1e-9, got
+            assert abs(got["cohort1"] - 90.0) < 1e-9, got
 
             # The shadow stop replaces the variant book: exact, same entry,
             # same bars. A 5% stop sits at 95 and this path never trades below
@@ -424,7 +447,7 @@ def __selftest_body():
             s2 = summary(c)                       # defaults to main only
             assert s2["closed"] == 1 and s2["realised"] > 0, s2
             assert summary(c, book=None)["closed"] == 2, "book=None must pool"
-            assert summary(c, book="rank1")["closed"] == 1
+            assert summary(c, book="cohort1")["closed"] == 1
         finally:
             DB = _odb
     print("pbook selftest ok")

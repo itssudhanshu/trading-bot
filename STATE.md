@@ -77,7 +77,7 @@ Trade count is the binding constraint: one book makes ~71 trades a year and
 | book | what it is | pools? |
 |---|---|---|
 | `main` | the record. STATE.md, `overview.py` and the audit key off THIS book only | ⭐ |
-| `rank1..3` | same rules, rank cohorts 1-3. Disjoint positions by construction | yes |
+| `cohort1..3` | same rules, deeper slices of the same ranking. Disjoint by construction | yes |
 
 **Every book runs identical rules.** There is no variant book and the audit
 enforces it: a book with its own parameters is a competitor, side-by-side

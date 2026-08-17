@@ -66,7 +66,7 @@ PARALLEL BOOKS
   [PASS] pooled books hold disjoint positions
          none
   [PASS] rank cohorts select disjoint names
-         {'main': 1, 'rank1': 0, 'rank2': 1, 'rank3': 1}, overlaps none
+         {'main': 1, 'cohort1': 0, 'cohort2': 1, 'cohort3': 1}, overlaps none
   [PASS] every book runs identical rules
          none; books differ only by rank depth
   [PASS] the shadow stop sits below every real entry
