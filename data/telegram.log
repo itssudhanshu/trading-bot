@@ -417,3 +417,12 @@ listening (pid 97004, 14 commands)
 changed on disk: features.py, portfolio.py -- restarting
 listener exited, restarting in 3s
 listening (pid 97033, 14 commands)
+./run_listener.sh: line 9: 97033 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 97078, 14 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 97664, 14 commands)
+./run_listener.sh: line 9: 97664 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 97677, 14 commands)

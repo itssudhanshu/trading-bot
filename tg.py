@@ -460,9 +460,19 @@ def poll_once(timeout=25):
         chat = str((msg.get("chat") or {}).get("id", ""))
         if chat != owner:
             continue                      # not the owner: ignore silently
-        text = (msg.get("text") or "").strip().split()[:1]
-        fn = COMMANDS.get(text[0].lower()) if text else None
-        send(fn(msg) if fn else cmd_help(), chat_id=chat)
+        raw = (msg.get("text") or "").strip()
+        tok = raw.split()[0].lower() if raw.split() else ""
+        # Telegram appends @botname when a command is chosen from the
+        # autocomplete menu ("/next_orders@swingalpha_bot"). Without stripping
+        # it the lookup misses and every menu-selected command silently fell
+        # through to /help.
+        cmd = tok.split("@")[0]
+        fn = COMMANDS.get(cmd)
+        print(f"recv {raw[:40]!r} -> {cmd} -> "
+              f"{fn.__name__ if fn else 'help (no match)'}", flush=True)
+        out = fn(msg) if fn else cmd_help()
+        if out is not None:              # a handler may reply with a document
+            send(out, chat_id=chat)
         handled += 1
     return handled
 
