@@ -120,9 +120,26 @@ visibility. Those need REAL orders; every simulator, ours included, is guessing.
 | execution modes | can be run against best-case, worst-case or average fills |
 | cost | **the FREE tier is enough**: 1 algo deployment, paper trading executions, and API to connect from other platforms |
 
-Free excludes public strategies, discounted backtests and Live-Auto execution
--- none of which this needs. 10 private strategies and 1 deployment is ample
-for a single book.
+**What we would and would not use, feature by feature:**
+
+| feature | needed | why |
+|---|---|---|
+| private strategy | YES, 1 | the container: holds the instrument list, the condition that reads our signal, sizing and exits |
+| public strategy | no | nothing is being published or sold |
+| backtest on their platform | no | ours runs here over 1,695 sessions with our own cost and impact model |
+| algo strategy deployment | YES, 1 | an undeployed strategy ignores the API entirely |
+| stockbag deployment | no | stockbags rebalance to target weights; this book takes per-stock stop / target / time exits |
+| paper trading executions | YES | the entire point |
+| Live-Auto execution | no | real money. Its ABSENCE on Free is a safety property: the account cannot place a real order |
+| trade execution notifications | no | Telegram already does this |
+| API to connect from other platforms | YES | how this repo posts signals |
+
+**A correction to the obvious mental model:** you cannot simply "post a paper
+trade" through the API. The API sets a runtime VARIABLE; it is not an order
+gateway. Tradetron's own API page says it lets you "control the strategy you
+create at Tradetron". So a strategy must be built there and deployed in paper
+mode, and our signal flips a variable its conditions read. The thinking stays
+here; the container has to live there.
 
 (An earlier version of this file claimed Free had 0 deployments and no API.
 That was wrong. It came from a page summariser mis-reading the pricing table,
