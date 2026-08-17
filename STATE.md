@@ -167,7 +167,32 @@ Caveats: it is still a simulation, not real orders; it adds a monthly cost and
 an external dependency; and it creates a second P&L, so decide up front that
 THIS engine stays authoritative and Tradetron is the check on it.
 
-**The plan, if this is taken further:**
+## Decision: do NOT use Tradetron (2026-08-17)
+
+Two reasons, and the second corrects something I claimed earlier.
+
+**1. It exposes the picks.** A "private" strategy is private from other users,
+not from Tradetron. They would hold every pick in real time, the exit rules,
+and the candidate universe. Only the ranking logic stays here -- but the picks
+ARE its output. For a book trading thin micro-caps, the live pick list is the
+sensitive asset, not the formula.
+
+**2. The benefit was overstated.** I argued this would calibrate `IMPACT_C`
+against something better than a textbook formula. That is wrong: Tradetron's
+paper fills are simulated too. Calibrating our model against their model is two
+guesses agreeing, not a measurement. Real fill data requires real orders; there
+is no simulator shortcut.
+
+What this repo already does is the part that matters -- fills at the actual NSE
+opening price, the full cost stack, modelled impact. The remaining gap is order
+lifecycle (rejections, partial fills, true slippage) and no simulator closes
+it.
+
+**Revisit only if** forward fills start looking implausible against the daily
+range, or if the book ever needs intraday stop checking. Neither is true with
+0 closed trades.
+
+**The plan, if this is EVER taken further:**
 
 1. Tradetron in API mode on the FREE tier. This repo picks the stocks after
    the close and posts signals; Tradetron executes on paper at real prices the
