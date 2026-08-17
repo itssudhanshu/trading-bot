@@ -485,11 +485,12 @@ def cmd_books(_=None):
     """Every paper book side by side.
 
     The rank books exist to multiply forward trades WITHOUT creating a choice:
-    same rules, different depth in the ranking, disjoint positions. `tight` is
-    the one variant and it is not a competitor -- it holds the same names as
-    main with a 5% stop, and the only thing it is allowed to settle is whether
-    the simulator's stop-hit rate is right.
+    same rules, different depth in the ranking, disjoint positions. There is no
+    variant book -- the tighter-stop question is answered as a counterfactual
+    on the record book's own positions, which is exact and does not put a
+    second order on a name that is already live.
     """
+    import features
     import pbook
     out = [_title("BOOKS", f"{len(pbook.BOOKS)} running"), ""]
     conn = pbook.db()
@@ -508,8 +509,20 @@ def cmd_books(_=None):
     if tot_closed < 105:
         out.append(f"_{105 - tot_closed} more before a 3%/trade edge is "
                    f"resolvable at all._")
-    out.append("_⭐ the record · 📊 pools into the evidence · 🔬 falsifies the "
-               "simulator, never promoted on P&L_")
+
+    # The tighter-stop question, as a counterfactual on real positions.
+    try:
+        sh = pbook.shadow_stop(features.load_corpus(), conn, pct=5.0)
+        if sh:
+            hit = sum(1 for x in sh if x["shadow_hit"])
+            out += ["", f"*If the stop were 5%*  {hit} of {len(sh)} positions "
+                        f"would have been stopped ({hit / len(sh) * 100:.0f}%)",
+                    f"_The backtest predicts 62%. This is a check on the fill "
+                    f"model, not a case for changing the stop._"]
+    except Exception as e:
+        out.append(f"_shadow stop unavailable ({type(e).__name__})_")
+
+    out.append("_⭐ the record · 📊 pools into the evidence_")
     return "\n".join(out)
 
 

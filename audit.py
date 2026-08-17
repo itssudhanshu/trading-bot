@@ -275,15 +275,20 @@ def main():
     check("rank cohorts select disjoint names", not over,
           f"{ {k: len(v) for k, v in sel.items()} }, overlaps {over or 'none'}")
 
-    # A variant book that silently inherits main's stop measures nothing.
-    tight = pbook.book_cfg("tight")
-    check("the variant book keeps its own stop",
-          tight["stop_pct"] != portfolio.STOP_PCT,
-          f"tight {tight['stop_pct']:g}% vs main {portfolio.STOP_PCT:g}%")
-    check("variant books are excluded from pooled evidence",
-          all(c["pool"] is False for n, c in pbook.BOOKS.items()
-              if c["stop_pct"] is not None),
-          f"pooled: {pooled}")
+    # No book may run its own parameters. A book with different rules is a
+    # competitor, a leaderboard forms, and the leaderboard gets picked from --
+    # which contaminates the one evidence stream a search cannot reach.
+    variants = [n for n, c in pbook.BOOKS.items()
+                if c["stop_pct"] not in (None, portfolio.STOP_PCT)]
+    check("every book runs identical rules", not variants,
+          f"{variants or 'none'}; books differ only by rank depth")
+
+    # The tighter-stop counterfactual must be exact, i.e. computed on positions
+    # that really existed, and must refuse a level at or above the entry.
+    sh = pbook.shadow_stop(features.load_corpus(), conn, pct=5.0)
+    bad = [x for x in sh if not (0 < x["level"] < x["entry"])]
+    check("the shadow stop sits below every real entry", not bad,
+          f"{len(sh)} positions checked, {len(bad)} malformed")
 
     # -------------------------------------------------------- REPRODUCES
     section("HEADLINE NUMBER")

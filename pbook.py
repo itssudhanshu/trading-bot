@@ -70,10 +70,17 @@ BOOKS = {
     "rank1": dict(offset=1, stop_pct=None, pool=True, role="rank cohort 1"),
     "rank2": dict(offset=2, stop_pct=None, pool=True, role="rank cohort 2"),
     "rank3": dict(offset=3, stop_pct=None, pool=True, role="rank cohort 3"),
-    "tight": dict(offset=0, stop_pct=5.0, pool=False,
-                  role="paired 5% stop; falsifies the sim's stop-hit rate, "
-                       "never promoted on P&L"),
 }
+# There is deliberately NO variant book. A `tight` book running a 5% stop was
+# built and removed: to be a paired test it must enter the same name at the
+# same price on the same day as main, and a separately-queued book cannot --
+# it queues when IT has room, so it entered a position main had already held
+# for a session and was 3.2% into. That is chasing, not pairing, and it also
+# put a duplicate order in /next_orders for a name already live.
+#
+# `shadow_stop` answers the same question exactly and without a second order:
+# a tighter stop either was or was not touched between the real entry and the
+# real exit, and main's own bars settle it. Exact beats approximately-paired.
 MAIN = "main"
 
 
@@ -280,6 +287,50 @@ def step(corpus, day, conn=None):
     return filled, closed
 
 
+def shadow_stop(corpus, conn=None, pct=5.0, book=MAIN):
+    """Would a `pct` stop have been hit on this book's OWN positions?
+
+    The counterfactual is exact rather than approximate: same entry price, same
+    bars, so there is nothing to pair up and nothing that can drift. It answers
+    a PROPORTION -- how often a tighter stop fires -- which resolves in ~62
+    trades, where comparing the two stops on RETURN would need 238 per arm.
+
+    The simulator predicts 62% of positions stop out at 5% against 37% at 10%.
+    If forward reality disagrees, the fill and gap model is wrong and every
+    backtest resting on it moves. This can never say which stop is BETTER: once
+    a tighter stop fires the paths diverge, and that divergence is not modelled
+    here on purpose.
+    """
+    if pct <= 0:
+        # A non-positive percentage puts the level at or above the entry, where
+        # every bar "hits" it and the answer is meaninglessly True. Refuse it
+        # rather than return a number that looks like a measurement.
+        raise ValueError(f"shadow stop pct must be > 0, got {pct}")
+    out = []
+    for r in summary(conn, book=book)["rows"]:
+        if not r["entry_px"] or not r["entry_day"]:
+            continue
+        s = corpus.get(r["symbol"])
+        if s is None:
+            continue
+        lvl = r["entry_px"] * (1 - pct / 100)
+        real = r["stop"]
+        hit = day = None
+        for i, d in enumerate(s.days):
+            if str(d) <= str(r["entry_day"]):
+                continue
+            if r["exit_day"] and str(d) > str(r["exit_day"]):
+                break
+            if s.low[i] <= lvl:
+                hit, day = True, d
+                break
+        out.append({"symbol": r["symbol"], "book": r["book"],
+                    "entry": r["entry_px"], "level": lvl, "real_stop": real,
+                    "shadow_hit": bool(hit), "shadow_day": day,
+                    "real_exit": r["exit_reason"], "status": r["status"]})
+    return out
+
+
 def summary(conn=None, book=MAIN):
     """-> the book's state. `book=None` aggregates every book.
 
@@ -341,19 +392,31 @@ def __selftest_body():
             assert queue([row_in], days[200], c) == 1
             # queueing the same symbol twice must not double it
             assert queue([row_in], days[200], c) == 0
-            # ...but a DIFFERENT book must still take it: `tight` is meant to
-            # hold the same names as main, and a global dedup would empty it.
-            assert queue([row_in], days[200], c, book="tight") == 1
+            # ...but a DIFFERENT book must still take it. Dedup is per book,
+            # so a rank cohort is never blocked by what another book holds.
+            assert queue([row_in], days[200], c, book="rank1") == 1
 
             filled, closed = step(corpus, days[201], c)
             assert len(filled) == 2 and not closed, (filled, closed)
             got = dict(c.execute(
                 "SELECT book, stop FROM pos WHERE status='open'").fetchall())
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
-            # the variant book keeps ITS stop through the fill, which recomputes
-            # from the fill price -- this is where a global constant erased it
-            assert abs(got["tight"] - 95.0) < 1e-9, \
-                f"variant book lost its own stop at fill time: {got}"
+            assert abs(got["rank1"] - 90.0) < 1e-9, got
+
+            # The shadow stop replaces the variant book: exact, same entry,
+            # same bars. A 5% stop sits at 95 and this path never trades below
+            # 100 before the target, so it must NOT report a hit.
+            sh = {x["symbol"]: x for x in shadow_stop(corpus, c, pct=5.0)}
+            assert sh["T"]["shadow_hit"] is False, sh
+            assert abs(sh["T"]["level"] - 95.0) < 1e-9, sh
+            # a level at or above the entry is not a stop; it must be refused
+            # rather than answered, since every bar would trivially "hit" it
+            for bad in (0.0, -5.0):
+                try:
+                    shadow_stop(corpus, c, pct=bad)
+                    raise AssertionError(f"pct={bad} was accepted")
+                except ValueError:
+                    pass
 
             f2, c2 = step(corpus, days[211], c)
             assert c2 and all(x[1] == "target" for x in c2), c2
@@ -361,7 +424,7 @@ def __selftest_body():
             s2 = summary(c)                       # defaults to main only
             assert s2["closed"] == 1 and s2["realised"] > 0, s2
             assert summary(c, book=None)["closed"] == 2, "book=None must pool"
-            assert summary(c, book="tight")["closed"] == 1
+            assert summary(c, book="rank1")["closed"] == 1
         finally:
             DB = _odb
     print("pbook selftest ok")

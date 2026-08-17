@@ -78,7 +78,10 @@ Trade count is the binding constraint: one book makes ~71 trades a year and
 |---|---|---|
 | `main` | the record. STATE.md, `overview.py` and the audit key off THIS book only | ⭐ |
 | `rank1..3` | same rules, rank cohorts 1-3. Disjoint positions by construction | yes |
-| `tight` | same names as main, 5% stop. Paired on identical price paths | **no** |
+
+**Every book runs identical rules.** There is no variant book and the audit
+enforces it: a book with its own parameters is a competitor, side-by-side
+competitors are a leaderboard, and a leaderboard gets picked from.
 
 **The rank books multiply evidence without creating a choice.** Same rules,
 different depth in the ranking, so their positions never overlap and their
@@ -94,11 +97,23 @@ contaminate the one evidence stream a search cannot reach (L47; PBO 0.929 in
 L41). `audit.py` checks the books stay disjoint and that no variant book is
 pooled.
 
-**`tight` is the single exception and its endpoint is different on purpose.**
-It measures the stop-hit RATE, a proportion resolvable in ~62 trades, not a
-mean needing 238. The simulator predicts 62% of positions stop out at a 5% stop
-against 37% at 10%. If forward reality disagrees, the fill and gap model is
-wrong and every backtest built on it moves. It may never be promoted on P&L.
+**The tighter-stop question is a counterfactual, not a book.**
+`pbook.shadow_stop()` asks whether a 5% stop would have been touched between a
+real entry and its real exit, on the record book's own positions. That is exact
+-- same entry price, same bars -- and needs no second order.
+
+A `tight` BOOK was built for this and removed within the day. To be a paired
+test it must enter the same name at the same price on the same day as main, and
+a separately-queued book cannot: it queues when IT has room, so it entered a
+position main had already held for a session and was 3.2% into. That is
+chasing, not pairing, and it also put a duplicate order in `/next_orders` for a
+name already live -- which is how it was caught.
+
+The endpoint is a PROPORTION, resolvable in ~62 trades, where comparing the two
+stops on RETURN would need 238 per arm. The simulator predicts 62% of positions
+stop out at 5% against 37% at 10%. If forward reality disagrees, the fill and
+gap model is wrong. It can never say which stop is better: once a tighter stop
+fires the paths diverge, and that divergence is deliberately not modelled.
 
 Capital is Rs 300,000 per book, notional. They are alternative hypothetical
 portfolios, not a Rs 15,00,000 book -- five books trading these microcaps
