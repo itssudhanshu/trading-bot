@@ -76,6 +76,9 @@ _JOBS = {
     "snapshot": ["snapshot.py"],
     "catchup":  ["snapshot.py", "--catchup"],
     "pbook":    ["pbook_run.py"],
+    # Morning: fill pending orders at the day's actual open, rather than
+    # leaving the book nine hours behind the market.
+    "fill":     ["pbook_run.py", "--fill-live"],
 }
 _JOB_NAMES = tuple(_JOBS)
 
@@ -102,6 +105,10 @@ def due(now=None):
         todo.append("catchup")
     if st.get("last_pbook") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("pbook")
+    # The open is at 09:15; give it a few minutes to print before reading it.
+    if (st.get("last_fill") != str(today) and now.weekday() < 5
+            and 9 <= now.hour < 18):
+        todo.append("fill")
     return todo
 
 
@@ -327,11 +334,11 @@ def _selftest():
     # The agent runs only data collection and the book. Assert against the
     # COMMAND TABLE, not the source text -- a source scan for forbidden names
     # matches the list of forbidden names itself and can never pass.
-    allowed = {"snapshot.py", "pbook_run.py", "--catchup"}
-    for job in ("snapshot", "catchup", "pbook"):
+    allowed = {"snapshot.py", "pbook_run.py", "--catchup", "--fill-live"}
+    for job in ("snapshot", "catchup", "pbook", "fill"):
         for arg in _cmd_for(job)[1:]:
             assert arg in allowed, f"{job} runs unexpected {arg!r}"
-    assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook"}, _JOB_NAMES
+    assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill"}, _JOB_NAMES
     print("agent selftest ok")
 
 

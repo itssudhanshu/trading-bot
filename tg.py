@@ -313,12 +313,17 @@ def cmd_open_orders(_=None):
         if note:
             out += ["", note]
         return "\n".join(out)
+    import quotes
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
-    out = [_title("OPEN ORDERS", f"{len(live)} live"), ""]
+    q = quotes.live([r["symbol"] for r in live])
+    src = ("live" if q else f"last close {days[-1]}")
+    out = [_title("OPEN ORDERS", f"{len(live)} live"),
+           f"_Prices: {src}._", ""]
     tot_val = tot_pl = 0.0
     for r in live:
-        px = _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"]
+        lq = q.get(r["symbol"]) or {}
+        px = lq.get("ltp") or _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"]
         val = r["qty"] * px
         pl = r["qty"] * (px - r["entry_px"])
         pct = (px / r["entry_px"] - 1) * 100
@@ -326,11 +331,15 @@ def cmd_open_orders(_=None):
         tot_pl += pl
         held = (days[-1] - __import__("datetime").date.fromisoformat(
             str(r["entry_day"]))).days if r["entry_day"] else 0
-        out.append(f"*{r['symbol']}* ({r['cluster']})  {pct:+.1f}%")
+        icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
+        to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
+        to_tgt = (r["target"] / px - 1) * 100 if px else 0
+        out.append(f"{icon} *{r['symbol']}* ({r['cluster']})  {pct:+.1f}%")
         out.append(f"   in at {r['entry_px']:,.2f} → now {px:,.2f}")
         out.append(f"   value {_rs(val)}   P/L Rs {pl:+,.0f}")
-        out.append(f"   stop {r['stop']:,.2f} · target {r['target']:,.2f} · "
-                   f"day {held} of {portfolio.HOLD_DAYS}")
+        out.append(f"   stop {r['stop']:,.2f} ({to_stop:+.1f}% away) · "
+                   f"target {r['target']:,.2f} ({to_tgt:+.1f}% away)")
+        out.append(f"   day {held} of {portfolio.HOLD_DAYS}")
         out.append("")
     out.append(f"*Total value*  {_rs(tot_val)}")
     out.append(f"*Total P/L*    Rs {tot_pl:+,.0f}  "

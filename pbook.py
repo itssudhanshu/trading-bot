@@ -41,7 +41,7 @@ def db():
       id INTEGER PRIMARY KEY, symbol TEXT, cluster TEXT, status TEXT,
       queued_on TEXT, entry_day TEXT, entry_px REAL, qty INTEGER,
       stop REAL, target REAL, exit_day TEXT, exit_px REAL,
-      exit_reason TEXT, net REAL, features TEXT);
+      exit_reason TEXT, net REAL, features TEXT, fill_source TEXT);
     CREATE INDEX IF NOT EXISTS ix_pos_status ON pos(status);
     """)
     c.commit()
@@ -63,6 +63,84 @@ def queue(rows, day, conn=None):
         n += 1
     c.commit()
     return n
+
+
+def fill_live(day, conn=None):
+    """Fill pending orders at TODAY'S opening price, fetched live.
+
+    The evening run fills from the bhavcopy and is the record of truth. This
+    runs in the morning so the book reflects reality within minutes of the open
+    instead of nine hours later. Both fill at the same price -- the day's open
+    -- so the evening run reconciles rather than re-fills.
+
+    -> (filled, skipped_reason). Fills nothing if quotes are unavailable.
+    """
+    import quotes
+    c = conn or db()
+    c.row_factory = sqlite3.Row
+    pend = [dict(r) for r in
+            c.execute("SELECT * FROM pos WHERE status='pending'").fetchall()]
+    c.row_factory = None
+    if not pend:
+        return [], "nothing pending"
+    # Same guard as the evening path: a signal built from a close cannot be
+    # filled at that same session's open.
+    due = [p for p in pend if not p["queued_on"] or str(day) > str(p["queued_on"])]
+    if not due:
+        return [], "orders were queued today; they enter at the NEXT open"
+    q = quotes.live([p["symbol"] for p in due])
+    if not q:
+        return [], "no live quote source"
+    # A fill sets the entry price, the stop and the target for the life of the
+    # trade. It may only come from a source whose fields are documented, never
+    # from one whose meaning was inferred from where it sat on a web page.
+    if not quotes.authoritative():
+        return [], (f"quote source '{getattr(quotes.live, 'source', '?')}' is "
+                    f"display-only; fills need an authoritative source")
+    filled = []
+    for p in due:
+        px = (q.get(p["symbol"]) or {}).get("open")
+        if not px:
+            continue
+        c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
+                  " target=?, fill_source='live' WHERE id=?",
+                  (str(day), px, px * (1 - STOP_PCT / 100),
+                   px * (1 + TARGET_PCT / 100), p["id"]))
+        filled.append((p["symbol"], px))
+    c.commit()
+    return filled, ""
+
+
+def reconcile(corpus, day, conn=None):
+    """Check live fills against the official open once the bhavcopy lands.
+
+    A live quote is a convenience; the bhavcopy is the record. If they differ
+    the book is corrected and the difference reported, because a fill price
+    that quietly drifts is a P&L error that compounds.
+    """
+    c = conn or db()
+    c.row_factory = sqlite3.Row
+    rows = [dict(r) for r in c.execute(
+        "SELECT * FROM pos WHERE fill_source='live' AND entry_day=?",
+        (str(day),)).fetchall()]
+    c.row_factory = None
+    out = []
+    for p in rows:
+        s = corpus.get(p["symbol"])
+        i = s.index_of(day) if s else None
+        if i is None:
+            continue
+        official = s.open[i]
+        if official and abs(official - p["entry_px"]) > 0.005:
+            c.execute("UPDATE pos SET entry_px=?, stop=?, target=?,"
+                      " fill_source='reconciled' WHERE id=?",
+                      (official, official * (1 - STOP_PCT / 100),
+                       official * (1 + TARGET_PCT / 100), p["id"]))
+            out.append((p["symbol"], p["entry_px"], official))
+        else:
+            c.execute("UPDATE pos SET fill_source='confirmed' WHERE id=?", (p["id"],))
+    c.commit()
+    return out
 
 
 def step(corpus, day, conn=None):

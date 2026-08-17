@@ -14,6 +14,26 @@ import pbook
 import portfolio
 
 
+def fill_live_main():
+    """Morning run: fill pending orders at today's actual open."""
+    from datetime import date as _date
+    corpus = features.load_corpus()
+    conn = pbook.db()
+    today = _date.today()
+    filled, why = pbook.fill_live(today, conn)
+    if not filled:
+        print(f"{today}: nothing filled — {why}")
+        return
+    for sym, px in filled:
+        print(f"{today}: FILLED {sym} at {px:,.2f} (live)")
+    try:
+        import tg
+        tg.push_learning(f"filled at the open {today}",
+                         [f"{s} at {p:,.2f}" for s, p in filled])
+    except Exception as e:
+        print(f"  telegram push failed: {type(e).__name__}")
+
+
 def main(day=None):
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
@@ -23,6 +43,9 @@ def main(day=None):
         return
 
     conn = pbook.db()
+    # Correct any morning fill against the official open before stepping.
+    for sym, was, now in pbook.reconcile(corpus, day, conn):
+        print(f"  reconciled {sym}: live {was:,.2f} -> official {now:,.2f}")
     filled, closed = pbook.step(corpus, day, conn)
     s = pbook.summary(conn)
 
@@ -65,6 +88,8 @@ def main(day=None):
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         print("pbook_run selftest ok (logic covered by pbook.py)")
+    elif "--fill-live" in sys.argv:
+        fill_live_main()
     else:
         d = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else None
         main(d)
