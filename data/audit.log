@@ -61,8 +61,8 @@ FILLS AND EXITS
   [PASS] every command appears in /help
          none
 
-PARALLEL BOOKS
---------------
+PARALLEL PORTFOLIOS
+-------------------
   [PASS] pooled books hold disjoint positions
          none
   [PASS] rank cohorts select disjoint names

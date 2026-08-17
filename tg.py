@@ -224,7 +224,7 @@ def cmd_wallet(_=None):
 
 # ============================================================ THE PIPELINE
 def cmd_clusters(_=None):
-    """The ranking, deep enough to show which book takes which name."""
+    """The ranking, deep enough to show which portfolio buys which stock."""
     import clusters, features, pbook, portfolio
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
@@ -240,20 +240,23 @@ def cmd_clusters(_=None):
     # so a name being absent here used to look like it had not been ranked at
     # all when it had simply been taken by a deeper book.
     owner = {}
-    for name, cfg in pbook.BOOKS.items():
+    for name, cfg in pbook.PORTFOLIOS.items():
         for r in portfolio.allocate(rows, offset=cfg["offset"]):
             owner[r["symbol"]] = name
-    depth = max(portfolio.TAKE_PER_CLUSTER.values()) * len(pbook.BOOKS)
-    out = [_title("CLUSTERS", f"as of {as_of}"),
-           f"_The least-liquid {clusters.TRADEABLE_PCT * 100:.0f}% of NSE, split "
-           f"in two by turnover. {len(pbook.BOOKS)} books read this one list._", ""]
+    depth = max(portfolio.TAKE_PER_CLUSTER.values()) * len(pbook.PORTFOLIOS)
+    out = [_title("RANKING", f"as of {as_of}"),
+           f"_The {clusters.TRADEABLE_PCT * 100:.0f}% of NSE shares that trade "
+           f"least each day, split into two size groups. All "
+           f"{len(pbook.PORTFOLIOS)} portfolios pick from this one list._", ""]
     for c in clusters.CLUSTERS:
         take = portfolio.TAKE_PER_CLUSTER.get(c, 0)
         inc = [r for r in rows if r["cluster"] == c]
         spans = "  ".join(
             f"{n}:{cfg['offset'] * take + 1}-{cfg['offset'] * take + take}"
-            for n, cfg in pbook.BOOKS.items())
-        out.append(f"*{c.upper()}*  — {len(inc)} tradeable, {take} per book")
+            for n, cfg in pbook.PORTFOLIOS.items())
+        plain = {"micro": "SMALLEST COMPANIES", "small": "SMALL COMPANIES"}
+        out.append(f"*{plain.get(c, c.upper())}*  — {len(inc)} worth buying, "
+                   f"{take} per portfolio")
         out.append(f"  _{spans}_")
         for n, r in enumerate(inc[:depth], 1):
             sym, who = r["symbol"], owner.get(r["symbol"])
@@ -262,10 +265,11 @@ def cmd_clusters(_=None):
             tag = f"  →  _{who}_" if who else ""
             out.append(f"  rank {n}. {mark} {sym}  score {r['score']:.0f}{tag}")
         if len(inc) > depth:
-            out.append(f"  _...{len(inc) - depth} more, below every book's reach_")
+            out.append(f"  _...{len(inc) - depth} more, ranked too low for "
+                       f"any portfolio to buy_")
         out.append("")
-    out.append("_🟢 the record book · 📊 a rank cohort · 🔸 breaking out but "
-               "ranked below every book · ▫️ ranked only_")
+    out.append("_🟢 bought by the main portfolio · 📊 bought by a deeper one · "
+               "🔸 price broke higher but ranked too low · ▫️ ranked only_")
     return "\n".join(out)
 
 
@@ -302,7 +306,7 @@ def cmd_bucket(_=None):
     # prompted the tag.
     others = {n: [r["symbol"] for r in
                   portfolio.allocate(rows, offset=c["offset"])]
-              for n, c in pbook.BOOKS.items() if n != pbook.MAIN}
+              for n, c in pbook.PORTFOLIOS.items() if n != pbook.MAIN}
     if any(others.values()):
         out.append("")
         out.append("*Deeper cohorts take these:*")
@@ -319,7 +323,7 @@ def cmd_next_orders(_=None):
     # ALL books. Defaulting to main would have shown "nothing waiting" while
     # three research books held queued orders -- a report that is confidently
     # wrong is worse than no report.
-    s = pbook.summary(book=None)
+    s = pbook.summary(which=None)
     pend = [r for r in s["rows"] if r["status"] == "pending"]
     if not pend:
         return (_title("NEXT ORDERS") + "\nNothing waiting. No stock in the "
@@ -327,7 +331,7 @@ def cmd_next_orders(_=None):
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
     out = [_title("NEXT ORDERS", f"{len(pend)} waiting"),
-           "_These enter at the next session's open._"]
+           "_These are bought at tomorrow morning's opening price._"]
     note = _lag_note()
     if note:
         out.append(note)
@@ -339,19 +343,20 @@ def cmd_next_orders(_=None):
         # The stop percentage is the BOOK's, not a constant. `tight` runs 5%
         # and printing "-10%" against a 5% stop would misreport the risk on the
         # one book whose whole purpose is measuring that number.
-        sp = pbook.book_cfg(r["book"])["stop_pct"]
+        sp = pbook.portfolio_cfg(r["portfolio"])["stop_pct"]
         total += val
         risk += val * sp / 100
-        tag = "" if r["book"] == pbook.MAIN else f"  ·  _{r['book']}_"
+        tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
         out.append(f"*{r['symbol']}* ({r['cluster']}){tag}")
         out.append(f"   buy {r['qty']} at about {px:,.2f}   = {_rs(val)}")
-        out.append(f"   stop {r['stop']:,.2f}  (−{sp:g}%)")
-        out.append(f"   target {r['target']:,.2f}  (+{pbook.TARGET_PCT:g}%)")
-        out.append(f"   risk {_rs(val * sp / 100)}")
+        out.append(f"   sell if it falls to {r['stop']:,.2f}  (−{sp:g}%)")
+        out.append(f"   sell if it rises to {r['target']:,.2f}  "
+                   f"(+{pbook.TARGET_PCT:g}%)")
+        out.append(f"   most it can lose {_rs(val * sp / 100)}")
         out.append("")
-    out.append(f"*Total to invest*  {_rs(total)}")
-    out.append(f"*Total at risk*    {_rs(risk)}")
-    books = sorted({r["book"] for r in pend})
+    out.append(f"*Total being spent*  {_rs(total)}")
+    out.append(f"*Most it can lose*   {_rs(risk)}")
+    books = sorted({r["portfolio"] for r in pend})
     if books != [pbook.MAIN]:
         out.append(f"_Across {len(books)} books: {', '.join(books)}. "
                    f"Notional — they are alternative portfolios, not one pot._")
@@ -361,7 +366,7 @@ def cmd_next_orders(_=None):
 def cmd_open_orders(_=None):
     """Trades that are live in the market right now."""
     import features, pbook, portfolio
-    s = pbook.summary(book=None)
+    s = pbook.summary(which=None)
     live = [r for r in s["rows"] if r["status"] == "open"]
     if not live:
         pend = s["pending"]
@@ -393,7 +398,7 @@ def cmd_open_orders(_=None):
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
         to_tgt = (r["target"] / px - 1) * 100 if px else 0
-        tag = "" if r["book"] == pbook.MAIN else f"  ·  _{r['book']}_"
+        tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
         out.append(f"{icon} *{r['symbol']}* ({r['cluster']}){tag}  {pct:+.1f}%")
         out.append(f"   in at {r['entry_px']:,.2f} → now {px:,.2f}")
         out.append(f"   value {_rs(val)}   P/L Rs {pl:+,.0f}")
@@ -411,7 +416,7 @@ def cmd_closed_orders(_=None):
     """Finished trades and what they made or lost."""
     import analysis, pbook
     from collections import defaultdict
-    s = pbook.summary(book=None)
+    s = pbook.summary(which=None)
     done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     if not done:
         return (_title("CLOSED ORDERS") + "\nNothing has closed yet. Only real "
@@ -420,27 +425,27 @@ def cmd_closed_orders(_=None):
     # as main, so its trades are not independent -- including them would count
     # the same price path twice and overstate the evidence, which is exactly
     # the error the book design exists to avoid.
-    pooled = {n for n, c in pbook.BOOKS.items() if c["pool"]}
-    ev = [r for r in done if r["book"] in pooled]
+    pooled = {n for n, c in pbook.PORTFOLIOS.items() if c["pool"]}
+    ev = [r for r in done if r["portfolio"] in pooled]
     rets = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100,
              "sym": r["symbol"], "clu": r["cluster"]} for r in ev]
     out = [_title("CLOSED ORDERS", f"{len(done)} finished"), ""]
     for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
         icon = "✅" if (r["net"] or 0) > 0 else "❌"
-        tag = "" if r["book"] == pbook.MAIN else f"  ·  _{r['book']}_"
+        tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
         out.append(f"{icon} *{r['symbol']}* ({r['cluster']}){tag}  {pct:+.1f}%  "
                    f"Rs {r['net']:+,.0f}")
         out.append(f"    {r['entry_px']:,.2f} → {r['exit_px']:,.2f} · "
                    f"{r['exit_reason']} · {r['exit_day']}")
     won = sum(1 for r in done if (r["net"] or 0) > 0)
-    main_net = sum(r["net"] or 0 for r in done if r["book"] == pbook.MAIN)
+    main_net = sum(r["net"] or 0 for r in done if r["portfolio"] == pbook.MAIN)
     out += ["", f"*Won* {won}   *Lost* {len(done) - won}   "
                 f"*Hit rate* {won / len(done) * 100:.0f}%",
-            f"*Total (the record book)* Rs {main_net:+,.0f}"]
-    if len(done) != len(ev) or any(r["book"] != pbook.MAIN for r in done):
+            f"*Total (the record portfolio)* Rs {main_net:+,.0f}"]
+    if len(done) != len(ev) or any(r["portfolio"] != pbook.MAIN for r in done):
         out.append(f"_All books Rs {s['realised']:+,.0f} across "
-                   f"{len({r['book'] for r in done})} books — notional._")
+                   f"{len({r['portfolio'] for r in done})} books — notional._")
     out += ["", "*By cluster*"]
     by = defaultdict(list)
     for r in done:
@@ -452,7 +457,7 @@ def cmd_closed_orders(_=None):
         conc = analysis.concentration(rets)
         out += ["", f"_Best single name is {conc['top1']:.0f}% of all gains._",
                 f"_Evidence pools {len(rets)} trades from "
-                f"{len({r['book'] for r in ev})} disjoint books._",
+                f"{len({r['portfolio'] for r in ev})} disjoint books._",
                 "_" + analysis.verdict(rets) + "_"]
     return "\n".join(out)
 
@@ -475,8 +480,8 @@ def cmd_findings(_=None):
         # reporting results did not distinguish them.
         sim = r.get("source") == "simulation"
         out.append(f"{'🧪' if sim else '📈'} *{r['label']}*  _{r['at'][:10]}_")
-        out.append(f"  {'BACKTEST — not evidence' if sim else 'forward trades'}"
-                   f" · mix {mix} · {r['n']} trades")
+        out.append(f"  {'TESTED ON PAST DATA — proves nothing' if sim else 'real trades, made forward'}"
+                   f" · {r['n']} trades")
         st = r.get("stats") or {}
         if st.get("se"):
             tag = "measurable" if st.get("significant") else "inside the noise"
@@ -487,9 +492,10 @@ def cmd_findings(_=None):
             out.append(f"  {cl}: {v['n']} trades {v['total']:+.1f}%")
         out.append("")
     n_sim = sum(1 for r in rows if r.get("source") == "simulation")
-    out.append(f"_🧪 {n_sim} of {len(rows)} recorded findings are BACKTESTS. "
-               f"No number of them can show the approach works forward — "
-               f"only closed paper trades can, and there are none yet._")
+    out.append(f"_🧪 {n_sim} of {len(rows)} of these were run on past data. "
+               f"Replaying history can always be made to look good, so none "
+               f"of it counts. Only trades made going forward do, and there "
+               f"are none finished yet._")
     return "\n".join(out)
 
 
@@ -530,48 +536,51 @@ def cmd_health(_=None):
     return "\n".join(out)
 
 
-def cmd_books(_=None):
-    """Every paper book side by side.
+def cmd_portfolios(_=None):
+    """Every portfolio side by side.
 
-    The rank books exist to multiply forward trades WITHOUT creating a choice:
-    same rules, different depth in the ranking, disjoint positions. There is no
-    variant book -- the tighter-stop question is answered as a counterfactual
-    on the record book's own positions, which is exact and does not put a
-    second order on a name that is already live.
+    They exist to multiply finished trades WITHOUT creating a choice: same
+    rules, different depth in the same ranking, no shared stocks. None of them
+    runs different settings -- see rules.md and pbook.PORTFOLIOS.
     """
     import features
     import pbook
-    out = [_title("BOOKS", f"{len(pbook.BOOKS)} running"), ""]
+    out = [_title("PORTFOLIOS", f"{len(pbook.PORTFOLIOS)} running"),
+           "_Same rules, different depth in the same ranking. More portfolios "
+           "means more finished trades, and finished trades are the only thing "
+           "that can settle whether this works._", ""]
     conn = pbook.db()
     tot_closed = 0
-    for name, cfg in pbook.BOOKS.items():
-        s = pbook.summary(conn, book=name)
+    for name, cfg in pbook.PORTFOLIOS.items():
+        s = pbook.summary(conn, which=name)
         tot_closed += s["closed"]
         mark = "⭐" if name == pbook.MAIN else ("🔬" if not cfg["pool"] else "📊")
         out.append(f"{mark} *{name}*  _{pbook.role_of(name)}_")
-        out.append(f"    {s['open']} open · {s['pending']} queued · "
-                   f"{s['closed']} closed · realised {_rs(s['realised'])}")
-    pooled = [n for n, c in pbook.BOOKS.items() if c["pool"]]
-    out += ["", f"*Pooled evidence*  {len(pooled)} books with disjoint positions "
+        out.append(f"    {s['open']} held · {s['pending']} buying tomorrow · "
+                   f"{s['closed']} finished · banked {_rs(s['realised'])}")
+    pooled = [n for n, c in pbook.PORTFOLIOS.items() if c["pool"]]
+    out += ["", f"*Counted together*  {len(pooled)} portfolios, no shared stocks "
                 f"({', '.join(pooled)})",
-            f"*Closed, all books*  {tot_closed}"]
+            f"*Finished trades, all portfolios*  {tot_closed}"]
     if tot_closed < 105:
-        out.append(f"_{105 - tot_closed} more before a 3%/trade edge is "
-                   f"resolvable at all._")
+        out.append(f"_{105 - tot_closed} more needed before these numbers mean "
+                   f"anything. Below that, luck and skill look the same._")
 
     # The tighter-stop question, as a counterfactual on real positions.
     try:
         sh = pbook.shadow_stop(features.load_corpus(), conn, pct=5.0)
         if sh:
             hit = sum(1 for x in sh if x["shadow_hit"])
-            out += ["", f"*If the stop were 5%*  {hit} of {len(sh)} positions "
-                        f"would have been stopped ({hit / len(sh) * 100:.0f}%)",
-                    f"_The backtest predicts 62%. This is a check on the fill "
-                    f"model, not a case for changing the stop._"]
+            out += ["", f"*If we sold at a 5% loss instead of 10%*  {hit} of "
+                        f"{len(sh)} would already be out "
+                        f"({hit / len(sh) * 100:.0f}%)",
+                    f"_The simulation says 62%. This checks whether the "
+                    f"simulation tells the truth — it is not an argument for "
+                    f"selling earlier._"]
     except Exception as e:
-        out.append(f"_shadow stop unavailable ({type(e).__name__})_")
+        out.append(f"_that check is unavailable ({type(e).__name__})_")
 
-    out.append("_⭐ the record · 📊 pools into the evidence_")
+    out.append("_⭐ the one we judge results by · 📊 counted alongside it_")
     return "\n".join(out)
 
 
@@ -588,22 +597,23 @@ def cmd_review(_=None):
     import learning
     import pbook
     s = pbook.summary()
-    allb = pbook.summary(book=None)
+    allb = pbook.summary(which=None)
     closed = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     out = [_title("DAILY REVIEW", str(datetime.now().date())), "",
-           f"*Record book*  {s['open']} running · {s['pending']} queued · "
-           f"{s['closed']} closed · equity {_rs(s['equity'])}"]
+           f"*Main portfolio*  {s['open']} held · {s['pending']} buying "
+           f"tomorrow · {s['closed']} finished · worth {_rs(s['equity'])}"]
     # Counting only main here said "0 queued" while /next_orders said "2
     # waiting". Both were right about their own scope and the pair was
     # incoherent to read.
     if allb["open"] + allb["pending"] != s["open"] + s["pending"]:
-        out.append(f"*All {len(pbook.BOOKS)} books*  {allb['open']} running · "
-                   f"{allb['pending']} queued · {allb['closed']} closed")
+        out.append(f"*All {len(pbook.PORTFOLIOS)} portfolios*  {allb['open']} held · "
+                   f"{allb['pending']} buying tomorrow · {allb['closed']} finished")
 
     trades = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100} for r in closed]
-    out += ["", "*Evidence*", "_" + analysis.verdict(trades) + "_"]
+    out += ["", "*What the results so far can prove*",
+            "_" + analysis.verdict(trades) + "_"]
 
-    out += ["", "*Suggestions*"]
+    out += ["", "*Anything worth changing?*"]
     try:
         led = learning.load()
         cur = learning.load_weights()
@@ -623,8 +633,8 @@ def cmd_review(_=None):
                 out.append(f"  {k}: {a:.2f} → {b:.2f}  _(proposed, NOT applied)_")
             out.append("_Re-run the simulation before adopting any of these._")
         else:
-            out.append(f"  none — {len(led)} trades in the ledger, "
-                       f"{learning.MIN_TRADES} needed before a weight may move")
+            out.append(f"  no — {len(led)} finished trades on record, "
+                       f"{learning.MIN_TRADES} needed before anything moves")
     except Exception as e:
         out.append(f"  unavailable ({type(e).__name__})")
 
@@ -654,7 +664,7 @@ def cmd_review(_=None):
         corpus = features.load_corpus()
         as_of = max(d for x in corpus.values() for d in x.days)
         picks = portfolio.allocate(portfolio.build(corpus, as_of))
-        held = {r["symbol"] for r in pbook.summary(book=None)["rows"]
+        held = {r["symbol"] for r in pbook.summary(which=None)["rows"]
                 if r["status"] in ("open", "pending")}
         out += ["", f"*Bucket* ({as_of})"]
         for r in picks:
@@ -662,8 +672,8 @@ def cmd_review(_=None):
                        f"{r['symbol']} ({r['cluster']}) score {r['score']:.0f}")
         if not picks:
             out.append("  _nothing triggered_")
-        out.append("_/bucket for the reasoning · /clusters for the full "
-                   "ranking · /books for every cohort_")
+        out.append("_/bucket for why · /clusters for the full ranking · "
+                   "/portfolios for all four_")
     except Exception as e:
         out.append(f"_bucket unavailable ({type(e).__name__})_")
     return "\n".join(out)
@@ -689,15 +699,15 @@ def cmd_help(_=None):
             "*Money*\n"
             "/wallet — cash, holdings, profit\n\n"
             "*The pipeline*, in order\n"
-            "/clusters — the two clusters, top 5 each\n"
+            "/clusters — the ranking, and who buys what\n"
             "/bucket — the 5 stocks chosen to trade\n"
             "/next\\_orders — waiting to enter, with entry, stop, target, value\n"
             "/open\\_orders — trades live in the market now\n"
             "/closed\\_orders — finished trades and their profit or loss\n\n"
             "*Evidence*\n"
             "/findings — what has been recorded\n"
-            "/review — the daily read: book, evidence, suggestions\n"
-            "/books — all paper books side by side\n\n"
+            "/review — the daily read: portfolio, evidence, suggestions\n"
+            "/portfolios — all five sets of picks side by side\n\n"
             "*System*\n"
             "/health — is everything running\n\n"
             "_Hyphens work too: /next-orders, /open-orders, /closed-orders._\n"
@@ -716,14 +726,14 @@ COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
             "/closed_orders": cmd_closed_orders,
             "/closed-orders": cmd_closed_orders,
             "/findings": cmd_findings, "/review": cmd_review,
-            "/books": cmd_books,
+            "/portfolios": cmd_portfolios, "/books": cmd_portfolios,
             "/health": cmd_health,
             "/help": cmd_help, "/start": cmd_help}
 
 # Spellings that work but are deliberately not advertised: the hyphen forms
 # (Telegram only autocompletes underscores) and older names kept alive so they
 # do not silently break. Everything else must appear in /help.
-ALIASES = {"/start", "/help", "/portfolio",
+ALIASES = {"/start", "/help", "/portfolio", "/books",
            "/next-orders", "/open-orders", "/closed-orders"}
 
 

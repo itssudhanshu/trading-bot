@@ -20,6 +20,9 @@ wrong build:
 
 - **cluster** = a size band (micro, small). Never called a bucket.
 - **bucket** = the 5-stock portfolio. Never called a cluster.
+- **portfolio** = a set of held positions with its own P&L. There are four.
+  Never "book" — that was a third word for something already named (rules.md
+  R1) and it is gone from the code, the database column and every screen.
 - **rank** = a position in the score-sorted list, within a cluster.
 - **cohort** = a SLICE of ranks that one paper book takes. Never "rank1/2/3":
   a book named `rank2` printed beside a name sitting at rank 5 put two
@@ -196,6 +199,11 @@ A participation cap (skip a name whose order exceeds x% of ADV) was tested at
 worse — the signature of noise) and the 2% cap produced a HIGHER maximum impact
 than no cap, because a selection-time estimate does not bind execution-time
 reality. Do not re-add it without evidence that fixes both.
+
+**`rules.md` governs vocabulary and how results are worded**, in the code and
+in anything a person reads. Its first rule is that a term already in use is not
+re-invented, and its second is that a non-trader must be able to read any
+output without a glossary.
 
 See `STATE.md` for current status and `lessons.md` for the evidence behind each
 rule above. Retired work (the spec-search track) is archived in `data/retired/`.

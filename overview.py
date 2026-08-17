@@ -48,24 +48,24 @@ def state():
     s["sims_positive"] = sum(1 for r in sims if r.get("cagr", 0) > 0)
     s["candidates"] = simulate.load_strats("candidate", track="cluster")
 
-    # MAIN ONLY. The research books (rank cohorts, the paired tight-stop book)
+    # MAIN ONLY. The research books (rank cohorts, the paired tight-stop portfolio)
     # deliberately generate more forward trades, and folding them in here would
     # overstate the evidence this page exists to report honestly. They are
     # reported separately by /books.
-    s["book"] = {"pending": 0, "open": 0, "closed": 0, "net": 0.0}
+    s["portfolio"] = {"pending": 0, "open": 0, "closed": 0, "net": 0.0}
     if (D / "pbook.db").exists():
         import pbook
         con = sqlite3.connect(D / "pbook.db")
         cols = {r[1] for r in con.execute("PRAGMA table_info(pos)")}
-        where, arg = ("", ()) if "book" not in cols else (
-            " WHERE book=?", (pbook.MAIN,))
+        where, arg = ("", ()) if "portfolio" not in cols else (
+            " WHERE portfolio=?", (pbook.MAIN,))
         for st_, n in con.execute(
                 f"select status, count(*) from pos{where} group by status", arg):
-            s["book"][st_] = n
+            s["portfolio"][st_] = n
         (net,) = con.execute(
             "select coalesce(sum(net),0) from pos where status='closed'"
-            + (" AND book=?" if where else ""), arg).fetchone()
-        s["book"]["net"] = net
+            + (" AND portfolio=?" if where else ""), arg).fetchone()
+        s["portfolio"]["net"] = net
         con.close()
 
     try:
@@ -90,7 +90,7 @@ def gates(s):
     g.append(("Market impact modelled", "PASS",
               "sqrt(participation) x volatility on both sides; baseline "
               "+10.85% at c=1.0 (was +13.97% assuming free fills)"))
-    b = s["book"]
+    b = s["portfolio"]
     # How long until forward trades can settle anything, at the book's own
     # turnover. Roughly 3 positions on 15-day holds is ~52 trades a year.
     try:
@@ -113,7 +113,7 @@ def gates(s):
 
 def direction(s):
     """-> (verdict, reasons). Backtests cannot produce a YES."""
-    b = s["book"]
+    b = s["portfolio"]
     if b["closed"] >= 30:
         return ("YES" if b["net"] > 0 else "NO"), [
             f"{b['closed']} forward trades, realised {b['net']:+,.0f}"]
@@ -131,7 +131,7 @@ def render(s=None):
     g = gates(s)
     verdict, why = direction(s)
     mix = " / ".join(f"{v} {k}" for k, v in s["mix"].items())
-    b = s["book"]
+    b = s["portfolio"]
     L = [f"OVERVIEW  {date.today()}", "=" * 62, "",
          "THE APPROACH",
          f"  Universe   NSE equities, {s['days']} sessions "
@@ -173,7 +173,7 @@ def _selftest():
     assert g and all(len(x) == 3 for x in g), g
     v, why = direction(s)
     if v.startswith("YES"):
-        assert s["book"]["closed"] >= 30, "unearned YES"
+        assert s["portfolio"]["closed"] >= 30, "unearned YES"
     assert why, "a verdict must carry its reasons"
     assert "GATES" in render(s), "render must include the gates section"
     print("overview selftest ok")

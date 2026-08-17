@@ -74,7 +74,7 @@ Trade count is the binding constraint: one book makes ~71 trades a year and
 105 are needed before a 3%/trade edge is resolvable at all. Five books cut
 "is there an edge?" from ~1.5 years to ~5 months.
 
-| book | what it is | pools? |
+| portfolio | what it is | counted together? |
 |---|---|---|
 | `main` | the record. STATE.md, `overview.py` and the audit key off THIS book only | ⭐ |
 | `cohort1..3` | same rules, deeper slices of the same ranking. Disjoint by construction | yes |

@@ -2,7 +2,7 @@
 """Cross-check every load-bearing property of the system.
 
 Not a selftest: selftests run on fixtures and prove a function does what its
-author meant. This runs on the REAL corpus and the REAL book, and checks the
+author meant. This runs on the REAL corpus and the REAL portfolio, and checks the
 properties that would cost money if they were quietly wrong -- lookahead,
 survivorship, cost arithmetic, gap fills, and whether the headline number
 still reproduces.
@@ -250,17 +250,17 @@ def main():
                    - {c for c in tg.COMMANDS if c.replace("_", "\\_") in tg.cmd_help()})
     check("every command appears in /help", not undoc, f"{undoc or 'none'}")
 
-    # ------------------------------------------------------------- BOOKS
-    section("PARALLEL BOOKS")
+    # ------------------------------------------------------------- PORTFOLIOS
+    section("PARALLEL PORTFOLIOS")
     import pbook
     conn = pbook.db()
     # The whole design rests on the pooled books holding DISJOINT positions. If
     # they overlap, their trades are correlated and pooling them overstates the
     # evidence -- the exact error this was built to avoid.
-    pooled = [n for n, c in pbook.BOOKS.items() if c["pool"]]
+    pooled = [n for n, c in pbook.PORTFOLIOS.items() if c["pool"]]
     live = {}
     for n in pooled:
-        live[n] = {r["symbol"] for r in pbook.summary(conn, book=n)["rows"]
+        live[n] = {r["symbol"] for r in pbook.summary(conn, which=n)["rows"]
                    if r["status"] in ("open", "pending")}
     dupes = [(a, b, sorted(live[a] & live[b])) for i, a in enumerate(pooled)
              for b in pooled[i + 1:] if live[a] & live[b]]
@@ -268,7 +268,7 @@ def main():
 
     # Disjoint BY CONSTRUCTION, not just today by luck.
     sel = {n: {r["symbol"] for r in
-               portfolio.allocate(rows, offset=pbook.BOOKS[n]["offset"])}
+               portfolio.allocate(rows, offset=pbook.PORTFOLIOS[n]["offset"])}
            for n in pooled}
     over = [(a, b) for i, a in enumerate(pooled) for b in pooled[i + 1:]
             if sel[a] & sel[b]]
@@ -278,7 +278,7 @@ def main():
     # No book may run its own parameters. A book with different rules is a
     # competitor, a leaderboard forms, and the leaderboard gets picked from --
     # which contaminates the one evidence stream a search cannot reach.
-    variants = [n for n, c in pbook.BOOKS.items()
+    variants = [n for n, c in pbook.PORTFOLIOS.items()
                 if c["stop_pct"] not in (None, portfolio.STOP_PCT)]
     check("every book runs identical rules", not variants,
           f"{variants or 'none'}; books differ only by rank depth")

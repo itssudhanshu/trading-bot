@@ -64,9 +64,9 @@ COSTS = __import__("engine").Costs()
 # falsify the simulator's fill and gap model, which predicts 62% of positions
 # stop out at 5% against 37% at 10%. If forward reality disagrees, the model is
 # wrong and every backtest built on it moves. It may never be promoted on P&L.
-BOOKS = {
+PORTFOLIOS = {
     "main":  dict(offset=0, stop_pct=None, pool=True,
-                  note="the record; STATE.md, overview.py and audit key off it"),
+                  note="the one we judge results by"),
     # NOT "rank1/2/3". A book called `rank2` displayed beside a name sitting at
     # rank 5 put two meanings of "rank" in one line saying different numbers.
     # A cohort is a slice of the ranking; a rank is a position in it. This
@@ -89,27 +89,27 @@ MAIN = "main"
 
 
 def slice_of(name):
-    """-> 'ranks 7-9 micro, 5-6 small' for a book, DERIVED not restated.
+    """-> 'ranks 7-9 micro, 5-6 small' for a portfolio, DERIVED not restated.
 
     Written out by hand this went stale the moment the mix changed -- the same
     way a comment describing a 2/2/1 bucket survived a minute past the design
     that made it true.
     """
     import portfolio
-    off = (BOOKS.get(name) or BOOKS[MAIN])["offset"]
+    off = (PORTFOLIOS.get(name) or PORTFOLIOS[MAIN])["offset"]
     return ", ".join(f"ranks {off * k + 1}-{off * k + k} {c}"
                      for c, k in portfolio.TAKE_PER_CLUSTER.items())
 
 
 def role_of(name):
     """-> the slice, plus any standing note about the book."""
-    n = (BOOKS.get(name) or BOOKS[MAIN]).get("note")
+    n = (PORTFOLIOS.get(name) or PORTFOLIOS[MAIN]).get("note")
     return slice_of(name) + (f" — {n}" if n else "")
 
 
-def book_cfg(name):
+def portfolio_cfg(name):
     """-> the book's config, with None meaning 'the live rule'."""
-    b = dict(BOOKS.get(name) or BOOKS[MAIN])
+    b = dict(PORTFOLIOS.get(name) or PORTFOLIOS[MAIN])
     b["stop_pct"] = STOP_PCT if b["stop_pct"] is None else b["stop_pct"]
     return b
 
@@ -127,14 +127,20 @@ def db():
     # Existing rows predate the parallel books and are the record: they become
     # 'main'. Done as a migration rather than a fresh table so the one live
     # position keeps its id and history.
-    if "book" not in {r[1] for r in c.execute("PRAGMA table_info(pos)")}:
-        c.execute(f"ALTER TABLE pos ADD COLUMN book TEXT DEFAULT '{MAIN}'")
-        c.execute(f"UPDATE pos SET book='{MAIN}' WHERE book IS NULL")
+    cols = {r[1] for r in c.execute("PRAGMA table_info(pos)")}
+    if "portfolio" not in cols:
+        c.execute(f"ALTER TABLE pos ADD COLUMN portfolio TEXT DEFAULT '{MAIN}'")
+        # `book` was a third word for something already called bucket and
+        # portfolio (rules.md R1). Carry its values across -- these are live
+        # positions and the label is which portfolio owns them.
+        if "book" in cols:
+            c.execute("UPDATE pos SET portfolio = book WHERE book IS NOT NULL")
+        c.execute(f"UPDATE pos SET portfolio = '{MAIN}' WHERE portfolio IS NULL")
     c.commit()
     return c
 
 
-def queue(rows, day, conn=None, book=MAIN):
+def queue(rows, day, conn=None, which=MAIN):
     """Queue a book's picks for entry at the NEXT session's open.
 
     Dedup is PER BOOK, not global. `tight` is meant to hold the same names as
@@ -144,9 +150,9 @@ def queue(rows, day, conn=None, book=MAIN):
     """
     c = conn or db()
     held = {r[0] for r in c.execute(
-        "SELECT symbol FROM pos WHERE status IN ('pending','open') AND book=?",
-        (book,))}
-    cfg = book_cfg(book)
+        "SELECT symbol FROM pos WHERE status IN ('pending','open') AND portfolio=?",
+        (which,))}
+    cfg = portfolio_cfg(which)
     n = 0
     for r in rows:
         if r["symbol"] in held:
@@ -157,9 +163,9 @@ def queue(rows, day, conn=None, book=MAIN):
         if cfg["stop_pct"] != STOP_PCT:
             ref = r["ref_close"]
             stop = round(ref * (1 - cfg["stop_pct"] / 100), 2)
-        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target,book)"
+        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target,portfolio)"
                   " VALUES(?,?,'pending',?,?,?,?,?)",
-                  (r["symbol"], r["cluster"], str(day), r["qty"], stop, target, book))
+                  (r["symbol"], r["cluster"], str(day), r["qty"], stop, target, which))
         n += 1
     c.commit()
     return n
@@ -202,7 +208,7 @@ def fill_live(day, conn=None):
         px = (q.get(p["symbol"]) or {}).get("open")
         if not px:
             continue
-        sp = book_cfg(p["book"])["stop_pct"]
+        sp = portfolio_cfg(p["portfolio"])["stop_pct"]
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, fill_source='live' WHERE id=?",
                   (str(day), px, px * (1 - sp / 100),
@@ -233,7 +239,7 @@ def reconcile(corpus, day, conn=None):
             continue
         official = s.open[i]
         if official and abs(official - p["entry_px"]) > 0.005:
-            sp = book_cfg(p["book"])["stop_pct"]
+            sp = portfolio_cfg(p["portfolio"])["stop_pct"]
             c.execute("UPDATE pos SET entry_px=?, stop=?, target=?,"
                       " fill_source='reconciled' WHERE id=?",
                       (official, official * (1 - sp / 100),
@@ -268,7 +274,7 @@ def step(corpus, day, conn=None):
             continue
         # Stop and target are recomputed from the ACTUAL fill, not from the
         # reference close used when queueing -- an overnight gap moves both.
-        sp = book_cfg(p["book"])["stop_pct"]
+        sp = portfolio_cfg(p["portfolio"])["stop_pct"]
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, features=? WHERE id=?",
                   (str(day), px, px * (1 - sp / 100), px * (1 + TARGET_PCT / 100),
@@ -302,7 +308,7 @@ def step(corpus, day, conn=None):
                 learning.record([{**f, "ret": (px / p["entry_px"] - 1) * 100,
                                   "net": net, "exit": why, "symbol": p["symbol"],
                                   "cluster": p["cluster"], "date": str(day),
-                                  "book": p["book"], "source": "portfolio"}])
+                                  "portfolio": p["portfolio"], "source": "portfolio"}])
         except Exception:
             pass
     c.commit()
@@ -310,7 +316,7 @@ def step(corpus, day, conn=None):
     return filled, closed
 
 
-def shadow_stop(corpus, conn=None, pct=5.0, book=MAIN):
+def shadow_stop(corpus, conn=None, pct=5.0, which=MAIN):
     """Would a `pct` stop have been hit on this book's OWN positions?
 
     The counterfactual is exact rather than approximate: same entry price, same
@@ -330,7 +336,7 @@ def shadow_stop(corpus, conn=None, pct=5.0, book=MAIN):
         # rather than return a number that looks like a measurement.
         raise ValueError(f"shadow stop pct must be > 0, got {pct}")
     out = []
-    for r in summary(conn, book=book)["rows"]:
+    for r in summary(conn, which=which)["rows"]:
         if not r["entry_px"] or not r["entry_day"]:
             continue
         s = corpus.get(r["symbol"])
@@ -347,24 +353,28 @@ def shadow_stop(corpus, conn=None, pct=5.0, book=MAIN):
             if s.low[i] <= lvl:
                 hit, day = True, d
                 break
-        out.append({"symbol": r["symbol"], "book": r["book"],
+        out.append({"symbol": r["symbol"], "portfolio": r["portfolio"],
                     "entry": r["entry_px"], "level": lvl, "real_stop": real,
                     "shadow_hit": bool(hit), "shadow_day": day,
                     "real_exit": r["exit_reason"], "status": r["status"]})
     return out
 
 
-def summary(conn=None, book=MAIN):
-    """-> the book's state. `book=None` aggregates every book.
+def summary(conn=None, which=MAIN):
+    """-> one portfolio's state. `which=None` adds every portfolio together.
 
     Defaults to `main` because that is the record: overview.py, STATE.md and
-    the audit all describe one book, and silently folding four research books
-    into those numbers would overstate the forward evidence fourfold.
+    the audit all describe one portfolio, and quietly folding the three
+    research portfolios into those numbers would overstate the forward
+    evidence fourfold.
+
+    The parameter is `which`, not `portfolio`, because this module imports a
+    module of that name and a parameter would shadow it.
     """
     c = conn or db()
     c.row_factory = sqlite3.Row
-    q = "SELECT * FROM pos" + ("" if book is None else " WHERE book=?")
-    rows = [dict(r) for r in c.execute(q, () if book is None else (book,)).fetchall()]
+    q = "SELECT * FROM pos" + ("" if which is None else " WHERE portfolio=?")
+    rows = [dict(r) for r in c.execute(q, () if which is None else (which,)).fetchall()]
     c.row_factory = None
     closed = [r for r in rows if r["status"] == "closed"]
     realised = sum(r["net"] or 0 for r in closed)
@@ -415,14 +425,14 @@ def __selftest_body():
             assert queue([row_in], days[200], c) == 1
             # queueing the same symbol twice must not double it
             assert queue([row_in], days[200], c) == 0
-            # ...but a DIFFERENT book must still take it. Dedup is per book,
+            # ...but a DIFFERENT book must still take it. Dedup is per portfolio,
             # so a rank cohort is never blocked by what another book holds.
-            assert queue([row_in], days[200], c, book="cohort1") == 1
+            assert queue([row_in], days[200], c, which="cohort1") == 1
 
             filled, closed = step(corpus, days[201], c)
             assert len(filled) == 2 and not closed, (filled, closed)
             got = dict(c.execute(
-                "SELECT book, stop FROM pos WHERE status='open'").fetchall())
+                "SELECT portfolio, stop FROM pos WHERE status='open'").fetchall())
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
             assert abs(got["cohort1"] - 90.0) < 1e-9, got
 
@@ -446,8 +456,8 @@ def __selftest_body():
             assert all(x[2] > 0 for x in c2), "target exit must be profitable"
             s2 = summary(c)                       # defaults to main only
             assert s2["closed"] == 1 and s2["realised"] > 0, s2
-            assert summary(c, book=None)["closed"] == 2, "book=None must pool"
-            assert summary(c, book="cohort1")["closed"] == 1
+            assert summary(c, which=None)["closed"] == 2, "which=None must pool"
+            assert summary(c, which="cohort1")["closed"] == 1
         finally:
             DB = _odb
     print("pbook selftest ok")
