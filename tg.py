@@ -452,6 +452,38 @@ def cmd_health(_=None):
     return "\n".join(out)
 
 
+def cmd_books(_=None):
+    """Every paper book side by side.
+
+    The rank books exist to multiply forward trades WITHOUT creating a choice:
+    same rules, different depth in the ranking, disjoint positions. `tight` is
+    the one variant and it is not a competitor -- it holds the same names as
+    main with a 5% stop, and the only thing it is allowed to settle is whether
+    the simulator's stop-hit rate is right.
+    """
+    import pbook
+    out = [_title("BOOKS", f"{len(pbook.BOOKS)} running"), ""]
+    conn = pbook.db()
+    tot_closed = 0
+    for name, cfg in pbook.BOOKS.items():
+        s = pbook.summary(conn, book=name)
+        tot_closed += s["closed"]
+        mark = "⭐" if name == pbook.MAIN else ("🔬" if not cfg["pool"] else "📊")
+        out.append(f"{mark} *{name}*  _{cfg['role']}_")
+        out.append(f"    {s['open']} open · {s['pending']} queued · "
+                   f"{s['closed']} closed · realised {_rs(s['realised'])}")
+    pooled = [n for n, c in pbook.BOOKS.items() if c["pool"]]
+    out += ["", f"*Pooled evidence*  {len(pooled)} books with disjoint positions "
+                f"({', '.join(pooled)})",
+            f"*Closed, all books*  {tot_closed}"]
+    if tot_closed < 105:
+        out.append(f"_{105 - tot_closed} more before a 3%/trade edge is "
+                   f"resolvable at all._")
+    out.append("_⭐ the record · 📊 pools into the evidence · 🔬 falsifies the "
+               "simulator, never promoted on P&L_")
+    return "\n".join(out)
+
+
 def cmd_review(_=None):
     """The daily read: what the book holds, what it would buy next, and whether
     anything has EARNED a change.
@@ -535,7 +567,8 @@ def cmd_help(_=None):
             "/closed\\_orders — finished trades and their profit or loss\n\n"
             "*Evidence*\n"
             "/findings — what has been recorded\n"
-            "/review — the daily read: book, evidence, suggestions\n\n"
+            "/review — the daily read: book, evidence, suggestions\n"
+            "/books — all paper books side by side\n\n"
             "*System*\n"
             "/health — is everything running\n\n"
             "_Hyphens work too: /next-orders, /open-orders, /closed-orders._\n"
@@ -554,6 +587,7 @@ COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
             "/closed_orders": cmd_closed_orders,
             "/closed-orders": cmd_closed_orders,
             "/findings": cmd_findings, "/review": cmd_review,
+            "/books": cmd_books,
             "/health": cmd_health,
             "/help": cmd_help, "/start": cmd_help}
 

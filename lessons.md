@@ -1316,3 +1316,46 @@ hypotheses here, not findings, and this book's own structure (a trigger, a
 5-name bucket, a shallow pool) decides whether they survive. That is the same
 lesson as the rs t-statistic in CLAUDE.md: univariate significance elsewhere is
 not marginal portfolio value here.
+
+## L54 — More books buy evidence; more parameters buy nothing. The arithmetic decides.
+
+The operator's instinct was right and the reason is worth writing down: with
+0 closed forward trades and ~71 a year from one book, the project is starved of
+the only evidence a search cannot contaminate. The proposal was to run several
+books at different entries, targets and stops "just for learning".
+
+Half of that works and half cannot, and the split is not a matter of taste:
+
+| question | trades needed | 1 book | 4 books |
+|---|---|---|---|
+| is the per-trade edge > 0? | 105 | 1.5y | **0.4y** |
+| stop 10% vs 5% | 238/arm | 3.4y | 3.4y |
+| ladder on vs off | 2,856/arm | 40y | 40y |
+| hold 10d vs 15d | 162,554/arm | never | never |
+
+**Parallel books speed up the aggregate question and do nothing for
+comparisons.** Pooling works because n grows; a comparison needs each ARM to
+reach its own n, and adding arms feeds none of them faster. The hold row is the
+one to remember: the change adopted in L52 can never be validated forward, so
+it rests on the backtest permanently and should be described that way.
+
+**Pooling is only legitimate if the books are independent.** Books running
+different parameters on the same universe hold overlapping positions, so their
+trades are correlated and pooling overstates the evidence. Rank cohorts do not
+have this problem: cohort k takes ranks 3k..3k+2 micro and 2k..2k+1 small, so
+the positions are disjoint BY CONSTRUCTION. That is why the parallel books are
+cohorts and not variants.
+
+**The one variant that earns its place measures a proportion, not a mean.**
+`tight` holds the same names as main with a 5% stop, paired on identical price
+paths, and its endpoint is the stop-hit RATE -- 62% predicted at 5% against 37%
+at 10%, resolvable in ~62 trades because a proportion's standard error is
+sqrt(p(1-p)/n), not 16%/sqrt(n). It cannot say which stop is better and is
+barred from promotion on P&L. It can say whether the simulator is lying, which
+is worth more: `IMPACT_C` is a guess and the gap-fill model has never met a
+real gap.
+
+**What made this dangerous rather than merely useless:** five books with
+different parameters, reported side by side, is a leaderboard. A leaderboard
+gets picked from. The design constraint that makes it safe is that the pooled
+books have nothing to choose between -- they run identical rules.

@@ -48,13 +48,23 @@ def state():
     s["sims_positive"] = sum(1 for r in sims if r.get("cagr", 0) > 0)
     s["candidates"] = simulate.load_strats("candidate", track="cluster")
 
+    # MAIN ONLY. The research books (rank cohorts, the paired tight-stop book)
+    # deliberately generate more forward trades, and folding them in here would
+    # overstate the evidence this page exists to report honestly. They are
+    # reported separately by /books.
     s["book"] = {"pending": 0, "open": 0, "closed": 0, "net": 0.0}
     if (D / "pbook.db").exists():
+        import pbook
         con = sqlite3.connect(D / "pbook.db")
-        for st_, n in con.execute("select status, count(*) from pos group by status"):
+        cols = {r[1] for r in con.execute("PRAGMA table_info(pos)")}
+        where, arg = ("", ()) if "book" not in cols else (
+            " WHERE book=?", (pbook.MAIN,))
+        for st_, n in con.execute(
+                f"select status, count(*) from pos{where} group by status", arg):
             s["book"][st_] = n
         (net,) = con.execute(
-            "select coalesce(sum(net),0) from pos where status='closed'").fetchone()
+            "select coalesce(sum(net),0) from pos where status='closed'"
+            + (" AND book=?" if where else ""), arg).fetchone()
         s["book"]["net"] = net
         con.close()
 

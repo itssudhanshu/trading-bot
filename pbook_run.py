@@ -44,20 +44,37 @@ def main(day=None):
 
     conn = pbook.db()
     # Correct any morning fill against the official open before stepping.
+    # reconcile and step are book-agnostic: they walk positions by status, so
+    # every book advances in one pass.
     for sym, was, now in pbook.reconcile(corpus, day, conn):
         print(f"  reconciled {sym}: live {was:,.2f} -> official {now:,.2f}")
     filled, closed = pbook.step(corpus, day, conn)
     s = pbook.summary(conn)
 
-    room = portfolio.MAX_POSITIONS - (s["open"] + s["pending"])
-    queued = 0
-    if room > 0:
-        rows = portfolio.allocate(portfolio.build(corpus, day, capital=s["equity"]))
-        queued = pbook.queue(rows[:room], day, conn)
+    # Rank ONCE, allocate per book. build() is the expensive call and every
+    # book reads the same ranking -- the books differ only in how far down it
+    # they reach, which is exactly what makes their positions disjoint.
+    rows = portfolio.build(corpus, day, capital=s["equity"])
+    queued = {}
+    for name, cfg in pbook.BOOKS.items():
+        bs = pbook.summary(conn, book=name)
+        room = portfolio.MAX_POSITIONS - (bs["open"] + bs["pending"])
+        if room <= 0:
+            continue
+        picks = portfolio.allocate(rows, offset=cfg["offset"])
+        n = pbook.queue(picks[:room], day, conn, book=name)
+        if n:
+            queued[name] = n
 
     print(f"{day}  equity Rs {s['equity']:,.0f}  realised Rs {s['realised']:+,.0f}")
-    print(f"  filled {len(filled)}  closed {len(closed)}  queued {queued}")
-    print(f"  open {s['open']}  pending {s['pending']}  closed-total {s['closed']}")
+    print(f"  filled {len(filled)}  closed {len(closed)}  "
+          f"queued {sum(queued.values())} {queued or ''}")
+    print(f"  main: open {s['open']}  pending {s['pending']}  "
+          f"closed-total {s['closed']}")
+    allb = pbook.summary(conn, book=None)
+    print(f"  all books: open {allb['open']}  pending {allb['pending']}  "
+          f"closed-total {allb['closed']}  "
+          f"({len(pbook.BOOKS)} books, ~{71 * len(pbook.BOOKS):.0f} trades/yr)")
 
     # Record the findings after every session that closed something, so the
     # per-stock and per-cluster picture accumulates instead of being recomputed

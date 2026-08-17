@@ -41,6 +41,49 @@ STOP_PCT, TARGET_PCT, HOLD_DAYS = (portfolio.STOP_PCT, portfolio.TARGET_PCT,
 COSTS = __import__("engine").Costs()
 
 
+# Parallel paper books. Trade count is the binding constraint on this project
+# -- one book produces ~71 trades a year, and 105 are needed before a 3%/trade
+# edge is resolvable at all. More books is the only lever that moves that.
+#
+# THE CONSTRAINT THAT MAKES THIS HONEST: books 1-3 run the SAME rules at
+# different RANK DEPTHS, so their positions are disjoint by construction and
+# their trades pool as near-independent samples. They multiply evidence for the
+# question that matters -- does the score rank? -- without creating a choice.
+#
+# What they are NOT is a parameter search. Comparing two parameter settings on
+# RETURN needs 238 trades per arm (3.4 years) for the largest gap ever measured
+# here, 40 years for the ladder, and 162,554 for the hold. Running variants
+# forward and adopting the leader would contaminate the one evidence stream a
+# search cannot reach (L47, and PBO 0.929 in L41). It is forbidden here, not
+# discouraged.
+#
+# `tight` is the single exception and its endpoint is deliberately different.
+# It holds the SAME names as main with a 5% stop, so the comparison is PAIRED
+# on identical price paths, and what it measures is the stop-hit RATE -- a
+# proportion, resolvable in ~62 trades, not a mean needing 238. Its job is to
+# falsify the simulator's fill and gap model, which predicts 62% of positions
+# stop out at 5% against 37% at 10%. If forward reality disagrees, the model is
+# wrong and every backtest built on it moves. It may never be promoted on P&L.
+BOOKS = {
+    "main":  dict(offset=0, stop_pct=None, pool=True,
+                  role="the record; STATE.md, overview.py and audit key off it"),
+    "rank1": dict(offset=1, stop_pct=None, pool=True, role="rank cohort 1"),
+    "rank2": dict(offset=2, stop_pct=None, pool=True, role="rank cohort 2"),
+    "rank3": dict(offset=3, stop_pct=None, pool=True, role="rank cohort 3"),
+    "tight": dict(offset=0, stop_pct=5.0, pool=False,
+                  role="paired 5% stop; falsifies the sim's stop-hit rate, "
+                       "never promoted on P&L"),
+}
+MAIN = "main"
+
+
+def book_cfg(name):
+    """-> the book's config, with None meaning 'the live rule'."""
+    b = dict(BOOKS.get(name) or BOOKS[MAIN])
+    b["stop_pct"] = STOP_PCT if b["stop_pct"] is None else b["stop_pct"]
+    return b
+
+
 def db():
     c = sqlite3.connect(DB)
     c.executescript("""
@@ -51,22 +94,42 @@ def db():
       exit_reason TEXT, net REAL, features TEXT, fill_source TEXT);
     CREATE INDEX IF NOT EXISTS ix_pos_status ON pos(status);
     """)
+    # Existing rows predate the parallel books and are the record: they become
+    # 'main'. Done as a migration rather than a fresh table so the one live
+    # position keeps its id and history.
+    if "book" not in {r[1] for r in c.execute("PRAGMA table_info(pos)")}:
+        c.execute(f"ALTER TABLE pos ADD COLUMN book TEXT DEFAULT '{MAIN}'")
+        c.execute(f"UPDATE pos SET book='{MAIN}' WHERE book IS NULL")
     c.commit()
     return c
 
 
-def queue(rows, day, conn=None):
-    """Queue today's book for entry at the NEXT session's open."""
+def queue(rows, day, conn=None, book=MAIN):
+    """Queue a book's picks for entry at the NEXT session's open.
+
+    Dedup is PER BOOK, not global. `tight` is meant to hold the same names as
+    `main` -- that pairing is what makes its stop-hit comparison run on
+    identical price paths -- so a global "already held" check would silently
+    empty it and the test would look like it ran.
+    """
     c = conn or db()
     held = {r[0] for r in c.execute(
-        "SELECT symbol FROM pos WHERE status IN ('pending','open')")}
+        "SELECT symbol FROM pos WHERE status IN ('pending','open') AND book=?",
+        (book,))}
+    cfg = book_cfg(book)
     n = 0
     for r in rows:
         if r["symbol"] in held:
             continue
-        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target)"
-                  " VALUES(?,?,'pending',?,?,?,?)",
-                  (r["symbol"], r["cluster"], str(day), r["qty"], r["stop"], r["target"]))
+        # A book with its own stop re-derives stop and target from the
+        # reference close rather than inheriting main's levels.
+        stop, target = r["stop"], r["target"]
+        if cfg["stop_pct"] != STOP_PCT:
+            ref = r["ref_close"]
+            stop = round(ref * (1 - cfg["stop_pct"] / 100), 2)
+        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target,book)"
+                  " VALUES(?,?,'pending',?,?,?,?,?)",
+                  (r["symbol"], r["cluster"], str(day), r["qty"], stop, target, book))
         n += 1
     c.commit()
     return n
@@ -109,9 +172,10 @@ def fill_live(day, conn=None):
         px = (q.get(p["symbol"]) or {}).get("open")
         if not px:
             continue
+        sp = book_cfg(p["book"])["stop_pct"]
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, fill_source='live' WHERE id=?",
-                  (str(day), px, px * (1 - STOP_PCT / 100),
+                  (str(day), px, px * (1 - sp / 100),
                    px * (1 + TARGET_PCT / 100), p["id"]))
         filled.append((p["symbol"], px))
     c.commit()
@@ -139,9 +203,10 @@ def reconcile(corpus, day, conn=None):
             continue
         official = s.open[i]
         if official and abs(official - p["entry_px"]) > 0.005:
+            sp = book_cfg(p["book"])["stop_pct"]
             c.execute("UPDATE pos SET entry_px=?, stop=?, target=?,"
                       " fill_source='reconciled' WHERE id=?",
-                      (official, official * (1 - STOP_PCT / 100),
+                      (official, official * (1 - sp / 100),
                        official * (1 + TARGET_PCT / 100), p["id"]))
             out.append((p["symbol"], p["entry_px"], official))
         else:
@@ -173,9 +238,10 @@ def step(corpus, day, conn=None):
             continue
         # Stop and target are recomputed from the ACTUAL fill, not from the
         # reference close used when queueing -- an overnight gap moves both.
+        sp = book_cfg(p["book"])["stop_pct"]
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, features=? WHERE id=?",
-                  (str(day), px, px * (1 - STOP_PCT / 100), px * (1 + TARGET_PCT / 100),
+                  (str(day), px, px * (1 - sp / 100), px * (1 + TARGET_PCT / 100),
                    json.dumps(learning.entry_features(s, i)), p["id"]))
         filled.append((p["symbol"], px))
 
@@ -206,7 +272,7 @@ def step(corpus, day, conn=None):
                 learning.record([{**f, "ret": (px / p["entry_px"] - 1) * 100,
                                   "net": net, "exit": why, "symbol": p["symbol"],
                                   "cluster": p["cluster"], "date": str(day),
-                                  "source": "portfolio"}])
+                                  "book": p["book"], "source": "portfolio"}])
         except Exception:
             pass
     c.commit()
@@ -214,10 +280,17 @@ def step(corpus, day, conn=None):
     return filled, closed
 
 
-def summary(conn=None):
+def summary(conn=None, book=MAIN):
+    """-> the book's state. `book=None` aggregates every book.
+
+    Defaults to `main` because that is the record: overview.py, STATE.md and
+    the audit all describe one book, and silently folding four research books
+    into those numbers would overstate the forward evidence fourfold.
+    """
     c = conn or db()
     c.row_factory = sqlite3.Row
-    rows = [dict(r) for r in c.execute("SELECT * FROM pos").fetchall()]
+    q = "SELECT * FROM pos" + ("" if book is None else " WHERE book=?")
+    rows = [dict(r) for r in c.execute(q, () if book is None else (book,)).fetchall()]
     c.row_factory = None
     closed = [r for r in rows if r["status"] == "closed"]
     realised = sum(r["net"] or 0 for r in closed)
@@ -252,33 +325,45 @@ def __selftest_body():
     for k in range(210, 260):
         s.high[k] = 130.0; s.close[k] = 128.0
 
+    global DB
+    _odb = DB
     with tempfile.TemporaryDirectory() as td:
-        c = sqlite3.connect(Path(td) / "t.db")
-        c.executescript(open(__file__).read().split('"""')[2]
-                        .split("CREATE TABLE")[0] if False else """
-        CREATE TABLE pos(id INTEGER PRIMARY KEY, symbol TEXT, cluster TEXT, status TEXT,
-          queued_on TEXT, entry_day TEXT, entry_px REAL, qty INTEGER, stop REAL,
-          target REAL, exit_day TEXT, exit_px REAL, exit_reason TEXT, net REAL,
-          features TEXT);""")
-        corpus = {"T": s}
-        assert queue([{"symbol": "T", "cluster": "small", "qty": 100,
-                       "stop": 90.0, "target": 120.0}], days[200], c) == 1
-        # queueing the same symbol twice must not double it
-        assert queue([{"symbol": "T", "cluster": "small", "qty": 100,
-                       "stop": 90.0, "target": 120.0}], days[200], c) == 0
+        # Build the table through db(), not by restating the schema here. The
+        # hand-written copy silently went stale the moment a column was added,
+        # and a selftest that tests a different table than production is worse
+        # than no selftest.
+        DB = Path(td) / "t.db"
+        try:
+            c = db()
+            corpus = {"T": s}
+            row_in = {"symbol": "T", "cluster": "small", "qty": 100,
+                      "stop": 90.0, "target": 120.0, "ref_close": 100.0}
+            assert queue([row_in], days[200], c) == 1
+            # queueing the same symbol twice must not double it
+            assert queue([row_in], days[200], c) == 0
+            # ...but a DIFFERENT book must still take it: `tight` is meant to
+            # hold the same names as main, and a global dedup would empty it.
+            assert queue([row_in], days[200], c, book="tight") == 1
 
-        filled, closed = step(corpus, days[201], c)
-        assert filled and not closed, (filled, closed)
-        row = c.execute("SELECT entry_px, stop, target FROM pos").fetchone()
-        assert abs(row[0] - 100.0) < 1e-9
-        # stop/target rebuilt from the FILL, not the queued reference
-        assert abs(row[1] - 90.0) < 1e-9 and abs(row[2] - 120.0) < 1e-9, row
+            filled, closed = step(corpus, days[201], c)
+            assert len(filled) == 2 and not closed, (filled, closed)
+            got = dict(c.execute(
+                "SELECT book, stop FROM pos WHERE status='open'").fetchall())
+            assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
+            # the variant book keeps ITS stop through the fill, which recomputes
+            # from the fill price -- this is where a global constant erased it
+            assert abs(got["tight"] - 95.0) < 1e-9, \
+                f"variant book lost its own stop at fill time: {got}"
 
-        f2, c2 = step(corpus, days[211], c)
-        assert c2 and c2[0][1] == "target", c2
-        assert c2[0][2] > 0, "target exit must be profitable"
-        s2 = summary(c)
-        assert s2["closed"] == 1 and s2["realised"] > 0, s2
+            f2, c2 = step(corpus, days[211], c)
+            assert c2 and all(x[1] == "target" for x in c2), c2
+            assert all(x[2] > 0 for x in c2), "target exit must be profitable"
+            s2 = summary(c)                       # defaults to main only
+            assert s2["closed"] == 1 and s2["realised"] > 0, s2
+            assert summary(c, book=None)["closed"] == 2, "book=None must pool"
+            assert summary(c, book="tight")["closed"] == 1
+        finally:
+            DB = _odb
     print("pbook selftest ok")
 
 

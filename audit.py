@@ -250,6 +250,41 @@ def main():
                    - {c for c in tg.COMMANDS if c.replace("_", "\\_") in tg.cmd_help()})
     check("every command appears in /help", not undoc, f"{undoc or 'none'}")
 
+    # ------------------------------------------------------------- BOOKS
+    section("PARALLEL BOOKS")
+    import pbook
+    conn = pbook.db()
+    # The whole design rests on the pooled books holding DISJOINT positions. If
+    # they overlap, their trades are correlated and pooling them overstates the
+    # evidence -- the exact error this was built to avoid.
+    pooled = [n for n, c in pbook.BOOKS.items() if c["pool"]]
+    live = {}
+    for n in pooled:
+        live[n] = {r["symbol"] for r in pbook.summary(conn, book=n)["rows"]
+                   if r["status"] in ("open", "pending")}
+    dupes = [(a, b, sorted(live[a] & live[b])) for i, a in enumerate(pooled)
+             for b in pooled[i + 1:] if live[a] & live[b]]
+    check("pooled books hold disjoint positions", not dupes, f"{dupes or 'none'}")
+
+    # Disjoint BY CONSTRUCTION, not just today by luck.
+    sel = {n: {r["symbol"] for r in
+               portfolio.allocate(rows, offset=pbook.BOOKS[n]["offset"])}
+           for n in pooled}
+    over = [(a, b) for i, a in enumerate(pooled) for b in pooled[i + 1:]
+            if sel[a] & sel[b]]
+    check("rank cohorts select disjoint names", not over,
+          f"{ {k: len(v) for k, v in sel.items()} }, overlaps {over or 'none'}")
+
+    # A variant book that silently inherits main's stop measures nothing.
+    tight = pbook.book_cfg("tight")
+    check("the variant book keeps its own stop",
+          tight["stop_pct"] != portfolio.STOP_PCT,
+          f"tight {tight['stop_pct']:g}% vs main {portfolio.STOP_PCT:g}%")
+    check("variant books are excluded from pooled evidence",
+          all(c["pool"] is False for n, c in pbook.BOOKS.items()
+              if c["stop_pct"] is not None),
+          f"pooled: {pooled}")
+
     # -------------------------------------------------------- REPRODUCES
     section("HEADLINE NUMBER")
     # A hardcoded number cannot tell a REGRESSION from ordinary drift: every new

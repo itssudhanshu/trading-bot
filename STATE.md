@@ -68,9 +68,41 @@ Occupancy: the book holds 2.83 stocks on average. Distribution:
 
 A book holding 1 stock is normal, not broken.
 
-## Live book
+## Live books — five, running in parallel
 
-{"pending": 1} — capital Rs 300,000.
+Trade count is the binding constraint: one book makes ~71 trades a year and
+105 are needed before a 3%/trade edge is resolvable at all. Five books cut
+"is there an edge?" from ~1.5 years to ~5 months.
+
+| book | what it is | pools? |
+|---|---|---|
+| `main` | the record. STATE.md, `overview.py` and the audit key off THIS book only | ⭐ |
+| `rank1..3` | same rules, rank cohorts 1-3. Disjoint positions by construction | yes |
+| `tight` | same names as main, 5% stop. Paired on identical price paths | **no** |
+
+**The rank books multiply evidence without creating a choice.** Same rules,
+different depth in the ranking, so their positions never overlap and their
+trades pool as near-independent samples. They answer the question that matters
+-- does the score rank? -- faster, and there is nothing to select between them.
+
+**They are NOT a parameter search, and this is not a style preference.**
+Comparing two parameter settings on RETURN needs 238 trades per arm (3.4 years)
+for the largest gap ever measured here, 2,856 (40 years) for the ladder, and
+162,554 for the 10d-vs-15d hold. Parallel books do not help: each arm still
+needs its own sample. Running variants forward and adopting the leader would
+contaminate the one evidence stream a search cannot reach (L47; PBO 0.929 in
+L41). `audit.py` checks the books stay disjoint and that no variant book is
+pooled.
+
+**`tight` is the single exception and its endpoint is different on purpose.**
+It measures the stop-hit RATE, a proportion resolvable in ~62 trades, not a
+mean needing 238. The simulator predicts 62% of positions stop out at a 5% stop
+against 37% at 10%. If forward reality disagrees, the fill and gap model is
+wrong and every backtest built on it moves. It may never be promoted on P&L.
+
+Capital is Rs 300,000 per book, notional. They are alternative hypothetical
+portfolios, not a Rs 15,00,000 book -- five books trading these microcaps
+simultaneously would move the prices they are measuring.
 
 ## What has been tested and REJECTED
 
