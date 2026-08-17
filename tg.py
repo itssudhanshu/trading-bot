@@ -279,7 +279,10 @@ def cmd_bucket(_=None):
 def cmd_next_orders(_=None):
     """Stocks queued and waiting for the market to open."""
     import features, pbook
-    s = pbook.summary()
+    # ALL books. Defaulting to main would have shown "nothing waiting" while
+    # three research books held queued orders -- a report that is confidently
+    # wrong is worse than no report.
+    s = pbook.summary(book=None)
     pend = [r for r in s["rows"] if r["status"] == "pending"]
     if not pend:
         return (_title("NEXT ORDERS") + "\nNothing waiting. No stock in the "
@@ -292,26 +295,36 @@ def cmd_next_orders(_=None):
     if note:
         out.append(note)
     out.append("")
-    total = 0.0
+    total = risk = 0.0
     for r in pend:
         px = _px_now(corpus, r["symbol"], days[-1]) or 0
         val = (r["qty"] or 0) * px
+        # The stop percentage is the BOOK's, not a constant. `tight` runs 5%
+        # and printing "-10%" against a 5% stop would misreport the risk on the
+        # one book whose whole purpose is measuring that number.
+        sp = pbook.book_cfg(r["book"])["stop_pct"]
         total += val
-        out.append(f"*{r['symbol']}* ({r['cluster']})")
+        risk += val * sp / 100
+        tag = "" if r["book"] == pbook.MAIN else f"  ·  _{r['book']}_"
+        out.append(f"*{r['symbol']}* ({r['cluster']}){tag}")
         out.append(f"   buy {r['qty']} at about {px:,.2f}   = {_rs(val)}")
-        out.append(f"   stop {r['stop']:,.2f}  (−10%)")
-        out.append(f"   target {r['target']:,.2f}  (+20%)")
-        out.append(f"   risk {_rs(val * 0.10)}")
+        out.append(f"   stop {r['stop']:,.2f}  (−{sp:g}%)")
+        out.append(f"   target {r['target']:,.2f}  (+{pbook.TARGET_PCT:g}%)")
+        out.append(f"   risk {_rs(val * sp / 100)}")
         out.append("")
     out.append(f"*Total to invest*  {_rs(total)}")
-    out.append(f"*Total at risk*    {_rs(total * 0.10)}")
+    out.append(f"*Total at risk*    {_rs(risk)}")
+    books = sorted({r["book"] for r in pend})
+    if books != [pbook.MAIN]:
+        out.append(f"_Across {len(books)} books: {', '.join(books)}. "
+                   f"Notional — they are alternative portfolios, not one pot._")
     return "\n".join(out)
 
 
 def cmd_open_orders(_=None):
     """Trades that are live in the market right now."""
     import features, pbook, portfolio
-    s = pbook.summary()
+    s = pbook.summary(book=None)
     live = [r for r in s["rows"] if r["status"] == "open"]
     if not live:
         pend = s["pending"]
@@ -343,7 +356,8 @@ def cmd_open_orders(_=None):
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
         to_tgt = (r["target"] / px - 1) * 100 if px else 0
-        out.append(f"{icon} *{r['symbol']}* ({r['cluster']})  {pct:+.1f}%")
+        tag = "" if r["book"] == pbook.MAIN else f"  ·  _{r['book']}_"
+        out.append(f"{icon} *{r['symbol']}* ({r['cluster']}){tag}  {pct:+.1f}%")
         out.append(f"   in at {r['entry_px']:,.2f} → now {px:,.2f}")
         out.append(f"   value {_rs(val)}   P/L Rs {pl:+,.0f}")
         out.append(f"   stop {r['stop']:,.2f} ({to_stop:+.1f}% away) · "
@@ -360,34 +374,49 @@ def cmd_closed_orders(_=None):
     """Finished trades and what they made or lost."""
     import analysis, pbook
     from collections import defaultdict
-    s = pbook.summary()
+    s = pbook.summary(book=None)
     done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     if not done:
         return (_title("CLOSED ORDERS") + "\nNothing has closed yet. Only real "
                 "forward trades appear here — nothing is copied from a backtest.")
+    # Statistics come from the POOLED books only. `tight` holds the same names
+    # as main, so its trades are not independent -- including them would count
+    # the same price path twice and overstate the evidence, which is exactly
+    # the error the book design exists to avoid.
+    pooled = {n for n, c in pbook.BOOKS.items() if c["pool"]}
+    ev = [r for r in done if r["book"] in pooled]
     rets = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100,
-             "sym": r["symbol"], "clu": r["cluster"]} for r in done]
+             "sym": r["symbol"], "clu": r["cluster"]} for r in ev]
     out = [_title("CLOSED ORDERS", f"{len(done)} finished"), ""]
     for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
         icon = "✅" if (r["net"] or 0) > 0 else "❌"
-        out.append(f"{icon} *{r['symbol']}* ({r['cluster']})  {pct:+.1f}%  "
+        tag = "" if r["book"] == pbook.MAIN else f"  ·  _{r['book']}_"
+        out.append(f"{icon} *{r['symbol']}* ({r['cluster']}){tag}  {pct:+.1f}%  "
                    f"Rs {r['net']:+,.0f}")
         out.append(f"    {r['entry_px']:,.2f} → {r['exit_px']:,.2f} · "
                    f"{r['exit_reason']} · {r['exit_day']}")
     won = sum(1 for r in done if (r["net"] or 0) > 0)
+    main_net = sum(r["net"] or 0 for r in done if r["book"] == pbook.MAIN)
     out += ["", f"*Won* {won}   *Lost* {len(done) - won}   "
                 f"*Hit rate* {won / len(done) * 100:.0f}%",
-            f"*Total* Rs {s['realised']:+,.0f}", "", "*By cluster*"]
+            f"*Total (the record book)* Rs {main_net:+,.0f}"]
+    if len(done) != len(ev) or any(r["book"] != pbook.MAIN for r in done):
+        out.append(f"_All books Rs {s['realised']:+,.0f} across "
+                   f"{len({r['book'] for r in done})} books — notional._")
+    out += ["", "*By cluster*"]
     by = defaultdict(list)
     for r in done:
         by[r["cluster"]].append(r["net"] or 0.0)
     for c, v in sorted(by.items()):
         out.append(f"  {c}: {len(v)} trades, Rs {sum(v):+,.0f}, "
                    f"{sum(1 for x in v if x > 0)} won")
-    conc = analysis.concentration(rets)
-    out += ["", f"_Best single name is {conc['top1']:.0f}% of all gains._",
-            "_" + analysis.verdict(rets) + "_"]
+    if rets:
+        conc = analysis.concentration(rets)
+        out += ["", f"_Best single name is {conc['top1']:.0f}% of all gains._",
+                f"_Evidence pools {len(rets)} trades from "
+                f"{len({r['book'] for r in ev})} disjoint books._",
+                "_" + analysis.verdict(rets) + "_"]
     return "\n".join(out)
 
 
@@ -708,6 +737,18 @@ if __name__ == "__main__":
         # it kept reporting attention items that had already been fixed. Watching
         # only your own source catches your own edits and nothing else.
         _watched = {p: p.stat().st_mtime for p in Path(__file__).parent.glob("*.py")}
+        # Build the corpus BEFORE serving. It costs ~19s and is cached for the
+        # life of the process, so paying it here means the operator's first
+        # message is answered in under two seconds instead of waiting for it.
+        try:
+            import features as _f
+            _t0 = __import__("time").time()
+            _n = len(_f.load_corpus())
+            print(f"corpus warm: {_n} symbols in "
+                  f"{__import__('time').time() - _t0:.1f}s", flush=True)
+        except Exception as _e:
+            print(f"corpus warm failed ({type(_e).__name__}); "
+                  f"first command will be slow", flush=True)
         print(f"listening (pid {__import__('os').getpid()}, "
               f"{len(COMMANDS)} commands)", flush=True)
         while True:

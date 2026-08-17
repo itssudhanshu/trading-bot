@@ -52,6 +52,19 @@ def trading_days(start=None, end=None):
     return [d for d in days if (start is None or d >= start) and (end is None or d <= end)]
 
 
+# One cached corpus, keyed on the DATA rather than the clock. Building it costs
+# ~18s and nothing cached it, so a Telegram command that touched the corpus
+# twice -- most of them do, once in _lag_note and once in the body -- took 40
+# seconds to answer. The long-running listener paid it on every message.
+#
+# The key includes the day count and the newest day, so a snapshot or a catchup
+# invalidates it automatically. A time-based TTL would not: the whole point is
+# that the corpus changes when NSE publishes, not when a timer expires.
+# Only the last corpus is kept -- it is ~2M bars and a multi-entry cache here
+# would trade an 18s wait for an unbounded resident set.
+_CORPUS = None
+
+
 def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict:
     """-> {symbol: Series}, chronological. Symbols with too little history are
     dropped: an indicator seeded on 20 bars is noise, not signal.
@@ -62,6 +75,13 @@ def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict
     surplus being ETFs and liquid funds), so every downstream number is wrong
     with nothing to show for it. See L36.
     """
+    days_now = trading_days(start, end)
+    key = (start, end, min_bars, require_master,
+           len(days_now), days_now[-1] if days_now else None)
+    global _CORPUS
+    if _CORPUS is not None and _CORPUS[0] == key:
+        return _CORPUS[1]
+
     if require_master and universe.master_snapshot() is None:
         raise RuntimeError(
             "no snapshot holds equity_master.csv, so the non-equity denylist "
@@ -74,7 +94,7 @@ def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict
             "Pass require_master=False only for a deliberately unfiltered load."
         )
     out = {}
-    for d in trading_days(start, end):
+    for d in days_now:
         for sym, b in universe.load(d).items():
             s = out.get(sym)
             if s is None:
@@ -91,7 +111,9 @@ def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict
             s.restricted.append(b.restricted)
     out = {k: v for k, v in out.items() if len(v) >= min_bars}
     attach_fundamentals(out)
-    return attach_rs(out)
+    out = attach_rs(out)
+    _CORPUS = (key, out)
+    return out
 
 
 # --- indicator primitives -------------------------------------------------
@@ -274,6 +296,34 @@ def breadth(corpus, period=50) -> dict:
 
 def _selftest():
     from datetime import timedelta
+
+    # The corpus cache must invalidate when NSE publishes a new day. A cache
+    # that never invalidates serves yesterday's prices to a live book, which
+    # would be far worse than the 18s it saves.
+    global RAW, _CORPUS
+    import tempfile
+    _oraw, _ocache = RAW, _CORPUS
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            RAW = Path(td)
+            _CORPUS = None
+            assert trading_days() == [], "fixture is not empty"
+            k1 = (None, None, 200, False, 0, None)
+            _CORPUS = (k1, {"sentinel": 1})
+            assert load_corpus(require_master=False) == {"sentinel": 1}, \
+                "cache did not answer for an unchanged corpus"
+            # publish a day; the key must change and the sentinel must not survive
+            d = RAW / "2026-01-02"
+            d.mkdir()
+            (d / "bhavcopy_delivery.csv").write_text(
+                "SYMBOL,SERIES,OPEN_PRICE,HIGH_PRICE,LOW_PRICE,CLOSE_PRICE,"
+                "PREV_CLOSE,TTL_TRD_QNTY,TURNOVER_LACS,DELIV_QTY,DELIV_PER\n")
+            got = load_corpus(require_master=False)
+            assert got != {"sentinel": 1}, \
+                "a new trading day did not invalidate the corpus cache"
+    finally:
+        RAW, _CORPUS = _oraw, _ocache
+
     xs = [1, 2, 3, 4, 5, 6, 7, 8]
     assert sma(xs, 3)[:3] == [None, None, 2.0], sma(xs, 3)[:3]
     assert sma(xs, 3)[-1] == 7.0
