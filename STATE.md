@@ -111,15 +111,48 @@ What a broker would add is execution realism the engine cannot invent --
 rejections, partial fills, margin blocks, true slippage -- and intraday
 visibility. Those need REAL orders; every simulator, ours included, is guessing.
 
+**Tradetron (tradetron.tech) is a better fit than any broker sandbox.**
+
+| | |
+|---|---|
+| paper engine | replays real prices — minute OHLC, real option premiums — not a static fill |
+| costs | brokerage, slippage, STT, exchange, SEBI, GST, stamp configured once; gross and net shown side by side |
+| execution modes | can be run against best-case, worst-case or average fills |
+| cost | Free tier has no deployments and no API; Starter Rs 300/month, Retail Rs 1,200 |
+
+The part that matters for THIS system is **API mode**: an external program
+generates the signal and Tradetron only executes it. Their own documentation is
+explicit that in API mode it "does not process that strategy for checking
+conditions" -- the logic stays here.
+
+That is the only workable shape. Tradetron's no-code builder cannot express
+this strategy: ranking 1,258 stocks by a percentile composite, inside clusters
+that are themselves defined by a rolling turnover percentile, is not a rule
+builder's idea of a condition. Under API mode it does not have to be -- this
+repo keeps doing the selection and sends the five symbols.
+
+**The real prize is not paper trading, it is calibration.** Running both side
+by side measures our fill assumptions against an engine that models slippage
+and worst-case fills. `engine.IMPACT_C = 1.0` is currently an educated guess;
+a few dozen paired fills would turn it into a measurement. That is worth more
+than the paper P&L itself.
+
+Caveats: it is still a simulation, not real orders; it adds a monthly cost and
+an external dependency; and it creates a second P&L, so decide up front that
+THIS engine stays authoritative and Tradetron is the check on it.
+
 **The plan, if this is taken further:**
 
-1. `Dhan Sandbox` to prove the plumbing: that the code can place, track,
-   modify and cancel orders correctly. Free, no account. It cannot tell us
-   anything about whether the strategy makes money.
-2. A free live-data API (any of the above) for intraday prices, so a stop can
-   be checked against real ticks rather than the daily low.
-3. This engine stays the source of truth for P&L. No sandbox will give an
-   honest number.
+1. Tradetron in API mode, Starter tier. This repo picks the stocks after the
+   close and posts the signal; Tradetron executes on paper at real prices the
+   next morning. Verify at signup that Starter actually includes API access
+   and a paper deployment -- the pricing page is not explicit about the tier.
+2. Log both fills for every trade, ours and theirs, and compare. That
+   calibrates IMPACT_C against something other than a textbook formula.
+3. This engine stays the source of truth for P&L. Tradetron is the control,
+   not the record.
+4. `Dhan Sandbox` remains the free fallback for testing order plumbing alone;
+   it fills at Rs 100 and cannot speak to profitability.
 
 Whether to progress to real money is the user's decision, not a technical one.
 
