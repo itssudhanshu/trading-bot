@@ -118,18 +118,16 @@ visibility. Those need REAL orders; every simulator, ours included, is guessing.
 | paper engine | replays real prices — minute OHLC, real option premiums — not a static fill |
 | costs | brokerage, slippage, STT, exchange, SEBI, GST, stamp configured once; gross and net shown side by side |
 | execution modes | can be run against best-case, worst-case or average fills |
-| cost | Starter Rs 300/month is the MINIMUM that works; Retail Rs 1,200 |
+| cost | **the FREE tier is enough**: 1 algo deployment, paper trading executions, and API to connect from other platforms |
 
-**The free tier does not work, and the reason is easy to misread.** Free lists
-"paper trading executions" as included, which makes it look sufficient. It is
-not: Free allows *0 algo strategy deployments* and has no "API to connect from
-other platforms". The paper engine exists but there is no way to put a strategy
-on it and no way to feed it signals. Starter adds exactly those two -- one
-deployment and API access -- and one deployment is all this needs.
+Free excludes public strategies, discounted backtests and Live-Auto execution
+-- none of which this needs. 10 private strategies and 1 deployment is ample
+for a single book.
 
-Confirm at signup that Starter's API feature is the same API MODE that
-suppresses Tradetron's own condition checking. The pricing page names the
-feature without tying it to the mode.
+(An earlier version of this file claimed Free had 0 deployments and no API.
+That was wrong. It came from a page summariser mis-reading the pricing table,
+and I then "verified" it by asking the same summariser again, which is not
+verification. The table itself is the source.)
 
 The part that matters for THIS system is **API mode**: an external program
 generates the signal and Tradetron only executes it. Their own documentation is
@@ -154,10 +152,29 @@ THIS engine stays authoritative and Tradetron is the check on it.
 
 **The plan, if this is taken further:**
 
-1. Tradetron in API mode, Starter tier. This repo picks the stocks after the
-   close and posts the signal; Tradetron executes on paper at real prices the
-   next morning. Verify at signup that Starter actually includes API access
-   and a paper deployment -- the pricing page is not explicit about the tier.
+1. Tradetron in API mode on the FREE tier. This repo picks the stocks after
+   the close and posts signals; Tradetron executes on paper at real prices the
+   next morning.
+
+   The API is a plain GET:
+   `https://api.tradetron.tech/api?auth-token=<token>&key=<var>&value=<val>`
+   It sets a runtime VARIABLE. Conditions in the strategy read it with the
+   `Get Runtime` keyword, so the logic stays here and Tradetron only executes.
+
+   **The open question is dynamic instruments, and it is the one that decides
+   whether this works at all.** Our five stocks change every rebalance out of
+   1,258. Tradetron's own Amibroker guide hardcodes the instrument. But the
+   keyword documentation says `Instrument Name` accepts "one instrument or a
+   list of instruments", `Get Runtime` works "when the variable is fetching a
+   particular string value", and with a list only "the ones whose condition is
+   true" are entered. So the pieces exist; what is NOT documented publicly is
+   whether an API-set variable can be keyed per instrument, e.g.
+   `key=SIG_HAPPYFORGE`, and read back per stock inside a list strategy.
+
+   Ask support exactly that before building anything. If yes, the shape is:
+   deploy one strategy over the candidate list, post one signal per chosen
+   symbol after the close. If no, Tradetron can only paper-trade a fixed
+   symbol and is not usable for a rotating book.
 2. Log both fills for every trade, ours and theirs, and compare. That
    calibrates IMPACT_C against something other than a textbook formula.
 3. This engine stays the source of truth for P&L. Tradetron is the control,
