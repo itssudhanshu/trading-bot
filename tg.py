@@ -224,26 +224,45 @@ def cmd_wallet(_=None):
 
 # ============================================================ THE PIPELINE
 def cmd_clusters(_=None):
-    """The two clusters and their top 5 stocks."""
-    import clusters, features, portfolio
+    """The ranking, deep enough to show which book takes which name."""
+    import clusters, features, pbook, portfolio
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
-    picks = clusters.pick(corpus, as_of)
+    # ONE source of ranking. This used clusters.pick() while /bucket used
+    # portfolio.build(), and the two disagreed on the same day: build() also
+    # drops surveillance-flagged names and anything too expensive to size, so
+    # /clusters was advertising names that could never be bought and showing a
+    # different top 5 than the bucket taken from it.
     rows = portfolio.build(corpus, as_of)
     trig = {r["symbol"] for r in rows if r.get("triggered")}
-    chosen = {r["symbol"] for r in portfolio.allocate(rows)}
+    # Which BOOK takes each name. The rank cohorts reach deeper than the top 5,
+    # so a name being absent here used to look like it had not been ranked at
+    # all when it had simply been taken by a deeper book.
+    owner = {}
+    for name, cfg in pbook.BOOKS.items():
+        for r in portfolio.allocate(rows, offset=cfg["offset"]):
+            owner[r["symbol"]] = name
+    depth = max(portfolio.TAKE_PER_CLUSTER.values()) * len(pbook.BOOKS)
     out = [_title("CLUSTERS", f"as of {as_of}"),
            f"_The least-liquid {clusters.TRADEABLE_PCT * 100:.0f}% of NSE, split "
-           f"in two by turnover._", ""]
+           f"in two by turnover. {len(pbook.BOOKS)} books read this one list._", ""]
     for c in clusters.CLUSTERS:
         take = portfolio.TAKE_PER_CLUSTER.get(c, 0)
-        out.append(f"*{c.upper()}*  — the bucket takes {take}")
-        for n, (sym, sc) in enumerate(picks.get(c, [])[:5], 1):
-            mark = "🟢" if sym in chosen else ("🔸" if sym in trig else "▫️")
-            out.append(f"  {n}. {mark} {sym}  score {sc:.0f}")
+        inc = [r for r in rows if r["cluster"] == c]
+        out.append(f"*{c.upper()}*  — each book takes {take}  "
+                   f"({len(inc)} tradeable)")
+        for n, r in enumerate(inc[:depth], 1):
+            sym, who = r["symbol"], owner.get(r["symbol"])
+            mark = ("🟢" if who == pbook.MAIN else "📊" if who
+                    else "🔸" if sym in trig else "▫️")
+            tag = f"  ·  _{who}_" if who and who != pbook.MAIN else ""
+            out.append(f"  {n}. {mark} {sym}  score {r['score']:.0f}{tag}")
+        if len(inc) > depth:
+            out.append(f"  _...{len(inc) - depth} more, below every book's reach_")
         out.append("")
-    out.append("_🟢 in the bucket · 🔸 breaking out but ranked too low · ▫️ ranked only_")
+    out.append("_🟢 the record book · 📊 a rank cohort · 🔸 breaking out but "
+               "ranked below every book · ▫️ ranked only_")
     return "\n".join(out)
 
 
@@ -271,8 +290,23 @@ def cmd_bucket(_=None):
             out.append(f"    score {r['score']:.0f} · {r['why']}")
     if not n:
         out.append("_No candidates today._")
-    out += ["", f"_{sum(1 for v in book.values() if v in ('open', 'pending'))} of "
-                f"{sum(mix.values())} are live. The rest have not broken out._"]
+    import pbook
+    live = sum(1 for v in book.values() if v in ("open", "pending"))
+    out += ["", f"_{live} of {sum(mix.values())} are live. The rest have not "
+                f"broken out._"]
+    # This is cohort 0. The other books take names further down the same list,
+    # which is why a queued name can be absent from here -- the question that
+    # prompted the tag.
+    others = {n: [r["symbol"] for r in
+                  portfolio.allocate(rows, offset=c["offset"])]
+              for n, c in pbook.BOOKS.items() if n != pbook.MAIN}
+    if any(others.values()):
+        out.append("")
+        out.append("*Deeper cohorts take these:*")
+        for n, syms in others.items():
+            out.append(f"  {n}: {', '.join(syms) if syms else '_nothing_'}")
+        out.append("_Same rules, further down the same ranking. /clusters "
+                   "shows where each sits._")
     return "\n".join(out)
 
 
@@ -431,16 +465,28 @@ def cmd_findings(_=None):
     for r in rows[-3:][::-1]:
         cfg = r.get("config", {})
         mix = "/".join(str(v) for v in cfg.get("mix", {}).values())
-        out.append(f"*{r['label']}*  _{r['at'][:10]}_")
-        out.append(f"  mix {mix} · {r['n']} trades")
+        # SAY WHICH IT IS. These were rendered identically to forward results:
+        # "+2.96% per trade — measurable" reads as evidence, and every row here
+        # so far is a BACKTEST. This project's whole position is that a
+        # simulation cannot establish the approach works, and the one screen
+        # reporting results did not distinguish them.
+        sim = r.get("source") == "simulation"
+        out.append(f"{'🧪' if sim else '📈'} *{r['label']}*  _{r['at'][:10]}_")
+        out.append(f"  {'BACKTEST — not evidence' if sim else 'forward trades'}"
+                   f" · mix {mix} · {r['n']} trades")
         st = r.get("stats") or {}
         if st.get("se"):
             tag = "measurable" if st.get("significant") else "inside the noise"
             out.append(f"  {st['mean']:+.2f}% per trade "
-                       f"[{st['lo']:+.2f}, {st['hi']:+.2f}] — {tag}")
+                       f"[{st['lo']:+.2f}, {st['hi']:+.2f}] — {tag}"
+                       f"{' _on simulated trades_' if sim else ''}")
         for cl, v in sorted(r.get("by_cluster", {}).items()):
             out.append(f"  {cl}: {v['n']} trades {v['total']:+.1f}%")
         out.append("")
+    n_sim = sum(1 for r in rows if r.get("source") == "simulation")
+    out.append(f"_🧪 {n_sim} of {len(rows)} recorded findings are BACKTESTS. "
+               f"No number of them can show the approach works forward — "
+               f"only closed paper trades can, and there are none yet._")
     return "\n".join(out)
 
 
@@ -539,10 +585,17 @@ def cmd_review(_=None):
     import learning
     import pbook
     s = pbook.summary()
+    allb = pbook.summary(book=None)
     closed = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     out = [_title("DAILY REVIEW", str(datetime.now().date())), "",
-           f"*Book*  {s['open']} running · {s['pending']} queued · "
+           f"*Record book*  {s['open']} running · {s['pending']} queued · "
            f"{s['closed']} closed · equity {_rs(s['equity'])}"]
+    # Counting only main here said "0 queued" while /next_orders said "2
+    # waiting". Both were right about their own scope and the pair was
+    # incoherent to read.
+    if allb["open"] + allb["pending"] != s["open"] + s["pending"]:
+        out.append(f"*All {len(pbook.BOOKS)} books*  {allb['open']} running · "
+                   f"{allb['pending']} queued · {allb['closed']} closed")
 
     trades = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100} for r in closed]
     out += ["", "*Evidence*", "_" + analysis.verdict(trades) + "_"]
@@ -576,10 +629,41 @@ def cmd_review(_=None):
     if log.exists():
         tail = [l.strip() for l in log.read_text().splitlines() if "passed," in l]
         if tail:
-            ok = "failed, 0" in tail[-1] or ", 0 failed" in tail[-1]
-            out += ["", f"*Self-audit*  {'✅' if ok else '❌'} {tail[-1]}"]
+            ok = ", 0 failed" in tail[-1]
+            # Say WHEN. This quoted a hand-run log with no date and was still
+            # reporting 21 checks after the suite reached 30 -- stale presented
+            # as current, which is the failure this repo keeps warning about.
+            # Calendar days, not elapsed hours. An audit run at 11:23
+            # yesterday is 14 hours old at 01:30 and was being labelled
+            # "today", which is the same stale-as-current error one layer down.
+            ran = datetime.fromtimestamp(log.stat().st_mtime).date()
+            days_old = (datetime.now().date() - ran).days
+            when = ("today" if days_old == 0 else "yesterday" if days_old == 1
+                    else f"{days_old} days old — STALE")
+            out += ["", f"*Self-audit*  {'✅' if ok else '❌'} {tail[-1]}  _({when})_"]
 
-    return "\n".join(out) + "\n\n" + cmd_bucket()
+    # A compact line per pick, not the whole of /bucket. Pasting that in made
+    # the review four fifths duplicate, and two screens that must be kept in
+    # step is one screen too many.
+    try:
+        import features
+        import portfolio
+        corpus = features.load_corpus()
+        as_of = max(d for x in corpus.values() for d in x.days)
+        picks = portfolio.allocate(portfolio.build(corpus, as_of))
+        held = {r["symbol"] for r in pbook.summary(book=None)["rows"]
+                if r["status"] in ("open", "pending")}
+        out += ["", f"*Bucket* ({as_of})"]
+        for r in picks:
+            out.append(f"  {'🟢' if r['symbol'] in held else '⚪'} "
+                       f"{r['symbol']} ({r['cluster']}) score {r['score']:.0f}")
+        if not picks:
+            out.append("  _nothing triggered_")
+        out.append("_/bucket for the reasoning · /clusters for the full "
+                   "ranking · /books for every cohort_")
+    except Exception as e:
+        out.append(f"_bucket unavailable ({type(e).__name__})_")
+    return "\n".join(out)
 
 
 def notify(title, lines):

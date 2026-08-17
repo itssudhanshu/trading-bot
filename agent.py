@@ -79,9 +79,14 @@ _JOBS = {
     # Morning: fill pending orders at the day's actual open, rather than
     # leaving the book nine hours behind the market.
     "fill":     ["pbook_run.py", "--fill-live"],
-    # Evening, after the book has stepped: push the day's ranking, the bucket,
-    # the evidence so far, and any weight change that has EARNED itself. It
-    # proposes and never applies -- see tg.cmd_review.
+    # Nothing refreshed data/audit.log, so /review reported whatever number was
+    # written the last time someone ran it by hand -- it was still claiming
+    # "21 passed" after the suite had grown to 30. A self-check nobody runs is
+    # not a self-check.
+    "audit":    ["audit.py"],
+    # Evening, after the book has stepped and the audit has run: push the day's
+    # ranking, the evidence so far, and any weight change that has EARNED
+    # itself. It proposes and never applies -- see tg.cmd_review.
     "review":   ["tg.py", "--review"],
 }
 _JOB_NAMES = tuple(_JOBS)
@@ -150,7 +155,10 @@ def due(now=None):
         todo.append("catchup")
     if st.get("last_pbook") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("pbook")
-    # After pbook, so the review reads a book that has already stepped today.
+    # After pbook, so both read a book that has already stepped today. Order
+    # matters: audit writes the log that review quotes.
+    if st.get("last_audit") != str(today) and now.weekday() < 5 and now.hour >= 18:
+        todo.append("audit")
     if st.get("last_review") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("review")
     # The open is at 09:15; give it a few minutes to print before reading it.
@@ -162,7 +170,10 @@ def due(now=None):
 
 def run_task(name, log=print):
     cmds = {k: [sys.executable] + v for k, v in _JOBS.items()}
-    logf = ROOT / "data" / f"agent_{name}.log"
+    # audit's output IS the artefact other things read; keep it at its
+    # canonical path rather than agent_audit.log.
+    logf = ROOT / "data" / ("audit.log" if name == "audit"
+                            else f"agent_{name}.log")
     with open(logf, "w") as f:
         rc = subprocess.run(cmds[name], stdout=f, stderr=subprocess.STDOUT,
                             cwd=ROOT, timeout=6 * 3600).returncode
@@ -420,16 +431,18 @@ def _selftest():
     # The agent runs only data collection and the book. Assert against the
     # COMMAND TABLE, not the source text -- a source scan for forbidden names
     # matches the list of forbidden names itself and can never pass.
-    allowed = {"snapshot.py", "pbook_run.py", "tg.py", "--catchup",
+    allowed = {"snapshot.py", "pbook_run.py", "tg.py", "audit.py", "--catchup",
                "--fill-live", "--review"}
-    for job in ("snapshot", "catchup", "pbook", "fill", "review"):
+    for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit"):
         for arg in _cmd_for(job)[1:]:
             assert arg in allowed, f"{job} runs unexpected {arg!r}"
     assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill",
-                              "review"}, _JOB_NAMES
-    # review must run AFTER pbook on the same tick, or it reports yesterday's book
+                              "review", "audit"}, _JOB_NAMES
+    # review must run AFTER pbook and AFTER audit on the same tick: pbook so it
+    # reports today's book, audit so it quotes today's self-check.
     _t = due(datetime(2026, 8, 12, 19))
     assert "review" in _t and _t.index("review") > _t.index("pbook"), _t
+    assert "audit" in _t and _t.index("review") > _t.index("audit"), _t
     print("agent selftest ok")
 
 

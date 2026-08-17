@@ -2,20 +2,20 @@
 DATA INTEGRITY
 --------------
   [PASS] no unexplained weekday gaps
-         1695 sessions 2019-10-01..2026-08-14, 0 gaps
+         1696 sessions 2019-10-01..2026-08-17, 0 gaps
   [PASS] stored bhavcopy matches its folder date
          last 40 snapshots checked; 0 mismatched (this is the holiday stale-serve trap)
   [PASS] delisted symbols retained in history
-         498 symbols stop before the last 40 sessions and are kept
+         477 symbols stop before the last 40 sessions and are kept
   [PASS] no bar dated in the future
          0 offenders
 
 SELECTION
 ---------
   [PASS] clusters are disjoint
-         {'micro': 629, 'small': 629}, 0 overlap
+         {'micro': 637, 'small': 638}, 0 overlap
   [PASS] most liquid names are excluded
-         top-turnover name HDFCBANK is not tradeable; 1258 of 2486 are (51%)
+         top-turnover name HDFCBANK is not tradeable; 1275 of 2489 are (51%)
   [PASS] only tradeable clusters are scored
          scored: ['micro', 'small']
   [PASS] no pick sits below its 200-day average
@@ -40,22 +40,43 @@ MONEY
   [PASS] buy-side cost matches a hand calculation
          Rs 142.22 vs Rs 142.22 computed independently
   [PASS] sell side pays DP and no stamp duty
-         sell Rs 143.15
+         sell - buy = Rs +0.93; expected Rs +0.93 (DP 15.93 less stamp Rs 15.00)
+  [PASS] the DP charge is actually applied
+         DP component Rs 15.93, must be non-zero
 
 FILLS AND EXITS
 ---------------
   [PASS] an order cannot fill on its own signal day
-         queued and stepped on 2026-08-14; filled 0
+         queued and stepped on 2026-08-17; filled 0
   [PASS] gapped stops fill worse than the nominal stop
-         85 stops, mean -11.96% against a -10% nominal
+         77 stops, mean -11.71% against a -10% nominal
   [PASS] every trade exits by stop, target or time
-         Counter({'stop': 85, 'target': 70, 'time': 62})
+         Counter({'time': 94, 'stop': 77, 'target': 60})
+  [PASS] wallet total equals cash plus holdings
+         total 301,415 vs cash 255,245 + invested 46,171
+  [PASS] every tg.* call from the daily runner resolves
+         none
+  [PASS] every cmd_* called inside tg.py exists
+         none
+  [PASS] every command appears in /help
+         none
+
+PARALLEL BOOKS
+--------------
+  [PASS] pooled books hold disjoint positions
+         none
+  [PASS] rank cohorts select disjoint names
+         {'main': 1, 'rank1': 0, 'rank2': 1, 'rank3': 1}, overlaps none
+  [PASS] every book runs identical rules
+         none; books differ only by rank depth
+  [PASS] the shadow stop sits below every real entry
+         1 positions checked, 0 malformed
 
 HEADLINE NUMBER
 ---------------
   [PASS] the recorded baseline still reproduces
-         CAGR +13.57% (recorded +13.57), n=217 (recorded 217), maxDD 28.8%
+         CAGR +14.18% vs +14.18%, n=231 vs 231, same 1696 sessions
 
 SUMMARY
 -------
-  21 passed, 0 failed, 0 skipped
+  30 passed, 0 failed, 0 skipped
