@@ -166,6 +166,45 @@ book, and a best-of-40 figure is inflated by construction.
 - The impact constant is uncalibrated; profitable across c=0.5..3.0, but that
   is a range, not a measurement.
 
+## Live quote sources — researched 2026-08-18
+
+The morning fill needs one thing the evening bhavcopy cannot give: today's
+opening price, this morning. Eight sources were checked against one criterion --
+can it authenticate UNATTENDED, every weekday, without a person at the keyboard?
+
+| source | auth | unattended | verdict |
+|---|---|---|---|
+| **Yahoo chart API** | none | YES | **in use.** 220/220 daily opens matched the official bhavcopy exactly |
+| Upstox | OAuth browser redirect, expires ~03:30 IST | no | works, but a manual step every morning |
+| ICICI Breeze | daily session key | no | their FAQ: daily regeneration is "required as per SEBI regulations" |
+| Zerodha Kite | daily manual login | no | plus Rs 2,000/month |
+| Angel One SmartAPI | clientcode + PIN + TOTP | YES | the only broker route that scripts, but see below |
+| 5paisa Xstream | TOTP | probably | same trade-off as Angel One |
+| Groww | bearer token, method undocumented | unknown | docs do not say how tokens are issued |
+| nseindia.com/api/* | none | NO | blocked at their edge; see below |
+| parse.bot | API key, free tier 200 calls/month | YES | third-party scraper, not an official feed |
+| 0xramm/Indian-Stock-Market-API | none | — | Yahoo underneath, plain HTTP from a bare IP, and offline when tested |
+
+**SEBI mandates daily re-authentication for broker APIs.** That is regulatory,
+not technical, and it is why every official route needs a person each morning.
+TOTP brokers get around it only in the sense that the second factor is a secret
+you hold -- which means storing a trading password and TOTP seed on disk. For a
+system that only needs to READ prices, that trades a full trading session for
+eight hours of earlier visibility. Not done.
+
+**NSE's own API is not reachable and will not be made reachable.** Both curl
+(OpenSSL, HTTP/2) and urllib are refused with 403 from www.nseindia.com while
+nsearchives.nseindia.com serves us 200 from the same IP in the same second --
+so it is neither our address nor our headers. It is TLS/HTTP2 fingerprinting
+plus a JS-computed cookie. Getting past it needs JA3 spoofing, a headless
+browser or residential proxies, which is deliberately defeating an access
+control. Not built.
+
+**The archives host still works and is the source of truth.** Every price in
+the 1,696-session corpus, and every evening fill, comes from the official
+bhavcopy there. A morning quote source only changes WHEN a fill is recorded,
+never at what price -- the day's open is fixed at 09:15.
+
 ## Brokers for paper trading — researched 2026-08-17
 
 **No Indian broker offers realistic paper trading through an API.** Checked
