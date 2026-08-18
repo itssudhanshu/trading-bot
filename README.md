@@ -7,13 +7,13 @@ Stdlib Python, no dependencies. Every module carries a `--selftest` that fails
 if its core logic breaks.
 
 ```bash
-for f in *.py core/*.py book/*.py research/*.py ops/*.py; do python3 "$f" --selftest; done
+for f in *.py core/*.py bucket/*.py research/*.py ops/*.py; do python3 "$f" --selftest; done
 ```
 
 ## Layout
 
 ```
-agent.py pbook_run.py tg.py overview.py    entry points; launchd runs agent.py
+agent.py daily.py tg.py overview.py       entry points; launchd runs agent.py
 paths.py                                   ROOT and DATA, defined once
 core/       universe features clusters portfolio entry engine quotes fundamentals
 book/       pbook learning analysis        the paper portfolios and their evidence
@@ -44,12 +44,12 @@ features.py    -> per-symbol series + indicator primitives + market breadth
      |
 clusters.py    turnover terciles -> micro/small; composite score, 200-DMA gate
 entry.py       breakout trigger, evaluated on the signal day
-portfolio.py   rank -> interleave 3 micro / 2 small -> trigger -> size
+selection.py   rank -> interleave 3 micro / 2 small -> trigger -> size
 engine.py      invariant gate, gap-aware fills, India cost stack, impact model
      |
 simulate.py    the backtest, over the same portfolio/clusters code paths
-pbook.py       the live paper book: queue -> fill at the next open -> exit
-pbook_run.py   daily driver (morning fill, evening step + re-select)
+positions.py   the bucket: queue -> fill at the next open -> exit
+daily.py       daily driver (morning fill, evening step + re-select)
 learning.py    per-trade feature ledger; proposes score weights on evidence
      |
 agent.py       what is due right now; launchd calls it hourly
@@ -99,8 +99,8 @@ python3 snapshot.py                  # today's capture
 python3 snapshot.py --catchup        # recover missed days, report what cannot be
 python3 backfill.py --years 4        # historical bars
 python3 clusters.py                  # today's selection, per cluster
-python3 pbook_run.py                 # evening: fill, exit, re-select
-python3 pbook_run.py --fill-live     # morning: fill pending at the open
+python3 daily.py                     # evening: fill, exit, re-select
+python3 daily.py --fill-live     # morning: fill pending at the open
 python3 audit.py                     # 24 cross-checks against the real system
 python3 overview.py                  # status, gates, and the honest verdict
 ```

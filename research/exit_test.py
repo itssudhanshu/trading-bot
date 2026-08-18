@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Can the book hold for 6-8 days with a 5% stop, and does moving the stop help?
+"""Can the bucket hold for 6-8 days with a 5% stop, and does moving the stop help?
 
 Three PRE-REGISTERED experiments. They are written down here before running so
 the result cannot be chosen after the fact -- this project's own record (L47)
-is that parameter tuning on this book anti-predicts, and a grid searched for
+is that parameter tuning on this bucket anti-predicts, and a grid searched for
 its winner would inflate exactly the number the operator would then trade.
 
   1. FACTORIAL. Stop and hold are changed one at a time and then together, so
@@ -15,7 +15,7 @@ its winner would inflate exactly the number the operator would then trade.
 
   3. MOVING STOP / MULTIPLE TARGETS. Book part of the position at a first
      target, then move the stop up under the rest. Tested at BOTH the current
-     baseline and the proposed one, because portfolio.py's finding that every
+     baseline and the proposed one, because selection.py's finding that every
      trail lowered expectancy was measured at 10%/15d and may not transfer.
 
 Every comparison carries a per-trade error bar. A CAGR gap is arithmetic on
@@ -36,10 +36,10 @@ from collections import defaultdict
 import analysis
 import entry
 import features
-import portfolio
+import selection
 import simulate
 
-# The live book, exactly as it stands. Every variant is a delta from this.
+# The live bucket, exactly as it stands. Every variant is a delta from this.
 BASE = dict(stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5, refresh=5,
             trigger="breakout")
 
@@ -69,7 +69,7 @@ VARIANTS = [
 # the clock moves. The earlier 6d/8d runs were at a 5% stop and so measured the
 # stop, not the hold. The diagnostic that decides this is not the CAGR column
 # but WHEN winners actually pay -- a target reached on day 12 cannot be
-# collected by a book that leaves on day 8.
+# collected by a bucket that leaves on day 8.
 HOLD_VARIANTS = [
     ("baseline, hold 15d", {}),
     ("hold 5d",  dict(hold=5)),
@@ -116,7 +116,7 @@ LADDER_VARIANTS = [
 # Second pre-registered set, run with --atr. The fixed 5% stop asks a 6%-vol
 # microcap and a 2%-vol name to survive the same distance. If tighter stops are
 # to work at all here, the distance has to scale with each name's own noise --
-# so this asks what stop distance the book can actually carry, rather than
+# so this asks what stop distance the bucket can actually carry, rather than
 # assuming 5% is available.
 ATR_VARIANTS = [
     ("baseline 10% / 20% / 15d", {}),
@@ -156,7 +156,7 @@ def per_position(trades):
     """-> one row per POSITION, merging the legs of a scaled exit.
 
     Return is rupees netted over rupees deployed, so a half-sized second leg
-    cannot count the same as a full one. Without this a scaled book shows more
+    cannot count the same as a full one. Without this a scaled bucket shows more
     trades at a lower average and looks worse than it is (or better, when the
     partials are the winners) purely from how the rows were split.
     """
@@ -206,7 +206,7 @@ def diff(a, b):
     """-> (edge per position, its standard error, t) for a against b.
 
     Independent samples, so the standard errors add in quadrature. These are
-    NOT paired trades: the two books hold different names on different days.
+    NOT paired trades: the two buckets hold different names on different days.
     """
     if not (a["se"] and b["se"]):
         return None, None, None
@@ -221,7 +221,7 @@ def main(variants=None):
     _C = features.load_corpus()
     _D = sorted({d for s in _C.values() for d in s.days})
     print(f"exit rules — {len(variants)} pre-registered variants x {len(_D)} "
-          f"sessions, Rs {portfolio.CAPITAL:,}\n")
+          f"sessions, Rs {selection.CAPITAL:,}\n")
     with mp.get_context("fork").Pool(min(len(variants), mp.cpu_count())) as p:
         res = p.map(_one, variants)
 
@@ -250,9 +250,9 @@ def main(variants=None):
                       f"{x['dist']:>5.1f}% /{x['dist_hi']:>5.1f}%")
 
     # The hold question is decided by WHEN winners pay, not by the CAGR
-    # column: a target reached on day 12 is simply not collectable by a book
+    # column: a target reached on day 12 is simply not collectable by a bucket
     # that leaves on day 8, and the cumulative curve says how much is forfeited
-    # at each cutoff. Taken from the control, which is the only book that ran
+    # at each cutoff. Taken from the control, which is the only bucket that ran
     # long enough to observe it.
     ctl_t = [t for t in ctl["_r"]["trades"] if t.get("held") is not None]
     wins = sorted(t["held"] for t in ctl_t if t["why"] == "target")
@@ -264,9 +264,9 @@ def main(variants=None):
             print(f"    by day {cut:>2}  {got:>3} of {len(wins)}"
                   f" ({got / len(wins) * 100:>3.0f}%)  {bar}")
         print(f"    median target lands on day {statistics.median(wins):.0f}; "
-              f"a book that leaves earlier forfeits the rest.")
+              f"a bucket that leaves earlier forfeits the rest.")
 
-    print("\n  exit mix (how each book actually ended its positions):")
+    print("\n  exit mix (how each bucket actually ended its positions):")
     for x in res:
         mix = "  ".join(f"{k} {v}" for k, v in sorted(x["why"].items()))
         print(f"    {x['label']:<26}{mix}")

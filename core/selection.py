@@ -52,7 +52,7 @@ TARGET_PCT = 20.0
 # vs 0.470 -- with a per-trade difference of -0.11% (t -0.07), i.e. none.
 #
 # It is not adopted because it won a search. It is adopted because 83% of this
-# book's target hits land by day 10 and the median lands on day 6, so sessions
+# bucket's target hits land by day 10 and the median lands on day 6, so sessions
 # 11-15 carry tail risk for winners that have almost all already paid.
 #
 # 8 days was asked for and is available; it is strictly worse than 10 here
@@ -61,11 +61,11 @@ TARGET_PCT = 20.0
 HOLD_DAYS = 10
 MAX_POSITIONS = 5
 
-# Cash is a position. A fully-invested book has no capacity to add when a
+# Cash is a position. A fully-invested bucket has no capacity to add when a
 # better setup appears mid-cycle, and no buffer when several correlated names
 # gap down together.
 #
-# Open risk at a full book is DEPLOY_PCT * STOP_PCT / 100 = 7.5% of capital.
+# Open risk at a full bucket is DEPLOY_PCT * STOP_PCT / 100 = 7.5% of capital.
 # engine.MAX_PORTFOLIO_HEAT (6%) is NOT a constraint on this path -- it is
 # checked only inside engine's own signal function, which nothing here calls.
 # An earlier comment cited it as though it bound this bucket; it never did, and
@@ -87,7 +87,7 @@ SIZING = "equal"
 
 
 def size_mult(scheme, rank, vol_pct, med_vol_pct):
-    """-> multiplier on the base position size. Mean ~1.0 across a full book,
+    """-> multiplier on the base position size. Mean ~1.0 across a full bucket,
     so total deployment is unchanged and only the SPLIT moves."""
     if scheme == "equal" or not scheme:
         return 1.0
@@ -145,7 +145,7 @@ def _why(r):
 # minute after the design changed.
 # "per_cluster" ranks inside each size band; "pooled" ranks every tradeable
 # name against every other. Pooled makes the cluster split cosmetic, since the
-# book then takes whatever ranks highest regardless of band.
+# bucket then takes whatever ranks highest regardless of band.
 # "pooled": every tradeable stock is ranked against every other and the bucket
 # takes the best five outright. The size clusters then only decide WHO IS
 # ELIGIBLE (the least-liquid 67%), not how the five are split.
@@ -331,9 +331,9 @@ def allocate(rows, take_per_cluster=None, offset=0):
                          "-- this would silently allocate nothing")
     # `offset` walks DOWN the ranking: offset 0 is the top 2 micro / 2 small /
     # 1 mid, offset 1 is the next 2/2/1, and so on. Running each cohort as its
-    # own book turns "is the score real?" into a measurement -- if rank carries
+    # own bucket turns "is the score real?" into a measurement -- if rank carries
     # information the buckets must decay with depth, and if they do not, the
-    # ranking is decoration and the top book was luck.
+    # ranking is decoration and the top bucket was luck.
     per = {b: [r for r in rows if r["cluster"] == b][offset * k:offset * k + k]
            for b, k in take_per_cluster.items()}
     out, depth = [], max(take_per_cluster.values())
@@ -343,7 +343,7 @@ def allocate(rows, take_per_cluster=None, offset=0):
                 out.append(per[b][d])
     # Trigger LAST, after the interleave. Dropping untriggered names earlier
     # changes which cluster supplies each position, because the round-robin
-    # shortened lists -- same rules, different book (+9.05% vs +11.45%). The
+    # shortened lists -- same rules, different bucket (+9.05% vs +11.45%). The
     # trigger must remove candidates from the final order, never reorder it.
     ok = [r for r in out if r.get("triggered", True)]
     if len(ok) < MIN_POSITIONS:
@@ -369,7 +369,7 @@ def _selftest():
     assert abs(q * 100.0 - cap_each) < 100, (q * 100.0, cap_each)
     assert abs(risk - cap_each * STOP_PCT / 100) < 1, (risk, cap_each)
     cap = cap_each
-    # a full book must leave cash on the table
+    # a full bucket must leave cash on the table
     assert cap * MAX_POSITIONS <= 500_000 * 0.75, "the bucket must not be fully invested"
     q2, _ = position_size(500_000, 10.0)
     assert q2 * 10.0 <= cap + 1, q2 * 10.0
@@ -396,11 +396,11 @@ def _selftest():
     # a reason unrelated to what it was protecting.
     if RANKING == "pooled":
         # Pooled ranking takes the best five outright, so one cluster CAN
-        # supply the whole book. That is the design, not the slice bug -- but
+        # supply the whole bucket. That is the design, not the slice bug -- but
         # it is a real concentration the 3/2 split used to prevent, so assert
         # it deliberately rather than letting it pass unremarked.
         assert len(picked) == MAX_POSITIONS, len(picked)
-        assert [r["symbol"] for r in book] == [r["symbol"] for r in fake[:5]], \
+        assert [r["symbol"] for r in picked] == [r["symbol"] for r in fake[:5]], \
             "pooled must take the top five by score, in order"
     else:
         expected = dict(TAKE_PER_CLUSTER)

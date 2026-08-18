@@ -2,7 +2,7 @@
 """Entry triggers for the bucket.
 
 Until now the bucket had none. The composite score RANKED candidates and the
-book bought the top of that list at the next open, unconditionally -- no
+bucket bought the top of that list at the next open, unconditionally -- no
 confirmation that the move was underway, no volume check, nothing. Ranking is
 not timing: a name can be the best in its cluster and still be mid-pullback on
 the day you buy it.

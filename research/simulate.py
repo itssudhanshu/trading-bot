@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full historical simulation of the cluster book, with variants.
+"""Full historical simulation of the bucket, with variants.
 
 Runs the ACTUAL rules end to end -- selection, per-cluster allocation, sizing,
 gap-aware fills, costs, compounding -- rather than testing components in
@@ -19,7 +19,7 @@ from collections import defaultdict
 import clusters
 import engine
 import features
-import portfolio
+import selection
 
 # Real charges, not a flat percentage. A single round-trip number cannot be
 # right for both a Rs 1L position and a Rs 5,000 one: brokerage and DP charges
@@ -82,9 +82,9 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
     of ITS OWN noise. Position size still comes from `stop_pct`, so the two can
     be varied independently."""
     # Default to the real pocket rather than a hardcoded figure: a simulation
-    # run at a different capital from the live book is not a test of the live
-    # book, because position size drives the cost percentage.
-    capital = portfolio.CAPITAL if capital is None else capital
+    # run at a different capital from the live bucket is not a test of the live
+    # bucket, because position size drives the cost percentage.
+    capital = selection.CAPITAL if capital is None else capital
     equity = peak = capital
     maxdd = 0.0
     open_pos, closed = [], []
@@ -191,10 +191,10 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
             held_clusters = defaultdict(int)
             for p in open_pos:
                 held_clusters[p["clu"]] += 1
-            rows = portfolio.allocate(
-                portfolio.build(corpus, day, capital=equity, trigger=trigger),
+            rows = selection.allocate(
+                selection.build(corpus, day, capital=equity, trigger=trigger),
                 take_per_cluster, offset=offset)
-            rows = portfolio.decorrelate(rows, corpus, day, max_corr)
+            rows = selection.decorrelate(rows, corpus, day, max_corr)
             for r in rows:
                 if room <= 0:
                     break
@@ -216,8 +216,8 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                         if v]
                 medvol = statistics.median(vols) if vols else None
                 _, myvol = _liq(s, i)
-                mult = portfolio.size_mult(sizing, taken_n, myvol, medvol)
-                qty, _ = portfolio.position_size(equity, e, stop_pct, mult=mult)
+                mult = selection.size_mult(sizing, taken_n, myvol, medvol)
+                qty, _ = selection.position_size(equity, e, stop_pct, mult=mult)
                 if qty < 1:
                     continue
                 # You do not fill at the printed open. Pay impact on the way in;
@@ -233,8 +233,8 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
                     a = _atr_at(s, i)
                     # No ATR yet means the stop distance is unknown. Skip the
                     # name rather than fall back to a flat percentage -- a
-                    # silent fallback would make part of the ATR book a
-                    # flat-stop book and the comparison meaningless.
+                    # silent fallback would make part of the ATR bucket a
+                    # flat-stop bucket and the comparison meaningless.
                     if not a or e_eff - atr_stop * a <= 0:
                         continue
                     _stop_px = e_eff - atr_stop * a
@@ -306,7 +306,7 @@ def store(name, r, batch=None, track="cluster"):
 def load_results(limit=None, batch=None, track="cluster", include_void=False):
     """Reads ONE track by default.
 
-    The cluster book and the spec-search are different experiments with
+    The bucket and the spec-search are different experiments with
     different universes, sizing and exits. Counting them together produces a
     number that describes neither -- the same blending CLAUDE.md forbids for
     regime blocks. `track=None` opts into the blend deliberately.
@@ -380,7 +380,7 @@ def wf_guard(param, values, corpus, days, **fixed):
     """-> (allowed, reason). A parameter may only be CHANGED if choosing it
     in-sample actually predicts out-of-sample.
 
-    Measured on this book: the in-sample winner ranked LAST out-of-sample for
+    Measured on this bucket: the in-sample winner ranked LAST out-of-sample for
     target and stop, and 2nd of 3 for hold. Tuning against in-sample results was
     not merely useless, it was backwards -- so the tuning loop has to be able to
     refuse itself.
@@ -430,10 +430,10 @@ def _selftest():
     """The scale-out path is money logic and had no check.
 
     One synthetic path, chosen so the property is unambiguous: every name runs
-    +30% and then bleeds back down through both stops. The base book must give
-    the whole move back at its -10% stop; the scaled book must bank half at the
+    +30% and then bleeds back down through both stops. The base bucket must give
+    the whole move back at its -10% stop; the scaled bucket must bank half at the
     first target and stop the rest out near breakeven. Asserts the PROPERTY --
-    partial booked, stop moved up, book ahead -- not the exact returns, which
+    partial booked, stop moved up, bucket ahead -- not the exact returns, which
     move with the cost stack.
     """
     from datetime import date, timedelta
@@ -503,7 +503,7 @@ if __name__ == "__main__":
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     print(f"CLUSTER BOOK SIMULATIONS  {days[300]} .. {days[-1]}  "
-          f"(Rs {portfolio.CAPITAL:,})")
+          f"(Rs {selection.CAPITAL:,})")
     print(f"batch {BATCH}\n")
     print("  variant                    CAGR      DD     n   win    avg-stop  micro/small/mid")
     report("baseline 10/20/15d", run(corpus, days))
@@ -533,7 +533,7 @@ KEEP_CAGR, KEEP_DD, KEEP_N, KEEP_WIN = 5.0, 55.0, 150, 30.0
 
 def keep(name, r, params, *, batch=None, note="", track="cluster"):
     """Store a configuration that cleared the promotion bar, with the exact
-    parameters needed to replay it in the paper book.
+    parameters needed to replay it in the paper bucket.
 
     Status is always 'candidate'. Nothing here is validated -- these are
     backtest survivors, and the whole project's evidence says a backtest
@@ -580,7 +580,7 @@ def best_strategy():
 
     Ranked by CAGR only among rows that cleared `keep`. Ranking a search by its
     best result is what PBO measured at 0.75-0.86; this store is not a search,
-    it is a shortlist of already-filtered configurations, and the paper book
+    it is a shortlist of already-filtered configurations, and the paper bucket
     still only ever runs one of them at a time.
     """
     rows = load_strats()

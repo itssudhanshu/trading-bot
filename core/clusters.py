@@ -8,7 +8,7 @@ fails live -- the stocks are chosen BECAUSE they already rose.
 
 Size proxy is median daily turnover, not market cap: true market cap needs
 shares outstanding, which no NSE feed collected here provides. Turnover also
-happens to be the more relevant axis for a 5-lakh book, since it decides whether
+happens to be the more relevant axis for a 5-lakh bucket, since it decides whether
 a position can be entered and exited at all.
 
 Composite score, equally weighted after ranking (so no single factor dominates

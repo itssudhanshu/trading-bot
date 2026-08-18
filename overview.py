@@ -24,12 +24,12 @@ def _jsonl(p):
 
 
 def state():
-    import clusters, features, portfolio, simulate
-    s = {"mix": dict(portfolio.TAKE_PER_CLUSTER),
+    import clusters, features, selection, simulate
+    s = {"mix": dict(selection.TAKE_PER_CLUSTER),
          "tradeable": list(clusters.CLUSTERS),
-         "capital": portfolio.CAPITAL, "deploy": portfolio.DEPLOY_PCT,
-         "trigger": portfolio.TRIGGER, "stop": portfolio.STOP_PCT,
-         "target": portfolio.TARGET_PCT, "hold": portfolio.HOLD_DAYS}
+         "capital": selection.CAPITAL, "deploy": selection.DEPLOY_PCT,
+         "trigger": selection.TRIGGER, "stop": selection.STOP_PCT,
+         "target": selection.TARGET_PCT, "hold": selection.HOLD_DAYS}
 
     days = sorted({d for x in features.load_corpus().values() for d in x.days})
     s["days"], s["span"] = len(days), (str(days[0]), str(days[-1]))
@@ -55,12 +55,12 @@ def state():
     # excluded here: they were bought at ranks the score marks as worse, and
     # folding them into the headline would misreport what the strategy did.
     s["bucket"] = {"pending": 0, "open": 0, "closed": 0, "net": 0.0}
-    if (D / "pbook.db").exists():
-        import pbook
-        con = sqlite3.connect(D / "pbook.db")
+    if (D / "positions.db").exists():
+        import positions
+        con = sqlite3.connect(D / "positions.db")
         cols = {r[1] for r in con.execute("PRAGMA table_info(pos)")}
         where, arg = ("", ()) if "bucket" not in cols else (
-            " WHERE bucket=?", (pbook.MAIN,))
+            " WHERE bucket=?", (positions.MAIN,))
         for st_, n in con.execute(
                 f"select status, count(*) from pos{where} group by status", arg):
             s["bucket"][st_] = n
@@ -96,9 +96,9 @@ def gates(s):
     # How long until forward trades can settle anything, at the bucket's own
     # turnover. Roughly 3 positions on 15-day holds is ~52 trades a year.
     try:
-        import analysis, portfolio
+        import analysis, selection
         occ = (analysis.load_occupancy() or {}).get("mean", 3.0)
-        per_yr = occ * (250 / portfolio.HOLD_DAYS)
+        per_yr = occ * (250 / selection.HOLD_DAYS)
         need = analysis.trades_needed(analysis.BACKTEST_EDGE)
         g.append(("Enough trades to judge", "PENDING",
                   f"{need} trades needed at the backtest's "

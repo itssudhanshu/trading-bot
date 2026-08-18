@@ -14,7 +14,7 @@ import multiprocessing as mp
 import statistics
 from collections import defaultdict
 
-import analysis, entry, features, portfolio, simulate
+import analysis, entry, features, selection, simulate
 
 BASE = dict(stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5, refresh=5,
             trigger="breakout")
@@ -42,8 +42,8 @@ def main():
     global _C, _D
     _C = features.load_corpus()
     _D = sorted({d for s in _C.values() for d in s.days})
-    mix = "/".join(str(v) for v in portfolio.TAKE_PER_CLUSTER.values())
-    print(f"impact sensitivity — bucket {mix}, Rs {portfolio.CAPITAL:,}\n")
+    mix = "/".join(str(v) for v in selection.TAKE_PER_CLUSTER.values())
+    print(f"impact sensitivity — bucket {mix}, Rs {selection.CAPITAL:,}\n")
     with mp.get_context("fork").Pool(len(CS)) as p:
         res = p.map(_one, CS)
     print(f"  {'c':<6}{'CAGR':>9}{'maxDD':>8}{'win':>6}{'n':>6}"

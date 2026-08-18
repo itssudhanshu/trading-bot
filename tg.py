@@ -187,8 +187,8 @@ def _px_now(corpus, sym, day):
 # ============================================================ MONEY
 def cmd_wallet(_=None):
     """Cash, holdings, profit."""
-    import analysis, features, pbook, portfolio
-    s = pbook.summary()
+    import analysis, features, positions, selection
+    s = positions.summary()
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
     import quotes
@@ -208,21 +208,21 @@ def cmd_wallet(_=None):
         spent += (r["qty"] or 0) * (r["entry_px"] or px)
         if r["status"] == "open" and r["entry_px"]:
             unreal += r["qty"] * (px - r["entry_px"])
-    cash = portfolio.CAPITAL + s["realised"] - spent
+    cash = selection.CAPITAL + s["realised"] - spent
     out = [_title("WALLET"), "",
            f"*Total value*  {_rs(cash + invested)}",
            f"*Cash*         {_rs(cash)}",
            f"*Invested*     {_rs(invested)}  "
-           f"({invested / portfolio.CAPITAL * 100:.0f}% of capital)", "",
+           f"({invested / selection.CAPITAL * 100:.0f}% of capital)", "",
            f"*Profit realised*    Rs {s['realised']:+,.0f}   ({s['closed']} closed)",
            f"*Profit on paper*    Rs {unreal:+,.0f}   ({s['open']} running)", "",
-           f"*Started with*  {_rs(portfolio.CAPITAL)}",
-           f"*Change*        Rs {cash + invested - portfolio.CAPITAL:+,.0f}  "
-           f"({(cash + invested) / portfolio.CAPITAL * 100 - 100:+.2f}%)"]
+           f"*Started with*  {_rs(selection.CAPITAL)}",
+           f"*Change*        Rs {cash + invested - selection.CAPITAL:+,.0f}  "
+           f"({(cash + invested) / selection.CAPITAL * 100 - 100:+.2f}%)"]
     base = analysis.load_occupancy()
     held = s["open"] + s["pending"]
     if base:
-        out += ["", f"_Holding {held} of {portfolio.MAX_POSITIONS}. Typical is "
+        out += ["", f"_Holding {held} of {selection.MAX_POSITIONS}. Typical is "
                     f"{base['mean']:.2f}; {base['dist'].get(held, 0):.0f}% of "
                     f"sessions hold exactly this many._"]
     return "\n".join(out)
@@ -231,28 +231,28 @@ def cmd_wallet(_=None):
 # ============================================================ THE PIPELINE
 def cmd_clusters(_=None):
     """The ranking, deep enough to show which portfolio buys which stock."""
-    import clusters, features, pbook, portfolio
+    import clusters, features, positions, selection
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
     # ONE source of ranking. This used clusters.pick() while /picks used
-    # portfolio.build(), and the two disagreed on the same day: build() also
+    # selection.build(), and the two disagreed on the same day: build() also
     # drops surveillance-flagged names and anything too expensive to size, so
     # /clusters was advertising names that could never be bought and showing a
     # different top 5 than the picks taken from it.
-    rows = portfolio.build(corpus, as_of)
+    rows = selection.build(corpus, as_of)
     trig = {r["symbol"] for r in rows if r.get("triggered")}
     # Which PORTFOLIO buys each stock. The deeper ones reach past the top 5,
     # so a name absent from a short list used to look unranked when it had
     # simply been taken further down.
-    owner = {r["symbol"] for r in portfolio.allocate(rows)}
-    depth = max(portfolio.TAKE_PER_CLUSTER.values()) * 3
+    owner = {r["symbol"] for r in selection.allocate(rows)}
+    depth = max(selection.TAKE_PER_CLUSTER.values()) * 3
     out = [_title("RANKING", f"as of {as_of}"),
            f"_The {clusters.TRADEABLE_PCT * 100:.0f}% of NSE shares that trade "
            f"least each day, split into two size groups. All "
            f"The bucket buys the top of it._", ""]
     for c in clusters.CLUSTERS:
-        take = portfolio.TAKE_PER_CLUSTER.get(c, 0)
+        take = selection.TAKE_PER_CLUSTER.get(c, 0)
         inc = [r for r in rows if r["cluster"] == c]
         plain = {"micro": "SMALLEST COMPANIES", "small": "SMALL COMPANIES"}
         out.append(f"*{plain.get(c, c.upper())}*  — {len(inc)} worth buying, "
@@ -271,13 +271,13 @@ def cmd_clusters(_=None):
 
 def cmd_bucket(_=None):
     """The stocks one portfolio chose this session, and why."""
-    import clusters, features, portfolio, pbook
+    import clusters, features, selection, positions
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
-    rows = portfolio.build(corpus, as_of)
-    held = {r["symbol"]: r["status"] for r in pbook.summary()["rows"]}
-    mix = portfolio.TAKE_PER_CLUSTER
+    rows = selection.build(corpus, as_of)
+    held = {r["symbol"]: r["status"] for r in positions.summary()["rows"]}
+    mix = selection.TAKE_PER_CLUSTER
     out = [_title("THE BUCKET",
                   " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),
            f"_The {sum(mix.values())} best-ranked. Each is bought only once its "
@@ -295,7 +295,7 @@ def cmd_bucket(_=None):
             out.append(f"    score {r['score']:.0f} · {r['why']}")
     if not n:
         out.append("_No candidates today._")
-    import pbook
+    import positions
     live = sum(1 for v in held.values() if v in ("open", "pending"))
     out += ["", f"_{live} of {sum(mix.values())} bought so far. The rest are "
                 f"waiting for their price to break higher._"]
@@ -304,11 +304,11 @@ def cmd_bucket(_=None):
 
 def cmd_next_orders(_=None):
     """Stocks queued and waiting for the market to open."""
-    import features, pbook
+    import features, positions
     # ALL buckets. Defaulting to main would have shown "nothing waiting" while
     # three research buckets held queued orders -- a report that is confidently
     # wrong is worse than no report.
-    s = pbook.summary(which=None)
+    s = positions.summary(which=None)
     pend = [r for r in s["rows"] if r["status"] == "pending"]
     if not pend:
         return (_title("NEXT ORDERS") + "\nNothing waiting. No stock in the "
@@ -327,8 +327,8 @@ def cmd_next_orders(_=None):
         val = (r["qty"] or 0) * px
         # The stop percentage is the BOOK's, not a constant. `tight` runs 5%
         # and printing "-10%" against a 5% stop would misreport the risk on the
-        # one book whose whole purpose is measuring that number.
-        sp = pbook.bucket_cfg()["stop_pct"]
+        # one bucket whose whole purpose is measuring that number.
+        sp = positions.bucket_cfg()["stop_pct"]
         total += val
         risk += val * sp / 100
         tag = ""
@@ -336,12 +336,12 @@ def cmd_next_orders(_=None):
         out.append(f"   buy {r['qty']} at about {px:,.2f}   = {_rs(val)}")
         out.append(f"   sell if it falls to {r['stop']:,.2f}  (−{sp:g}%)")
         out.append(f"   sell if it rises to {r['target']:,.2f}  "
-                   f"(+{pbook.TARGET_PCT:g}%)")
+                   f"(+{positions.TARGET_PCT:g}%)")
         out.append(f"   most it can lose {_rs(val * sp / 100)}")
         out.append("")
     out.append(f"*Total being spent*  {_rs(total)}")
     out.append(f"*Most it can lose*   {_rs(risk)}")
-    others = sorted({r["bucket"] for r in pend} - {pbook.MAIN})
+    others = sorted({r["bucket"] for r in pend} - {positions.MAIN})
     if others:
         out.append(f"_Includes {', '.join(others)} — retired buckets still "
                    f"running to their own exits._")
@@ -350,8 +350,8 @@ def cmd_next_orders(_=None):
 
 def cmd_open_orders(_=None):
     """Trades that are live in the market right now."""
-    import features, pbook, portfolio
-    s = pbook.summary(which=None)
+    import features, positions, selection
+    s = positions.summary(which=None)
     live = [r for r in s["rows"] if r["status"] == "open"]
     if not live:
         pend = s["pending"]
@@ -392,7 +392,7 @@ def cmd_open_orders(_=None):
                    f"({to_stop:+.1f}% away)")
         out.append(f"   sells if it rises to {r['target']:,.2f} "
                    f"({to_tgt:+.1f}% away)")
-        out.append(f"   held {held} of {portfolio.HOLD_DAYS} days, then sold "
+        out.append(f"   held {held} of {selection.HOLD_DAYS} days, then sold "
                    f"either way")
         out.append("")
     out.append(f"*Total worth*  {_rs(tot_val)}")
@@ -403,9 +403,9 @@ def cmd_open_orders(_=None):
 
 def cmd_closed_orders(_=None):
     """Finished trades and what they made or lost."""
-    import analysis, pbook
+    import analysis, positions
     from collections import defaultdict
-    s = pbook.summary(which=None)
+    s = positions.summary(which=None)
     done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     if not done:
         return (_title("CLOSED ORDERS") + "\nNothing has been sold yet. Only "
@@ -428,11 +428,11 @@ def cmd_closed_orders(_=None):
         out.append(f"    {r['entry_px']:,.2f} → {r['exit_px']:,.2f} · "
                    f"{r['exit_reason']} · {r['exit_day']}")
     won = sum(1 for r in done if (r["net"] or 0) > 0)
-    main_net = sum(r["net"] or 0 for r in done if r["bucket"] == pbook.MAIN)
+    main_net = sum(r["net"] or 0 for r in done if r["bucket"] == positions.MAIN)
     out += ["", f"*Won* {won}   *Lost* {len(done) - won}   "
                 f"*Hit rate* {won / len(done) * 100:.0f}%",
             f"*Total (the record portfolio)* Rs {main_net:+,.0f}"]
-    if len(done) != len(ev) or any(r["bucket"] != pbook.MAIN for r in done):
+    if len(done) != len(ev) or any(r["bucket"] != positions.MAIN for r in done):
         out.append(f"_Includes Rs {s['realised']:+,.0f} from the retired "
                    f"deeper buckets, still running to their own exits._")
     out += ["", "*By cluster*"]
@@ -536,9 +536,9 @@ def cmd_review(_=None):
     """
     import analysis
     import learning
-    import pbook
-    s = pbook.summary()
-    allb = pbook.summary(which=None)
+    import positions
+    s = positions.summary()
+    allb = positions.summary(which=None)
     closed = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     out = [_title("DAILY REVIEW", str(datetime.now().date())), "",
            f"*Bucket*  {s['open']} held · {s['pending']} buying tomorrow · "
@@ -601,11 +601,11 @@ def cmd_review(_=None):
     # step is one screen too many.
     try:
         import features
-        import portfolio
+        import selection
         corpus = features.load_corpus()
         as_of = max(d for x in corpus.values() for d in x.days)
-        picks = portfolio.allocate(portfolio.build(corpus, as_of))
-        held = {r["symbol"] for r in pbook.summary(which=None)["rows"]
+        picks = selection.allocate(selection.build(corpus, as_of))
+        held = {r["symbol"] for r in positions.summary(which=None)["rows"]
                 if r["status"] in ("open", "pending")}
         out += ["", f"*Picks* ({as_of})"]
         for r in picks:
@@ -623,7 +623,7 @@ def notify(title, lines):
     """Push an event the user should see without asking. Never raises.
 
     The command rewrite dropped the old push_learning() and left two callers in
-    pbook_run.py pointing at nothing, so the very first forward fill reported
+    daily.py pointing at nothing, so the very first forward fill reported
     "telegram push failed: AttributeError" and no message went out. The audit
     now checks that these callers resolve.
     """
@@ -755,9 +755,9 @@ def _selftest():
     assert listed == have, (sorted(listed ^ have),
                             "help and COMMANDS disagree")
 
-    # Every command must survive an EMPTY book. The bot is at its most useful
+    # Every command must survive an EMPTY bucket. The bot is at its most useful
     # before the first trade, which is exactly when every record is missing.
-    import pbook as _pb
+    import positions as _pb
     _orig = _pb.summary
     try:
         _pb.summary = lambda *a, **k: {"pending": 0, "open": 0, "closed": 0,

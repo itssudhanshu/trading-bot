@@ -13,17 +13,17 @@ from datetime import date
 
 import clusters
 import features
-import pbook
-import portfolio
+import positions
+import selection
 
 
 def fill_live_main():
     """Morning run: fill pending orders at today's actual open."""
     from datetime import date as _date
     corpus = features.load_corpus()
-    conn = pbook.db()
+    conn = positions.db()
     today = _date.today()
-    filled, why = pbook.fill_live(today, conn)
+    filled, why = positions.fill_live(today, conn)
     if not filled:
         print(f"{today}: nothing filled — {why}")
         # Exit non-zero when the fill was POSTPONED rather than completed, so
@@ -50,24 +50,24 @@ def main(day=None):
         print(f"{day}: not a trading day")
         return
 
-    conn = pbook.db()
+    conn = positions.db()
     # Correct any morning fill against the official open before stepping.
-    # reconcile and step are book-agnostic: they walk positions by status, so
-    # every book advances in one pass.
-    for sym, was, now in pbook.reconcile(corpus, day, conn):
+    # reconcile and step are bucket-agnostic: they walk positions by status, so
+    # every bucket advances in one pass.
+    for sym, was, now in positions.reconcile(corpus, day, conn):
         print(f"  reconciled {sym}: live {was:,.2f} -> official {now:,.2f}")
-    filled, closed = pbook.step(corpus, day, conn)
-    s = pbook.summary(conn)
+    filled, closed = positions.step(corpus, day, conn)
+    s = positions.summary(conn)
 
-    rows = portfolio.build(corpus, day, capital=s["equity"])
-    room = portfolio.MAX_POSITIONS - (s["open"] + s["pending"])
-    queued = pbook.queue(portfolio.allocate(rows)[:room], day, conn) if room > 0 else 0
+    rows = selection.build(corpus, day, capital=s["equity"])
+    room = selection.MAX_POSITIONS - (s["open"] + s["pending"])
+    queued = positions.queue(selection.allocate(rows)[:room], day, conn) if room > 0 else 0
 
     print(f"{day}  equity Rs {s['equity']:,.0f}  realised Rs {s['realised']:+,.0f}")
     print(f"  filled {len(filled)}  closed {len(closed)}  queued {queued}")
     print(f"  bucket: open {s['open']}  pending {s['pending']}  "
           f"closed-total {s['closed']}")
-    allb = pbook.summary(conn, which=None)
+    allb = positions.summary(conn, which=None)
     if allb["open"] != s["open"] or allb["closed"] != s["closed"]:
         print(f"  incl. retired buckets: open {allb['open']}  "
               f"closed-total {allb['closed']}")
@@ -80,9 +80,9 @@ def main(day=None):
             import analysis
             done = [{"sym": r["symbol"], "clu": r["cluster"],
                      "ret": (r["exit_px"] / r["entry_px"] - 1) * 100}
-                    for r in pbook.summary(conn)["rows"]
+                    for r in positions.summary(conn)["rows"]
                     if r["status"] == "closed" and r["entry_px"]]
-            analysis.record(f"book through {day}", done,
+            analysis.record(f"bucket through {day}", done,
                             extra={"realised": s["realised"], "day": str(day)})
         except Exception as e:
             print(f"  findings record failed: {type(e).__name__}")
@@ -100,7 +100,7 @@ def main(day=None):
 
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        print("pbook_run selftest ok (logic covered by pbook.py)")
+        print("pbook_run selftest ok (logic covered by positions.py)")
     elif "--fill-live" in sys.argv:
         sys.exit(fill_live_main() or 0)
     else:

@@ -48,7 +48,7 @@ def _busy():
     """True if a heavy job is already running. Two searches at once would
     thrash memory and interleave writes to candidates.jsonl."""
     try:
-        out = subprocess.run(["pgrep", "-f", "pbook_run.py|snapshot.py"],
+        out = subprocess.run(["pgrep", "-f", "daily.py|snapshot.py"],
                              capture_output=True, text=True).stdout
         return bool([p for p in out.split() if p and int(p) != os.getpid()])
     except Exception:
@@ -78,10 +78,10 @@ def _unlock():
 _JOBS = {
     "snapshot": ["ops/snapshot.py"],
     "catchup":  ["ops/snapshot.py", "--catchup"],
-    "pbook":    ["pbook_run.py"],
+    "pbook":    ["daily.py"],
     # Morning: fill pending orders at the day's actual open, rather than
     # leaving the bucket nine hours behind the market.
-    "fill":     ["pbook_run.py", "--fill-live"],
+    "fill":     ["daily.py", "--fill-live"],
     # Nothing refreshed data/audit.log, so /review reported whatever number was
     # written the last time someone ran it by hand -- it was still claiming
     # "21 passed" after the suite had grown to 30. A self-check nobody runs is
@@ -253,8 +253,8 @@ def attention():
     try:
         import clusters as _c
         import features as _f
-        import pbook as _pb
-        import portfolio as _p
+        import positions as _pb
+        import selection as _p
         _corpus = _f.load_corpus()
         _day = max(d for s in _corpus.values() for d in s.days)
         _rows = _p.build(_corpus, _day)
@@ -272,12 +272,12 @@ def attention():
     # The bucket is queued but nothing has filled for several sessions: either
     # no candidate is triggering, which is normal, or pbook has stopped running.
     try:
-        import pbook
-        s = pbook.summary()
+        import positions
+        s = positions.summary()
         if s["pending"] and st.get("last_pbook"):
             gap = (today - date.fromisoformat(str(st["last_pbook"])[:10])).days
             if gap > 4:
-                out.append(f"book has {s['pending']} queued but pbook last ran "
+                out.append(f"bucket has {s['pending']} queued but daily last ran "
                            f"{gap} days ago")
     except Exception:
         pass
@@ -297,11 +297,11 @@ def digest():
     surv = len(list((ROOT / "data" / "raw").glob("*/asm.json")))
     lines += [f"- corpus: **{days}** trading days, **{surv}** with surveillance"]
     try:
-        import pbook, portfolio
-        s = pbook.summary()
+        import positions, selection
+        s = positions.summary()
         lines.append(f"- bucket: **{s['open']}** open, **{s['pending']}** queued, "
                      f"**{s['closed']}** closed, realised "
-                     f"**Rs {s['realised']:+,.0f}** of Rs {portfolio.CAPITAL:,}")
+                     f"**Rs {s['realised']:+,.0f}** of Rs {selection.CAPITAL:,}")
     except Exception as e:
         lines.append(f"- bucket: unavailable ({type(e).__name__})")
     lines += ["", f"last tasks: {json.dumps({k: str(v) for k, v in st.items()})}"]
@@ -464,7 +464,7 @@ def _selftest():
     # The agent runs only data collection and the bucket. Assert against the
     # COMMAND TABLE, not the source text -- a source scan for forbidden names
     # matches the list of forbidden names itself and can never pass.
-    allowed = {"ops/snapshot.py", "pbook_run.py", "tg.py", "ops/audit.py",
+    allowed = {"ops/snapshot.py", "daily.py", "tg.py", "ops/audit.py",
                "--catchup", "--fill-live", "--review"}
     for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit"):
         for arg in _cmd_for(job)[1:]:
@@ -485,7 +485,7 @@ def _selftest():
         STATE = _o
 
     # review must run AFTER pbook and AFTER audit on the same tick: pbook so it
-    # reports today's book, audit so it quotes today's self-check.
+    # reports today's bucket, audit so it quotes today's self-check.
     _t = due(datetime(2026, 8, 12, 19))
     assert "review" in _t and _t.index("review") > _t.index("pbook"), _t
     assert "audit" in _t and _t.index("review") > _t.index("audit"), _t

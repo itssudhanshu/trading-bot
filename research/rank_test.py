@@ -7,7 +7,7 @@ costs, same trigger -- the ONLY difference is how far down the ranking the
 five names were drawn from.
 
 This is the test the score has never faced. Every result so far comes from
-offset 0, the top of the list, and a single book cannot distinguish "the
+offset 0, the top of the list, and a single bucket cannot distinguish "the
 ranking works" from "those five names happened to do well". If rank carries
 information, returns must decay with depth. If cohort 5 matches cohort 0, the
 score is decoration.
@@ -64,7 +64,7 @@ def main(n=N):
           f"median {statistics.median(cg):+.2f}%  stdev {statistics.pstdev(cg):.2f}")
     top = res[0]["cagr"]
     beat = sum(1 for x in res[1:] if x["cagr"] >= top)
-    print(f"  cohorts matching or beating the top-ranked book: {beat} of {len(res)-1}")
+    print(f"  cohorts matching or beating the top-ranked bucket: {beat} of {len(res)-1}")
     # Does rank predict return? Compare first half of cohorts against second.
     half = len(res) // 2
     a = statistics.fmean([x["cagr"] for x in res[:half]])
@@ -80,4 +80,19 @@ def main(n=N):
 
 
 if __name__ == "__main__":
-    main(int(sys.argv[1]) if len(sys.argv) > 1 else N)
+    if "--selftest" in sys.argv:
+        # This is an experiment script, not a module: it runs N full backtests.
+        # The selftest checks only that its one piece of own logic -- the
+        # cohort slicing -- lines up with what allocate() actually returns.
+        import selection
+        rows = [{"symbol": f"S{i}", "cluster": "micro" if i < 9 else "small",
+                 "score": 100 - i, "triggered": True} for i in range(18)]
+        seen = []
+        for off in range(3):
+            got = [r["symbol"] for r in selection.allocate(rows, offset=off)]
+            assert not (set(got) & set(seen)), f"cohort {off} overlaps a shallower one"
+            seen += got
+        assert seen, "no cohort selected anything"
+        print("rank_test selftest ok")
+    else:
+        main(int(sys.argv[1]) if len(sys.argv) > 1 else N)

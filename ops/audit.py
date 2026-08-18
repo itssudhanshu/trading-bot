@@ -40,7 +40,7 @@ def section(t):
 
 
 def main():
-    import clusters, engine, features, learning, pbook, portfolio, simulate, universe
+    import clusters, engine, features, learning, positions, selection, simulate, universe
 
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
@@ -116,7 +116,7 @@ def main():
           f"{below} of {sum(len(v) for v in picks.values())} picks below the gate")
 
     # surveillance must bind where it is known
-    rows = portfolio.build(corpus, as_of)
+    rows = selection.build(corpus, as_of)
     bad = []
     for r in rows:
         s = corpus[r["symbol"]]
@@ -127,14 +127,14 @@ def main():
     check("no restricted stock is a candidate", not bad, f"{bad or 'none'}")
 
     # the bucket must honour the configured mix and never exceed it
-    sel = portfolio.allocate(rows)
+    sel = selection.allocate(rows)
     from collections import Counter
     mix = Counter(r["cluster"] for r in sel)
-    ok = all(mix[c] <= k for c, k in portfolio.TAKE_PER_CLUSTER.items())
+    ok = all(mix[c] <= k for c, k in selection.TAKE_PER_CLUSTER.items())
     check("bucket never exceeds its per-cluster quota", ok,
-          f"selected {dict(mix)} against {portfolio.TAKE_PER_CLUSTER}")
-    check("bucket never exceeds MAX_POSITIONS", len(sel) <= portfolio.MAX_POSITIONS,
-          f"{len(sel)} of {portfolio.MAX_POSITIONS}")
+          f"selected {dict(mix)} against {selection.TAKE_PER_CLUSTER}")
+    check("bucket never exceeds MAX_POSITIONS", len(sel) <= selection.MAX_POSITIONS,
+          f"{len(sel)} of {selection.MAX_POSITIONS}")
 
     # every selected name must have actually triggered
     untrig = [r["symbol"] for r in sel if not r.get("triggered")]
@@ -143,16 +143,16 @@ def main():
     # ------------------------------------------------------------- MONEY
     section("MONEY")
 
-    per = portfolio.CAPITAL * portfolio.DEPLOY_PCT / 100 / portfolio.MAX_POSITIONS
-    q, risk = portfolio.position_size(portfolio.CAPITAL, 100.0)
+    per = selection.CAPITAL * selection.DEPLOY_PCT / 100 / selection.MAX_POSITIONS
+    q, risk = selection.position_size(selection.CAPITAL, 100.0)
     check("position size matches the deployment cap", abs(q * 100.0 - per) < 100,
           f"Rs {q*100:,.0f} per stock vs cap Rs {per:,.0f}")
     check("a full bucket stays inside the deployment cap",
-          per * portfolio.MAX_POSITIONS <= portfolio.CAPITAL * portfolio.DEPLOY_PCT / 100 + 1,
-          f"Rs {per*portfolio.MAX_POSITIONS:,.0f} of Rs {portfolio.CAPITAL:,}")
-    big, _ = portfolio.position_size(portfolio.CAPITAL, 100.0, mult=99)
-    check("the risk rule caps any single position", big * 100.0 < portfolio.CAPITAL * 0.25,
-          f"hard cap Rs {big*100:,.0f} = {big*100/portfolio.CAPITAL*100:.0f}% of capital")
+          per * selection.MAX_POSITIONS <= selection.CAPITAL * selection.DEPLOY_PCT / 100 + 1,
+          f"Rs {per*selection.MAX_POSITIONS:,.0f} of Rs {selection.CAPITAL:,}")
+    big, _ = selection.position_size(selection.CAPITAL, 100.0, mult=99)
+    check("the risk rule caps any single position", big * 100.0 < selection.CAPITAL * 0.25,
+          f"hard cap Rs {big*100:,.0f} = {big*100/selection.CAPITAL*100:.0f}% of capital")
 
     # cost arithmetic, checked by hand
     c = engine.Costs()
@@ -183,23 +183,23 @@ def main():
     import tempfile, shutil
     from pathlib import Path
     tmp = Path(tempfile.mkdtemp())
-    orig_db, orig_led = pbook.DB, learning.LEDGER
-    pbook.DB, learning.LEDGER = tmp / "p.db", tmp / "l.jsonl"
+    orig_db, orig_led = positions.DB, learning.LEDGER
+    positions.DB, learning.LEDGER = tmp / "p.db", tmp / "l.jsonl"
     try:
-        conn = pbook.db()
+        conn = positions.db()
         sym = sel[0]["symbol"] if sel else rows[0]["symbol"]
-        pbook.queue([{"symbol": sym, "cluster": "small", "qty": 10,
+        positions.queue([{"symbol": sym, "cluster": "small", "qty": 10,
                       "stop": 1.0, "target": 999.0}], as_of, conn)
-        filled, _ = pbook.step(corpus, as_of, conn)
+        filled, _ = positions.step(corpus, as_of, conn)
         check("an order cannot fill on its own signal day", not filled,
               f"queued and stepped on {as_of}; filled {len(filled)}")
     finally:
-        pbook.DB, learning.LEDGER = orig_db, orig_led
+        positions.DB, learning.LEDGER = orig_db, orig_led
         shutil.rmtree(tmp, ignore_errors=True)
 
     # gap handling, on the real simulator
-    r = simulate.run(corpus, days, stop_pct=portfolio.STOP_PCT,
-                     target_pct=portfolio.TARGET_PCT, hold=portfolio.HOLD_DAYS,
+    r = simulate.run(corpus, days, stop_pct=selection.STOP_PCT,
+                     target_pct=selection.TARGET_PCT, hold=selection.HOLD_DAYS,
                      max_pos=5, refresh=5, trigger="breakout", impact_c=1.0)
     t = r["trades"]
     stops = [x["ret"] for x in t if x["why"] == "stop"]
@@ -228,7 +228,7 @@ def main():
     # every tg.* call made from the daily runner must actually resolve
     import ast, tg
     missing = []
-    for f in ("pbook_run.py", "agent.py"):
+    for f in ("daily.py", "agent.py"):
         src = (features.ROOT / f).read_text()
         for node in ast.walk(ast.parse(src)):
             if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
@@ -256,28 +256,28 @@ def main():
 
     # -------------------------------------------------------------- BUCKET
     section("THE BUCKET")
-    import pbook
-    conn = pbook.db()
+    import positions
+    conn = positions.db()
 
     # One bucket, buying the top of the ranking. The deeper buckets that ran
     # for a day are gone; what they bought is still open and still labelled,
     # so the check is that nothing NEW is created outside the one bucket.
-    sel = {r["symbol"] for r in portfolio.allocate(rows)}
+    sel = {r["symbol"] for r in selection.allocate(rows)}
     top = set()
-    for c, k in portfolio.TAKE_PER_CLUSTER.items():
+    for c, k in selection.TAKE_PER_CLUSTER.items():
         top |= {r["symbol"] for r in rows if r["cluster"] == c}.intersection(
             {r["symbol"] for r in [x for x in rows if x["cluster"] == c][:k]})
     check("the bucket only buys the top of each cluster", sel <= top,
           f"selected {sorted(sel)}; outside the top ranks: {sorted(sel - top) or 'none'}")
 
-    queued = {r["bucket"] for r in pbook.summary(conn, which=None)["rows"]
+    queued = {r["bucket"] for r in positions.summary(conn, which=None)["rows"]
               if r["status"] == "pending"}
     check("nothing is queued outside the one bucket",
-          queued <= {pbook.MAIN}, f"queued into {sorted(queued) or 'nothing'}")
+          queued <= {positions.MAIN}, f"queued into {sorted(queued) or 'nothing'}")
 
     # The tighter-stop counterfactual must be exact -- computed on positions
     # that really existed -- and must refuse a level at or above the entry.
-    sh = pbook.shadow_stop(features.load_corpus(), conn, pct=5.0)
+    sh = positions.shadow_stop(features.load_corpus(), conn, pct=5.0)
     bad = [x for x in sh if not (0 < x["level"] < x["entry"])]
     check("the shadow stop sits below every real entry", not bad,
           f"{len(sh)} positions checked, {len(bad)} malformed")
@@ -292,8 +292,8 @@ def main():
     bf = features.ROOT / "data" / "baseline.json"
     now_b = {"sessions": len(days), "cagr": round(r["cagr"], 2),
              "n": len(t), "maxdd": round(r["maxdd"], 1),
-             "config": f"{portfolio.STOP_PCT:g}/{portfolio.TARGET_PCT:g}/"
-                       f"{portfolio.HOLD_DAYS}d"}
+             "config": f"{selection.STOP_PCT:g}/{selection.TARGET_PCT:g}/"
+                       f"{selection.HOLD_DAYS}d"}
     if not bf.exists():
         bf.write_text(_j.dumps(now_b, indent=1))
         skip("the recorded baseline still reproduces",

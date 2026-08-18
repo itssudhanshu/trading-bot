@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The Rs 3,00,000 bucket -- executed and tracked SEPARATELY.
 
-Kept apart from the generated-spec book on purpose. Merging them would make it
+Kept apart from the generated-spec bucket on purpose. Merging them would make it
 impossible to say which approach worked, and they carry different risk rules:
 0.5% risk per trade in one and 2% in the other cannot share a heat budget
 without one silently constraining the other.
@@ -14,7 +14,7 @@ Rules (operator's design, one parameter changed on evidence):
   trail     none -- every trailing variant tested lowered expectancy
 
 Every closed trade feeds learning.py tagged `source: portfolio`, so this bucket's
-results stay distinguishable from the historical seed and the spec book.
+results stay distinguishable from the historical seed and the spec bucket.
 """
 
 import sys as _sys, pathlib as _pl
@@ -29,24 +29,24 @@ from pathlib import Path
 import features
 
 from paths import ROOT      # one definition; see paths.py
-DB = ROOT / "data" / "pbook.db"
+DB = ROOT / "data" / "positions.db"
 
 # The exit rules are READ from portfolio, never restated. A second copy of
 # these constants would let the live bucket and the simulation that validates it
 # drift apart silently -- and the whole point of matching cost models and exit
 # rules is that a divergence between the two is readable.
-import portfolio
+import selection
 
-CAPITAL = portfolio.CAPITAL
-STOP_PCT, TARGET_PCT, HOLD_DAYS = (portfolio.STOP_PCT, portfolio.TARGET_PCT,
-                                   portfolio.HOLD_DAYS)
+CAPITAL = selection.CAPITAL
+STOP_PCT, TARGET_PCT, HOLD_DAYS = (selection.STOP_PCT, selection.TARGET_PCT,
+                                   selection.HOLD_DAYS)
 # Same charge model as the simulation. A paper bucket that costs differently
 # from the backtest cannot validate it -- any divergence would be unreadable.
 COSTS = __import__("engine").Costs()
 
 
 # Parallel paper buckets. Trade count is the binding constraint on this project
-# -- one book produces ~71 trades a year, and 105 are needed before a 3%/trade
+# -- one bucket produces ~71 trades a year, and 105 are needed before a 3%/trade
 # edge is resolvable at all. More buckets is the only lever that moves that.
 #
 # THE CONSTRAINT THAT MAKES THIS HONEST: buckets 1-3 run the SAME rules at
@@ -97,9 +97,9 @@ def slice_of(name=MAIN):
     way a comment describing a 2/2/1 bucket survived a minute past the design
     that made it true.
     """
-    import portfolio
+    import selection
     return ", ".join(f"ranks 1-{k} {c}"
-                     for c, k in portfolio.TAKE_PER_CLUSTER.items())
+                     for c, k in selection.TAKE_PER_CLUSTER.items())
 
 
 def bucket_cfg(name=MAIN):
@@ -428,7 +428,7 @@ def __selftest_body():
             assert queue([row_in], days[200], c) == 1
             # queueing the same symbol twice must not double it
             assert queue([row_in], days[200], c) == 0
-            # ...but a DIFFERENT book must still take it. Dedup is per portfolio,
+            # ...but a DIFFERENT bucket must still take it. Dedup is per portfolio,
             # so one portfolio is never blocked by what another holds.
             assert queue([row_in], days[200], c, which="second") == 1
 
@@ -439,7 +439,7 @@ def __selftest_body():
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
             assert abs(got["second"] - 90.0) < 1e-9, got
 
-            # The shadow stop replaces the variant book: exact, same entry,
+            # The shadow stop replaces the variant bucket: exact, same entry,
             # same bars. A 5% stop sits at 95 and this path never trades below
             # 100 before the target, so it must NOT report a hit.
             sh = {x["symbol"]: x for x in shadow_stop(corpus, c, pct=5.0)}

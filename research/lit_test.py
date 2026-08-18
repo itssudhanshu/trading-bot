@@ -36,7 +36,7 @@ cover NSE at all.
      correlate with having had a big day. This may be removing the same names
      the score is trying to buy.
 
-Both knobs default OFF in clusters.py. Nothing here changes the live book.
+Both knobs default OFF in clusters.py. Nothing here changes the live bucket.
 """
 
 import sys as _sys, pathlib as _pl
@@ -51,12 +51,12 @@ import analysis
 import clusters
 import entry
 import features
-import portfolio
+import selection
 import simulate
 
-BASE = dict(stop_pct=portfolio.STOP_PCT, target_pct=portfolio.TARGET_PCT,
-            hold=portfolio.HOLD_DAYS, max_pos=5, refresh=5,
-            trigger=portfolio.TRIGGER)
+BASE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
+            hold=selection.HOLD_DAYS, max_pos=5, refresh=5,
+            trigger=selection.TRIGGER)
 
 # (label, RS_SKIP, MAX_SCREEN) -- pre-registered before running.
 VARIANTS = [
@@ -98,7 +98,7 @@ def main():
     _C = features.load_corpus()
     _D = sorted({d for s in _C.values() for d in s.days})
     print(f"literature-derived selection tests — {len(VARIANTS)} variants x "
-          f"{len(_D)} sessions, at the live book's exit rules "
+          f"{len(_D)} sessions, at the live bucket's exit rules "
           f"({BASE['stop_pct']:g}/{BASE['target_pct']:g}/{BASE['hold']}d)\n")
     with mp.get_context("fork").Pool(min(len(VARIANTS), mp.cpu_count())) as p:
         res = p.map(_one, VARIANTS)

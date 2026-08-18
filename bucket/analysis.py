@@ -125,16 +125,16 @@ def record(label, trades, extra=None):
     """
     import json
     from datetime import datetime
-    import portfolio
+    import selection
     c = concentration(trades)
     row = {"at": datetime.now().isoformat(timespec="seconds"),
            "label": label,
-           "config": {"mix": dict(portfolio.TAKE_PER_CLUSTER),
-                      "capital": portfolio.CAPITAL,
-                      "deploy_pct": portfolio.DEPLOY_PCT,
-                      "trigger": portfolio.TRIGGER,
-                      "stop": portfolio.STOP_PCT, "target": portfolio.TARGET_PCT,
-                      "hold": portfolio.HOLD_DAYS},
+           "config": {"mix": dict(selection.TAKE_PER_CLUSTER),
+                      "capital": selection.CAPITAL,
+                      "deploy_pct": selection.DEPLOY_PCT,
+                      "trigger": selection.TRIGGER,
+                      "stop": selection.STOP_PCT, "target": selection.TARGET_PCT,
+                      "hold": selection.HOLD_DAYS},
            "n": len(trades),
            "by_cluster": {k: {"n": v["n"], "total": round(v["total"], 2),
                               "avg": round(v["avg"], 3), "wins": v["wins"]}
