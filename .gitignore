@@ -16,3 +16,33 @@ __pycache__/
 
 # Upstox instrument master: 9,650 rows, refetchable, changes only with listings.
 data/upstox_instruments.json
+
+# --- macOS and editor junk -------------------------------------------------
+.DS_Store
+*.bak
+
+# --- runtime state: regenerated every agent tick, never read as evidence ---
+# These churned in almost every commit and say nothing a reader needs. The
+# agent rewrites them constantly; git history of them is noise.
+data/agent*.log
+data/telegram.log
+data/audit.log
+data/DIGEST.md
+data/agent_state.json
+data/agent_heartbeat.json
+data/agent.lock
+data/tg_offset.json
+
+# --- XBRL filings: 40,775 files, 84% of the repo, and no measured signal ---
+# Four company-momentum features across 1,049 randomly sampled trades: every
+# confidence interval straddles zero (CLAUDE.md). The score does not read them
+# and features.attach_fundamentals treats absence as normal -- 15% of the
+# universe has no filings at all.
+#
+# NOT refetchable while www.nseindia.com blocks us, so the local 1.6GB copy is
+# the only one. It stays on disk; this only stops it being pushed.
+data/fundamentals/
+
+# Kept deliberately: pbook.db is the record of real forward trades and cannot
+# be regenerated from anything. findings/strategies/simulations/walkforward
+# jsonl, the baselines and holidays.json are evidence, not runtime state.
