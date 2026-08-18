@@ -10,6 +10,10 @@ the day you buy it.
 Each trigger is evaluated on the SIGNAL day i. Entry remains the open of i+1,
 so nothing here can see a price it could not have traded on.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import features
 
 _CACHE = {}

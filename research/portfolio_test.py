@@ -12,6 +12,10 @@ ranking works" from "those five names happened to do well". If rank carries
 information, returns must decay with depth. If cohort 5 matches cohort 0, the
 score is decoration.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import multiprocessing as mp
 import statistics
 import sys

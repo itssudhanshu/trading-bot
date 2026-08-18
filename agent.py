@@ -15,6 +15,9 @@ DOES NOT spend holdout budget. Research cycles stop at the shortlist; a person
 runs `pipeline.py --consult` deliberately. An unattended loop would exhaust 50
 lifetime consultations in a weekend.
 """
+
+# First: puts core/, book/, research/ and ops/ on sys.path.
+import paths  # noqa: F401
 import argparse
 import json
 import os
@@ -24,7 +27,7 @@ import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 STATE = ROOT / "data" / "agent_state.json"
 DIGEST = ROOT / "data" / "DIGEST.md"
 LOCK = ROOT / "data" / "agent.lock"
@@ -73,8 +76,8 @@ def _unlock():
 # The complete set of things the agent may run. Anything not here is not the
 # agent's business -- the strategy search that used to live here is retired.
 _JOBS = {
-    "snapshot": ["snapshot.py"],
-    "catchup":  ["snapshot.py", "--catchup"],
+    "snapshot": ["ops/snapshot.py"],
+    "catchup":  ["ops/snapshot.py", "--catchup"],
     "pbook":    ["pbook_run.py"],
     # Morning: fill pending orders at the day's actual open, rather than
     # leaving the book nine hours behind the market.
@@ -83,7 +86,7 @@ _JOBS = {
     # written the last time someone ran it by hand -- it was still claiming
     # "21 passed" after the suite had grown to 30. A self-check nobody runs is
     # not a self-check.
-    "audit":    ["audit.py"],
+    "audit":    ["ops/audit.py"],
     # Evening, after the book has stepped and the audit has run: push the day's
     # ranking, the evidence so far, and any weight change that has EARNED
     # itself. It proposes and never applies -- see tg.cmd_review.
@@ -461,8 +464,8 @@ def _selftest():
     # The agent runs only data collection and the book. Assert against the
     # COMMAND TABLE, not the source text -- a source scan for forbidden names
     # matches the list of forbidden names itself and can never pass.
-    allowed = {"snapshot.py", "pbook_run.py", "tg.py", "audit.py", "--catchup",
-               "--fill-live", "--review"}
+    allowed = {"ops/snapshot.py", "pbook_run.py", "tg.py", "ops/audit.py",
+               "--catchup", "--fill-live", "--review"}
     for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit"):
         for arg in _cmd_for(job)[1:]:
             assert arg in allowed, f"{job} runs unexpected {arg!r}"

@@ -6,6 +6,12 @@ gap-aware fills, costs, compounding -- rather than testing components in
 isolation. Component tests hid an allocation bug that made 85% of trades micro
 caps against a 2/2/1 design: each piece was right, the assembly was not.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
+
+import paths
 import statistics
 import sys
 from collections import defaultdict
@@ -265,7 +271,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
             "maxdd": maxdd * 100, "trades": closed}
 
 
-RESULTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "simulations.jsonl"
+RESULTS = paths.DATA / "simulations.jsonl"
 
 
 def store(name, r, batch=None, track="cluster"):
@@ -334,7 +340,7 @@ def report(name, r):
     store(name, r, batch=BATCH)
 
 
-WF_RESULTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "walkforward.jsonl"
+WF_RESULTS = paths.DATA / "walkforward.jsonl"
 
 
 def store_wf(res):
@@ -516,7 +522,7 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------- keep/promote
-STRATS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "strategies.jsonl"
+STRATS = paths.DATA / "strategies.jsonl"
 
 # A configuration is worth paper-trading only if it survives all four. Positive
 # CAGR alone is what a search returns by construction -- out of N variants the

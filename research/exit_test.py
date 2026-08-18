@@ -24,6 +24,10 @@ Positions are compared per POSITION, not per leg: a scaled exit books two
 rows and counting them as two trades would flatter nothing and confuse
 everything.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import multiprocessing as mp
 import statistics
 import sys

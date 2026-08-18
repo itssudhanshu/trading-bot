@@ -9,6 +9,10 @@ For each feature the universe is split at its median on the entry date, and the
 question is whether the top half outperforms the bottom half over the holding
 period. A spread near zero means the feature is decoration.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import random
 import statistics
 

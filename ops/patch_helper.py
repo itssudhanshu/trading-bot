@@ -7,6 +7,10 @@ a successful edit and was only caught later by a result that made no sense --
 the --no-fundamentals flag parsed cleanly and did nothing for a full 25-minute
 search. Anchors drift as files evolve; the failure has to be loud.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import sys
 from pathlib import Path
 

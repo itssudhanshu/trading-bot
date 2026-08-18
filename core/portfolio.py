@@ -30,6 +30,10 @@ needs a precise entry to survive.
 Sizing: 2% of capital risked per position. With a 10% stop that is a Rs 1,00,000
 position per Rs 10,000 risked -- five concurrent, fully invested.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import json
 import sys
 from datetime import date

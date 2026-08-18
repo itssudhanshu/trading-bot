@@ -6,6 +6,10 @@ trade-level data. So this reports a SENSITIVITY across plausible values rather
 than one number. c=0 is the old assumption (fill at the printed price), c=1 is
 the standard calibration, c=2 is conservative.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import multiprocessing as mp
 import statistics
 from collections import defaultdict

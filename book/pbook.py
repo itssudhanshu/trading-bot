@@ -16,6 +16,10 @@ Rules (operator's design, one parameter changed on evidence):
 Every closed trade feeds learning.py tagged `source: portfolio`, so this book's
 results stay distinguishable from the historical seed and the spec book.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import json
 import sqlite3
 import sys
@@ -24,7 +28,7 @@ from pathlib import Path
 
 import features
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 DB = ROOT / "data" / "pbook.db"
 
 # The exit rules are READ from portfolio, never restated. A second copy of

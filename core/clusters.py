@@ -19,6 +19,10 @@ by scale):
     trend               close above its own 200-day average
     fundamentals        revenue growth where filings exist (neutral where not)
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import statistics
 import sys
 from datetime import date

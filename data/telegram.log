@@ -488,3 +488,367 @@ listening (pid 10052, 14 commands)
 ./run_listener.sh: line 9: 10052 Terminated: 15          python3 tg.py --listen
 listener exited, restarting in 3s
 listening (pid 10078, 14 commands)
+recv '/open_orders' -> /open_orders -> cmd_open_orders
+recv '/clusters' -> /clusters -> cmd_clusters
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 11641, 14 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 11676, 14 commands)
+./run_listener.sh: line 9: 11676 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 11682, 14 commands)
+changed on disk: simulate.py, pbook_run.py, pbook.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 11904, 14 commands)
+./run_listener.sh: line 9: 11904 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 11931, 14 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 12594, 14 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 12721, 14 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 12750, 14 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 12916, 14 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 12970, 14 commands)
+changed on disk: exit_test.py -- restarting
+listener exited, restarting in 3s
+listening (pid 13041, 14 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 13084, 15 commands)
+changed on disk: tg.py, audit.py -- restarting
+listener exited, restarting in 3s
+listening (pid 13206, 15 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 13256, 15 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+listening (pid 13287, 15 commands)
+./run_listener.sh: line 9: 13287 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 13540, 15 commands)
+changed on disk: simulate.py -- restarting
+listener exited, restarting in 3s
+listening (pid 13911, 15 commands)
+changed on disk: exit_test.py -- restarting
+listener exited, restarting in 3s
+listening (pid 13938, 15 commands)
+recv '/review' -> /review -> cmd_review
+recv '/clusters' -> /clusters -> cmd_clusters
+changed on disk: exit_test.py -- restarting
+listener exited, restarting in 3s
+listening (pid 15077, 15 commands)
+changed on disk: audit.py, pbook.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 15222, 15 commands)
+./run_listener.sh: line 9: 15222 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 15697, 15 commands)
+changed on disk: exit_test.py, tg.py, audit.py, simulate.py, pbook_run.py, pbook.py, agent.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+listening (pid 15868, 15 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 16256, 15 commands)
+changed on disk: clusters.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18167, 15 commands)
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18395, 15 commands)
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18407, 15 commands)
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18420, 15 commands)
+changed on disk: pbook_run.py, pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18480, 15 commands)
+changed on disk: overview.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18516, 15 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18538, 16 commands)
+changed on disk: audit.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18624, 16 commands)
+recv '/clusters' -> /clusters -> cmd_clusters
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+recv '/books' -> /books -> cmd_books
+recv '/trade' -> /trade -> help (no match)
+recv '/findings' -> /findings -> cmd_findings
+./run_listener.sh: line 9: 18624 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+listening (pid 18866, 16 commands)
+changed on disk: tg.py, audit.py, pbook_run.py, overview.py, pbook.py -- restarting
+listener exited, restarting in 3s
+listening (pid 18973, 16 commands)
+recv '/books' -> /books -> cmd_books
+recv '/bucket' -> /bucket -> cmd_bucket
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+changed on disk: features.py -- restarting
+listener exited, restarting in 3s
+listening (pid 19189, 16 commands)
+changed on disk: features.py -- restarting
+listener exited, restarting in 3s
+listening (pid 19225, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 19249, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+listening (pid 19264, 16 commands)
+recv '/wallet' -> /wallet -> cmd_wallet
+changed on disk: tg.py -- restarting
+./run_listener.sh: line 9: 19264 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.9s
+listening (pid 19339, 16 commands)
+recv '/clusters' -> /clusters -> cmd_clusters
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+recv '/open_orders' -> /open_orders -> cmd_open_orders
+recv '/health' -> /health -> cmd_health
+recv '/books' -> /books -> cmd_books
+recv '/bucket' -> /bucket -> cmd_bucket
+changed on disk: tg.py, features.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.2s
+listening (pid 19635, 16 commands)
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.5s
+listening (pid 19846, 16 commands)
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.6s
+listening (pid 19866, 16 commands)
+recv '/clusters' -> /clusters -> cmd_clusters
+./run_listener.sh: line 9: 19866 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.1s
+listening (pid 20604, 16 commands)
+changed on disk: tg.py, audit.py, pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.7s
+listening (pid 20699, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.6s
+listening (pid 20847, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.6s
+listening (pid 20871, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.9s
+listening (pid 20919, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.6s
+listening (pid 20967, 16 commands)
+./run_listener.sh: line 9: 20967 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.5s
+listening (pid 21262, 16 commands)
+recv '/clusters' -> /clusters -> cmd_clusters
+changed on disk: tg.py, agent.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.4s
+listening (pid 21352, 16 commands)
+recv '/bucket' -> /bucket -> cmd_bucket
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.8s
+listening (pid 21722, 16 commands)
+changed on disk: tg.py, pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.5s
+listening (pid 21765, 16 commands)
+./run_listener.sh: line 9: 21765 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.6s
+listening (pid 22018, 16 commands)
+changed on disk: tg.py, audit.py, pbook_run.py, overview.py, pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.1s
+listening (pid 22161, 16 commands)
+changed on disk: tg.py, audit.py, pbook_run.py, pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.0s
+listening (pid 22277, 16 commands)
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.2s
+listening (pid 22498, 16 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+Traceback (most recent call last):
+  File "/Users/sudhanshukushwaha/Documents/Repo/trading-bot/tg.py", line 719, in <module>
+    "/books": cmd_books,
+              ^^^^^^^^^
+NameError: name 'cmd_books' is not defined
+listener exited, restarting in 3s
+Traceback (most recent call last):
+  File "/Users/sudhanshukushwaha/Documents/Repo/trading-bot/tg.py", line 719, in <module>
+    "/books": cmd_books,
+              ^^^^^^^^^
+NameError: name 'cmd_books' is not defined
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.1s
+listening (pid 22826, 17 commands)
+changed on disk: tg.py, pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.4s
+listening (pid 23299, 17 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.2s
+listening (pid 23344, 17 commands)
+./run_listener.sh: line 9: 23344 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.3s
+listening (pid 23728, 17 commands)
+recv '/wallet' -> /wallet -> cmd_wallet
+recv '/clusters' -> /clusters -> cmd_clusters
+recv '/bucket' -> /bucket -> cmd_bucket
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+recv '/findings' -> /findings -> cmd_findings
+recv '/review' -> /review -> cmd_review
+recv '/books' -> /books -> cmd_portfolios
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.3s
+listening (pid 24002, 17 commands)
+changed on disk: audit.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.0s
+listening (pid 24262, 17 commands)
+changed on disk: tg.py, audit.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.6s
+listening (pid 24305, 17 commands)
+changed on disk: tg.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 20.0s
+listening (pid 24362, 17 commands)
+changed on disk: tg.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.0s
+listening (pid 24652, 17 commands)
+./run_listener.sh: line 9: 24652 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.1s
+listening (pid 24680, 17 commands)
+changed on disk: tg.py, audit.py, pbook_run.py, overview.py, pbook.py, portfolio.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.4s
+listening (pid 29129, 17 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.5s
+listening (pid 29252, 17 commands)
+./run_listener.sh: line 9: 29252 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.0s
+listening (pid 29412, 17 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.4s
+listening (pid 29830, 17 commands)
+changed on disk: quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.5s
+listening (pid 30046, 17 commands)
+changed on disk: pbook_run.py, agent.py, quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.3s
+listening (pid 30080, 17 commands)
+changed on disk: agent.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.4s
+listening (pid 30146, 17 commands)
+./run_listener.sh: line 9: 30146 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.1s
+listening (pid 30168, 17 commands)
+changed on disk: pbook.py, quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.9s
+listening (pid 31086, 17 commands)
+recv '/open_orders' -> /open_orders -> cmd_open_orders
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+changed on disk: pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 20.0s
+listening (pid 31631, 17 commands)
+changed on disk: quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.0s
+listening (pid 31744, 17 commands)
+changed on disk: quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.3s
+listening (pid 31841, 17 commands)
+changed on disk: quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.0s
+listening (pid 31974, 17 commands)
+changed on disk: quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.3s
+listening (pid 32065, 17 commands)
+changed on disk: quotes.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.0s
+listening (pid 32119, 17 commands)
+recv '/next_orders' -> /next_orders -> cmd_next_orders
+recv '/open_orders' -> /open_orders -> cmd_open_orders
+recv '/clusters' -> /clusters -> cmd_clusters
+changed on disk: tg.py, pbook.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.6s
+listening (pid 35185, 17 commands)
+./run_listener.sh: line 9: 35185 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 18.2s
+listening (pid 35294, 17 commands)
+changed on disk: tg.py, analysis.py, fundamentals.py, simulate.py, features.py, overview.py, pbook.py, engine.py, universe.py, agent.py, quotes.py, learning.py, upstox_login.py, snapshot.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.7s
+listening (pid 35689, 17 commands)
+changed on disk: exit_test.py, analysis.py, audit.py, fundamentals.py, clusters.py, simulate.py, fund_test.py, features.py, impact_test.py, pbook.py, engine.py, patch_helper.py, universe.py, backfill.py, entry.py, lit_test.py, quotes.py, learning.py, trigger_test.py, upstox_login.py, portfolio.py, snapshot.py, portfolio_test.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.4s
+listening (pid 35802, 17 commands)
+changed on disk: tg.py, pbook_run.py, overview.py, agent.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.7s
+listening (pid 36054, 17 commands)
+changed on disk: tg.py, agent.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.2s
+listening (pid 36324, 17 commands)
+changed on disk: pbook_run.py -- restarting
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 19.8s
+listening (pid 36457, 17 commands)
+./run_listener.sh: line 9: 36457 Terminated: 15          python3 tg.py --listen
+listener exited, restarting in 3s
+corpus warm: 2489 symbols in 17.7s
+listening (pid 36687, 17 commands)

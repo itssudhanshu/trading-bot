@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Test every entry trigger in parallel, against the no-trigger control."""
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import multiprocessing as mp
 from collections import defaultdict
 

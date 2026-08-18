@@ -11,6 +11,10 @@ reads backfilled and live-collected days identically.
     ./backfill.py --years 4
     ./backfill.py --from 2024-01-01 --to 2024-12-31
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import argparse
 import json
 import sys

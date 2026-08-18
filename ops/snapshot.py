@@ -9,6 +9,10 @@ Parsing happens downstream: a parser bug must never cost us data we cannot refet
     ./snapshot.py --date 2026-08-14
     ./snapshot.py --selftest
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import argparse
 import hashlib
 import json
@@ -18,7 +22,7 @@ import urllib.request
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 RAW = ROOT / "data" / "raw"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")

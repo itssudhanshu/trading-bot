@@ -38,6 +38,10 @@ cover NSE at all.
 
 Both knobs default OFF in clusters.py. Nothing here changes the live book.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import multiprocessing as mp
 import statistics
 import sys

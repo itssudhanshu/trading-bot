@@ -5,12 +5,16 @@ The gate encodes rules that are NEVER part of any search space. A generator that
 can vary its own risk limits will discover that removing them improves backtest
 returns -- every optimiser does. These live here, deterministic and un-tunable.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 
 # --- invariants: not tunable, not searchable -------------------------------
 MIN_RR = 3.0                  # asymmetric R:R floor

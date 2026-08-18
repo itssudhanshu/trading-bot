@@ -6,12 +6,15 @@ project has been a confident claim no file supported (a flag printing
 "enabled" and doing nothing, an HTTP 200 that was the wrong day's data), so
 this module states nothing it did not just read.
 """
+
+# First: puts core/, book/, research/ and ops/ on sys.path.
+import paths  # noqa: F401
 import json
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 D = ROOT / "data"
 
 

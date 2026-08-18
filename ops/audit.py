@@ -10,6 +10,10 @@ still reproduces.
 Every check prints PASS or FAIL with the number behind it. A check that cannot
 run prints SKIP and says why; it never silently passes.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import statistics
 import sys
 from datetime import date, timedelta

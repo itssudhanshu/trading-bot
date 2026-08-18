@@ -20,6 +20,10 @@ So this has to be re-run each morning before the market opens, or the fill
 falls through to Yahoo -- which is the arrangement that already works, and the
 reason nothing here depends on Upstox being present.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import json
 import sys
 import urllib.error
@@ -29,7 +33,7 @@ from pathlib import Path
 
 import quotes
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 ENV = ROOT / ".env"
 AUTH = "https://api.upstox.com/v2/login/authorization/dialog"
 TOKEN = "https://api.upstox.com/v2/login/authorization/token"

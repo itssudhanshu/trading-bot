@@ -5,6 +5,9 @@ Re-selects only when the book has room. Re-running the screen every session and
 queueing the new top-5 would churn the book daily and never let a 15-day thesis
 play out -- the holding period IS the strategy.
 """
+
+# First: puts core/, book/, research/ and ops/ on sys.path.
+import paths  # noqa: F401
 import sys
 from datetime import date
 
@@ -77,9 +80,10 @@ def main(day=None):
     print(f"  main: open {s['open']}  pending {s['pending']}  "
           f"closed-total {s['closed']}")
     allb = pbook.summary(conn, which=None)
-    print(f"  all books: open {allb['open']}  pending {allb['pending']}  "
+    print(f"  all portfolios: open {allb['open']}  pending {allb['pending']}  "
           f"closed-total {allb['closed']}  "
-          f"({len(pbook.PORTFOLIOS)} books, ~{71 * len(pbook.PORTFOLIOS):.0f} trades/yr)")
+          f"({len(pbook.PORTFOLIOS)} portfolios, "
+          f"~{71 * len(pbook.PORTFOLIOS):.0f} trades/yr)")
 
     # Record the findings after every session that closed something, so the
     # per-stock and per-cluster picture accumulates instead of being recomputed

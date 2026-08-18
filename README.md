@@ -7,8 +7,25 @@ Stdlib Python, no dependencies. Every module carries a `--selftest` that fails
 if its core logic breaks.
 
 ```bash
-for f in *.py; do python3 "$f" --selftest; done
+for f in *.py core/*.py book/*.py research/*.py ops/*.py; do python3 "$f" --selftest; done
 ```
+
+## Layout
+
+```
+agent.py pbook_run.py tg.py overview.py    entry points; launchd runs agent.py
+paths.py                                   ROOT and DATA, defined once
+core/       universe features clusters portfolio entry engine quotes fundamentals
+book/       pbook learning analysis        the paper portfolios and their evidence
+research/   simulate and the *_test.py experiments
+ops/        snapshot backfill audit upstox_login patch_helper
+docs/       lessons.md rules.md STATE.md
+data/       raw/ plus state, results and logs
+```
+
+Modules import each other by bare name (`import features`) from anywhere:
+`paths.py` puts the source directories on `sys.path`, and each moved module
+loads it first, so any file can still be run directly for its selftest.
 
 ## What this is for
 
@@ -43,7 +60,7 @@ overview.py    the one honest status page; backtests cannot make it say YES
 
 The spec-search track (`spec.py`, `generator.py`, `backtest.py`, `validate.py`,
 `judge.py`, `runner.py`, `postmortem.py`, `tv.py`) is RETIRED and archived in
-`data/retired/`. It never held a position; `lessons.md` L1-L47 is its record.
+`data/retired/`. It never held a position; `docs/lessons.md` L1-L47 is its record.
 
 ## The three rules that matter
 
@@ -92,7 +109,7 @@ Scheduling: use `deploy/*.plist` with launchd, not cron — cron skips jobs when
 the machine sleeps, and a missed session is a permanent hole in the
 point-in-time record.
 
-## lessons.md
+## docs/lessons.md
 
 Accumulated structural findings, each with evidence and sample size. This is the
 system's memory and the constraint set on any future change. Entries are

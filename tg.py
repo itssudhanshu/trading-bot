@@ -18,6 +18,9 @@ machine, not things triggerable from a phone.
     python3 tg.py --status          # push the status board
     python3 tg.py --listen          # poll for commands (foreground)
 """
+
+# First: puts core/, book/, research/ and ops/ on sys.path.
+import paths  # noqa: F401
 import json
 import sys
 import urllib.parse
@@ -25,7 +28,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 API = "https://api.telegram.org/bot{token}/{method}"
 OFFSET = ROOT / "data" / "tg_offset.json"
 
@@ -860,7 +863,9 @@ if __name__ == "__main__":
         # agent.py left the bot serving stale logic while tg.py was untouched --
         # it kept reporting attention items that had already been fixed. Watching
         # only your own source catches your own edits and nothing else.
-        _watched = {p: p.stat().st_mtime for p in Path(__file__).parent.glob("*.py")}
+        _watched = {p: p.stat().st_mtime
+                    for p in Path(__file__).parent.glob("**/*.py")
+                    if "__pycache__" not in p.parts}
         # Build the corpus BEFORE serving. It costs ~19s and is cached for the
         # life of the process, so paying it here means the operator's first
         # message is answered in under two seconds instead of waiting for it.

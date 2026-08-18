@@ -21,6 +21,10 @@ year-to-date and prior-year comparatives. RELIANCE Q3 revenue appears as both
 context yields a plausible wrong number, so periods are matched explicitly
 against the filing's own fromDate/toDate rather than by tag order.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import json
 import re
 import sys
@@ -30,7 +34,7 @@ from pathlib import Path
 
 from snapshot import fetch
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 RAW = ROOT / "data" / "fundamentals"
 INDEX_URL = ("https://www.nseindia.com/api/corporates-financial-results"
              "?index=equities&symbol={sym}&period=Quarterly")

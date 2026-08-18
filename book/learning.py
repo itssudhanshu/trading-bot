@@ -19,13 +19,17 @@ Learning starts on HISTORICAL trades -- thousands are available now -- and
 continues on forward paper trades as they close. Waiting for live trades to
 start learning would waste the seven years already on disk.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import json
 import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 LEDGER = ROOT / "data" / "trade_features.jsonl"
 WEIGHTS = ROOT / "data" / "selection_weights.json"
 

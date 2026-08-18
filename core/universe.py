@@ -4,6 +4,10 @@
 Reads only from data/raw/<date>/ -- never the live NSE endpoints -- so a
 backtest sees exactly the surveillance state that existed on that date.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import csv
 import io
 import json
@@ -11,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 RAW = ROOT / "data" / "raw"
 
 # EQ only. BE/BZ are trade-to-trade: delivery-compulsory, no intraday exit,

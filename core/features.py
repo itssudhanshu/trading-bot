@@ -9,6 +9,10 @@ are per-symbol and self-aligned, so indicators are computed over the bars that
 actually exist. A symbol that delists just stops -- which is the correct
 point-in-time behaviour and the reason this beats screening today's index.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
 import statistics
 from dataclasses import dataclass, field
 from datetime import date
@@ -16,7 +20,7 @@ from pathlib import Path
 
 import universe
 
-ROOT = Path(__file__).resolve().parent
+from paths import ROOT      # one definition; see paths.py
 RAW = ROOT / "data" / "raw"
 
 

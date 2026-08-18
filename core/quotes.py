@@ -16,6 +16,12 @@ So `live()` returns {} until a provider is registered. Everything downstream
 must treat an empty quote as "unknown", never as zero -- a position whose price
 cannot be fetched is not a position worth nothing.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
+
+import paths
 import json
 import urllib.request
 
@@ -50,7 +56,7 @@ def provider_name():
 #           within a rupee of the previous close, so the inference is not safe.
 #           DISPLAY ONLY -- never fills an order.
 
-INSTRUMENTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "upstox_instruments.json"
+INSTRUMENTS = paths.DATA / "upstox_instruments.json"
 
 
 def token_hours_left(tok):
@@ -85,7 +91,7 @@ def env_value(name):
     import os
     v = os.environ.get(name) or ""
     if not v.strip():
-        p = __import__("pathlib").Path(__file__).resolve().parent / ".env"
+        p = paths.ROOT / ".env"
         if p.exists():
             for line in p.read_text().splitlines():
                 s = line.strip()
@@ -402,7 +408,7 @@ def _upstox_selftest():
     had = os.environ.pop("UPSTOX_ACCESS_TOKEN", None)
     try:
         import pathlib
-        env = pathlib.Path(__file__).resolve().parent / ".env"
+        env = paths.ROOT / ".env"
         if "UPSTOX_ACCESS_TOKEN=" not in (env.read_text() if env.exists() else ""):
             assert upstox(["HAPPYFORGE"]) == {}, "no token must yield {}"
     finally:

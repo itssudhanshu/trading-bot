@@ -201,10 +201,10 @@ worse — the signature of noise) and the 2% cap produced a HIGHER maximum impac
 than no cap, because a selection-time estimate does not bind execution-time
 reality. Do not re-add it without evidence that fixes both.
 
-**`rules.md` governs vocabulary and how results are worded**, in the code and
+**`docs/rules.md` governs vocabulary and how results are worded**, in the code and
 in anything a person reads. Its first rule is that a term already in use is not
 re-invented, and its second is that a non-trader must be able to read any
 output without a glossary.
 
-See `STATE.md` for current status and `lessons.md` for the evidence behind each
+See `docs/STATE.md` for current status and `docs/lessons.md` for the evidence behind each
 rule above. Retired work (the spec-search track) is archived in `data/retired/`.

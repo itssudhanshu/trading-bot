@@ -8,6 +8,12 @@ thousands of trades and can be measured -- symbols cannot. What per-stock data
 IS good for is concentration: if a handful of names produced the entire
 result, the strategy is one lucky streak wearing a track record.
 """
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+import paths  # noqa: F401  -- puts the source dirs on sys.path
+
+import paths
 import statistics
 from collections import defaultdict
 
@@ -107,7 +113,7 @@ if __name__ == "__main__":
 
 
 # ------------------------------------------------------------------ findings
-FINDINGS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "findings.jsonl"
+FINDINGS = paths.DATA / "findings.jsonl"
 
 
 def record(label, trades, extra=None):
@@ -157,7 +163,7 @@ def load_findings(limit=None):
     return rows[-limit:] if limit else rows
 
 
-OCC_BASELINE = __import__("pathlib").Path(__file__).resolve().parent / "data" / "occupancy_baseline.json"
+OCC_BASELINE = paths.DATA / "occupancy_baseline.json"
 
 
 def save_occupancy(dist, mean, config):
