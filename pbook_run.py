@@ -23,9 +23,14 @@ def fill_live_main():
     filled, why = pbook.fill_live(today, conn)
     if not filled:
         print(f"{today}: nothing filled — {why}")
-        return
+        # Exit non-zero when the fill was POSTPONED rather than completed, so
+        # the agent does not tick it off and skip the rest of the day. "No
+        # authoritative quote yet" at 09:20 becomes a fill at 10:20; recorded
+        # as success it becomes no fill at all.
+        return 0 if why == "nothing pending" else 1
     for sym, px in filled:
         print(f"{today}: FILLED {sym} at {px:,.2f} (live)")
+    
     try:
         import tg
         tg.notify(f"Filled at the open — {today}",
@@ -106,7 +111,7 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         print("pbook_run selftest ok (logic covered by pbook.py)")
     elif "--fill-live" in sys.argv:
-        fill_live_main()
+        sys.exit(fill_live_main() or 0)
     else:
         d = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else None
         main(d)

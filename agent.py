@@ -161,9 +161,13 @@ def due(now=None):
         todo.append("audit")
     if st.get("last_review") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("review")
-    # The open is at 09:15; give it a few minutes to print before reading it.
+    # The open is at 09:15. Starting at 09:00 asked for a bar that did not
+    # exist yet; the quote source correctly refused, the job exited clean, and
+    # the agent recorded the fill as DONE for the day -- so the orders never
+    # filled at all. Wait until the open has actually printed.
     if (st.get("last_fill") != str(today) and now.weekday() < 5
-            and 9 <= now.hour < 18):
+            and (now.hour > 9 or (now.hour == 9 and now.minute >= 20))
+            and now.hour < 18):
         todo.append("fill")
     return todo
 
@@ -464,6 +468,12 @@ def _selftest():
             assert arg in allowed, f"{job} runs unexpected {arg!r}"
     assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill",
                               "review", "audit"}, _JOB_NAMES
+    # The fill must not be attempted before the open has printed, and must
+    # still be due later in the day if it was.
+    assert "fill" not in due(datetime(2026, 8, 18, 9, 0)), "tried before the open"
+    assert "fill" in due(datetime(2026, 8, 18, 9, 20)), "never tries after it"
+    assert "fill" in due(datetime(2026, 8, 18, 14, 0)), "gave up mid-session"
+
     # review must run AFTER pbook and AFTER audit on the same tick: pbook so it
     # reports today's book, audit so it quotes today's self-check.
     _t = due(datetime(2026, 8, 12, 19))
