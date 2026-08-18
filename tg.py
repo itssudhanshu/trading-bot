@@ -235,11 +235,11 @@ def cmd_clusters(_=None):
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
-    # ONE source of ranking. This used clusters.pick() while /bucket used
+    # ONE source of ranking. This used clusters.pick() while /picks used
     # portfolio.build(), and the two disagreed on the same day: build() also
     # drops surveillance-flagged names and anything too expensive to size, so
     # /clusters was advertising names that could never be bought and showing a
-    # different top 5 than the bucket taken from it.
+    # different top 5 than the picks taken from it.
     rows = portfolio.build(corpus, as_of)
     trig = {r["symbol"] for r in rows if r.get("triggered")}
     # Which PORTFOLIO buys each stock. The deeper ones reach past the top 5,
@@ -279,8 +279,8 @@ def cmd_clusters(_=None):
     return "\n".join(out)
 
 
-def cmd_bucket(_=None):
-    """The 5 stocks chosen to trade, and what happened to each."""
+def cmd_picks(_=None):
+    """The stocks one portfolio chose this session, and why."""
     import clusters, features, portfolio, pbook
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
@@ -336,7 +336,7 @@ def cmd_next_orders(_=None):
     pend = [r for r in s["rows"] if r["status"] == "pending"]
     if not pend:
         return (_title("NEXT ORDERS") + "\nNothing waiting. No stock in the "
-                "bucket has broken out, so the money stays in cash.")
+                "picks has broken out, so the money stays in cash.")
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
     out = [_title("NEXT ORDERS", f"{len(pend)} waiting"),
@@ -672,7 +672,7 @@ def cmd_review(_=None):
                     else f"{days_old} days old — STALE")
             out += ["", f"*Self-audit*  {'✅' if ok else '❌'} {tail[-1]}  _({when})_"]
 
-    # A compact line per pick, not the whole of /bucket. Pasting that in made
+    # A compact line per pick, not the whole of /picks. Pasting that in made
     # the review four fifths duplicate, and two screens that must be kept in
     # step is one screen too many.
     try:
@@ -683,16 +683,16 @@ def cmd_review(_=None):
         picks = portfolio.allocate(portfolio.build(corpus, as_of))
         held = {r["symbol"] for r in pbook.summary(which=None)["rows"]
                 if r["status"] in ("open", "pending")}
-        out += ["", f"*Bucket* ({as_of})"]
+        out += ["", f"*Picks* ({as_of})"]
         for r in picks:
             out.append(f"  {'🟢' if r['symbol'] in held else '⚪'} "
                        f"{r['symbol']} ({r['cluster']}) score {r['score']:.0f}")
         if not picks:
             out.append("  _nothing triggered_")
-        out.append("_/bucket for why · /clusters for the full ranking · "
+        out.append("_/picks for why · /clusters for the full ranking · "
                    "/portfolios for all four_")
     except Exception as e:
-        out.append(f"_bucket unavailable ({type(e).__name__})_")
+        out.append(f"_picks unavailable ({type(e).__name__})_")
     return "\n".join(out)
 
 
@@ -717,7 +717,7 @@ def cmd_help(_=None):
             "/wallet — cash, holdings, profit\n\n"
             "*The pipeline*, in order\n"
             "/clusters — the ranking, and who buys what\n"
-            "/bucket — today's 5 picks, and why each one\n"
+            "/picks — the stocks chosen this session, and why\n"
             "/next\\_orders — waiting to enter, with entry, stop, target, value\n"
             "/open\\_orders — trades live in the market now\n"
             "/closed\\_orders — finished trades and their profit or loss\n\n"
@@ -734,7 +734,7 @@ def cmd_help(_=None):
 # Telegram only autocompletes underscores, but the hyphen spellings are
 # what was asked for and arrive intact as plain text, so both are bound.
 COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
-            "/bucket": cmd_bucket,
+            "/picks": cmd_picks, "/bucket": cmd_picks,
             "/next_orders": cmd_next_orders, "/next-orders": cmd_next_orders,
             "/open_orders": cmd_open_orders, "/open-orders": cmd_open_orders,
             # /portfolio was the earlier name for the live trades; kept so it
@@ -750,7 +750,7 @@ COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
 # Spellings that work but are deliberately not advertised: the hyphen forms
 # (Telegram only autocompletes underscores) and older names kept alive so they
 # do not silently break. Everything else must appear in /help.
-ALIASES = {"/start", "/help", "/portfolio", "/books",
+ALIASES = {"/start", "/help", "/portfolio", "/books", "/bucket",
            "/next-orders", "/open-orders", "/closed-orders"}
 
 

@@ -8,18 +8,21 @@
           A 50/50 split would put Nestle and Titan into "small" and redefine
           every result ever measured.)
       -> rank within cluster: score + 200-DMA gate -> top 20 each
-      -> bucket = 3 micro + 2 small = 5 stocks
+      -> picks = 3 micro + 2 small = 5 stocks per portfolio
       -> breakout trigger, filled at the NEXT open
       -> Rs 3,00,000 capital, max 75% deployed (Rs 45k/stock)
          open risk 7.5% at a full book, ~4.6% typical (occupancy averages 3.09/5)
       -> exit: -10% stop / +20% target / 10 trading days
-      -> analyse per stock AND per bucket -> record findings -> Telegram
+      -> analyse per stock AND per portfolio -> record findings -> Telegram
 
 **Vocabulary, and it matters** — a wrong reading here already produced one
 wrong build:
 
-- **cluster** = a size band (micro, small). Never called a bucket.
-- **bucket** = the 5-stock portfolio. Never called a cluster.
+- **cluster** = a size band (micro, small). Never called a portfolio.
+- **picks** = the stocks one portfolio selects for a session (3 micro + 2
+  small). Formerly "bucket", which was defined as "the 5-stock portfolio" --
+  circular, and ambiguous once there were four portfolios each with their own
+  five. Deleted under rules.md R1.
 - **portfolio** = a set of held positions with its own P&L. There are four.
   Never "book" — that was a third word for something already named (rules.md
   R1) and it is gone from the code, the database column and every screen.

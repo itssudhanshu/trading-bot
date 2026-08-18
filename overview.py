@@ -171,7 +171,7 @@ def render(s=None):
 def _selftest():
     s = state()
     assert s["days"] > 0 and s["capital"] > 0
-    assert sum(s["mix"].values()) > 0, "bucket must hold stocks"
+    assert sum(s["mix"].values()) > 0, "a portfolio must hold stocks"
     g = gates(s)
     assert g and all(len(x) == 3 for x in g), g
     v, why = direction(s)
