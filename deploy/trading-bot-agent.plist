@@ -33,7 +33,17 @@
     fill was 10:00, three quarters of an hour late. The fill PRICE is the day's
     open either way, so this buys visibility, not accuracy.
 
-    Both keys are honoured: the job runs hourly AND at 09:25 on weekdays.
+    Both keys are honoured: hourly AND at fixed weekday times.
+
+    The hourly StartInterval alone is not enough. Observed 2026-08-18: the job
+    fired four times after a reload and then stopped for five hours, so the
+    evening run -- fills, P&L, re-ranking, tomorrow's picks -- would have been
+    missed entirely. Fixed ticks do not depend on that timer surviving.
+
+      09:25  fill what /next_orders holds, once the open has printed
+      18:10  the evening run; NSE publishes the bhavcopy after 18:00
+      19:10  backup, in case 18:10 landed while the machine was asleep
+
     Weekend entries are omitted because nothing is due then.
   -->
   <key>StartCalendarInterval</key>
@@ -43,6 +53,16 @@
     <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
     <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
     <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>10</integer></dict>
   </array>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key>
