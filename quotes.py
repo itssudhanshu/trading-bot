@@ -50,8 +50,56 @@ def provider_name():
 #           within a rupee of the previous close, so the inference is not safe.
 #           DISPLAY ONLY -- never fills an order.
 
+INSTRUMENTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "upstox_instruments.json"
+
+
+def instrument_keys(symbols=None, refresh=False):
+    """-> {trading_symbol: instrument_key} for NSE equities.
+
+    Upstox keys are ISIN-based -- NSE_EQ|INE330T01021, not NSE_EQ|HAPPYFORGE.
+    The original code built the symbol form, which resolves to nothing, so a
+    valid token would still have returned an empty quote and the morning fill
+    would have declined for a reason that looked like "no token". Verified
+    against the published instrument master: HAPPYFORGE is INE330T01021.
+
+    Cached on disk because the master is 82k rows and changes only when
+    listings do. Refetched when a symbol is missing, which is what a new
+    listing looks like.
+    """
+    import gzip
+    import json as _j
+    m = {}
+    if INSTRUMENTS.exists() and not refresh:
+        try:
+            m = _j.loads(INSTRUMENTS.read_text())
+        except Exception:
+            m = {}
+    if m and symbols and not set(symbols) - set(m):
+        return m
+    try:
+        req = urllib.request.Request(
+            "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz",
+            headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            rows = _j.loads(gzip.decompress(r.read()))
+        m = {x["trading_symbol"]: x["instrument_key"] for x in rows
+             if x.get("segment") == "NSE_EQ" and x.get("trading_symbol")
+             and x.get("instrument_key")}
+        INSTRUMENTS.parent.mkdir(parents=True, exist_ok=True)
+        INSTRUMENTS.write_text(_j.dumps(m))
+    except Exception:
+        pass
+    return m
+
+
 def upstox(symbols):
-    """Official Upstox quotes. Needs UPSTOX_ACCESS_TOKEN in .env."""
+    """Official Upstox quotes. Needs UPSTOX_ACCESS_TOKEN in .env.
+
+    NOTE: Upstox access tokens expire daily around 03:30 IST. A pasted token
+    works for one session; unattended daily use needs the API key/secret login
+    flow to mint a fresh one. Until then this returns {} after expiry and the
+    fill falls through to Yahoo, which is why the chain is ordered that way.
+    """
     import os
     tok = os.environ.get("UPSTOX_ACCESS_TOKEN")
     if not tok:
@@ -62,7 +110,10 @@ def upstox(symbols):
                     tok = line.split("=", 1)[1].strip()
     if not tok:
         return {}
-    keys = ",".join(f"NSE_EQ|{s}" for s in symbols)
+    keymap = instrument_keys(symbols)
+    keys = ",".join(keymap[s] for s in symbols if s in keymap)
+    if not keys:
+        return {}
     req = urllib.request.Request(
         f"https://api.upstox.com/v2/market-quote/quotes?instrument_key={keys}",
         headers={"Authorization": f"Bearer {tok}", "Accept": "application/json"})
@@ -71,9 +122,11 @@ def upstox(symbols):
             data = json.loads(r.read()).get("data", {})
     except Exception:
         return {}
+    # Responses come back keyed by "NSE_EQ:SYMBOL", so map back by ISIN too.
+    back = {v: k for k, v in keymap.items()}
     out = {}
     for k, v in data.items():
-        sym = k.split(":")[-1]
+        sym = back.get(v.get("instrument_token") or "", k.split(":")[-1])
         ohlc = v.get("ohlc") or {}
         if v.get("last_price"):
             out[sym] = {"ltp": v["last_price"], "open": ohlc.get("open"),
@@ -132,8 +185,10 @@ def yahoo(symbols):
     payload, never the fact that a request succeeded.
     """
     import datetime as _dt
+    import time as _t
     on = _dt.date.today()
     out = {}
+    yahoo.last_error = None
     for s in symbols:
         try:
             req = urllib.request.Request(
@@ -144,9 +199,21 @@ def yahoo(symbols):
             bar = yahoo_bar(d, on)
             if bar:
                 out[s] = bar
-        except Exception:
-            continue
+            else:
+                yahoo.last_error = yahoo.last_error or "no bar dated today"
+        except Exception as e:
+            # RECORD why. A bare `except: continue` made "rate limited" look
+            # identical to "the market has not opened yet", and the operator
+            # could not tell a transient block from a stale bar. Yahoo returns
+            # 429 readily -- a handful of symbols a morning is fine, a
+            # validation sweep is not.
+            code = getattr(e, "code", None)
+            yahoo.last_error = (f"HTTP {code}" if code else type(e).__name__)
+        _t.sleep(0.4)          # be a polite client; 429 is easy to trigger
     return out
+
+
+yahoo.last_error = None
 
 
 def yahoo_bar(result, on):
@@ -172,6 +239,11 @@ def yahoo_bar(result, on):
 
 
 yahoo.authoritative = True
+
+
+def why_no_quote():
+    """-> a human reason the last authoritative fetch produced nothing."""
+    return getattr(yahoo, "last_error", None) or "no reason recorded"
 
 
 def _nse(symbols):
@@ -257,8 +329,33 @@ def _yahoo_selftest():
     print("  yahoo date guard ok")
 
 
+def _upstox_selftest():
+    """The instrument key is the part that silently returns nothing when wrong."""
+    m = instrument_keys(["HAPPYFORGE"])
+    if not m:
+        print("  upstox instrument map unavailable (offline?) — skipped")
+        return
+    k = m.get("HAPPYFORGE")
+    assert k and k.startswith("NSE_EQ|INE"), \
+        f"instrument key must be ISIN-based, got {k!r} -- NSE_EQ|SYMBOL "
+    assert "|" in k and not k.endswith("|HAPPYFORGE")
+    # no token configured must be a clean empty, never a crash or a bad fill
+    import os
+    had = os.environ.pop("UPSTOX_ACCESS_TOKEN", None)
+    try:
+        import pathlib
+        env = pathlib.Path(__file__).resolve().parent / ".env"
+        if "UPSTOX_ACCESS_TOKEN=" not in (env.read_text() if env.exists() else ""):
+            assert upstox(["HAPPYFORGE"]) == {}, "no token must yield {}"
+    finally:
+        if had:
+            os.environ["UPSTOX_ACCESS_TOKEN"] = had
+    print(f"  upstox instrument keys ok ({len(m)} cached)")
+
+
 def _selftest():
     _yahoo_selftest()
+    _upstox_selftest()
     assert live([]) == {}
     # a provider that fails must degrade to {}, not explode
     set_provider(lambda syms: (_ for _ in ()).throw(RuntimeError("down")))

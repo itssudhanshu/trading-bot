@@ -199,13 +199,18 @@ def fill_live(day, conn=None):
         return [], "orders were queued today; they enter at the NEXT open"
     q = quotes.live([p["symbol"] for p in due])
     if not q:
-        return [], "no live quote source"
+        return [], f"no live quote source ({quotes.why_no_quote()})"
     # A fill sets the entry price, the stop and the target for the life of the
     # trade. It may only come from a source whose fields are documented, never
     # from one whose meaning was inferred from where it sat on a web page.
     if not quotes.authoritative():
-        return [], (f"quote source '{getattr(quotes.live, 'source', '?')}' is "
-                    f"display-only; fills need an authoritative source")
+        # Say why the AUTHORITATIVE source produced nothing, not just which
+        # fallback answered. "google is display-only" is true and useless: it
+        # does not distinguish "the market has not opened" from "Yahoo is
+        # rate-limiting us", and those need different responses.
+        return [], (f"no authoritative price ({quotes.why_no_quote()}); "
+                    f"'{getattr(quotes.live, 'source', '?')}' is display-only "
+                    f"and may not set an entry price")
     filled = []
     for p in due:
         px = (q.get(p["symbol"]) or {}).get("open")

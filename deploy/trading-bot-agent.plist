@@ -26,6 +26,24 @@
     <string>/usr/local/bin/python3 agent.py --once --telegram</string>
   </array>
   <key>StartInterval</key><integer>3600</integer>
+  <!--
+    Plus a fixed tick just after the open. The hourly interval alone fires on
+    the hour, and the fill is only allowed from 09:20 (the open is 09:15 and
+    the day's bar has to print first) -- so the earliest hourly tick that could
+    fill was 10:00, three quarters of an hour late. The fill PRICE is the day's
+    open either way, so this buys visibility, not accuracy.
+
+    Both keys are honoured: the job runs hourly AND at 09:25 on weekdays.
+    Weekend entries are omitted because nothing is due then.
+  -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>25</integer></dict>
+  </array>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key>
   <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/agent.log</string>

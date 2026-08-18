@@ -13,3 +13,6 @@ __pycache__/
 *.pyc
 .venv/
 .env
+
+# Upstox instrument master: 9,650 rows, refetchable, changes only with listings.
+data/upstox_instruments.json
