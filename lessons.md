@@ -1431,3 +1431,82 @@ any cluster's surviving candidate count falls below what the portfolios need,
 naming the fix. It is silent today at 13 against 12, and was verified to fire
 by adding a fifth portfolio (15 places needed, 13 available). A monitor that
 has never fired is not known to work.
+
+## L57 — Live quote sources: ten checked, two work, and the diagnosis method is the reusable part
+
+A morning spent finding a source for today's opening price. Recording the
+RESULTS so they are not re-derived, and the METHOD so the next candidate takes
+ten minutes instead of a morning.
+
+### The criterion
+
+Not "does it have an API". The book fills unattended every weekday, so:
+**can it authenticate with no person at the keyboard?** Everything else --
+price quality, cost, coverage -- is secondary and mostly equivalent.
+
+### Results
+
+| source | unattended | outcome |
+|---|---|---|
+| **Yahoo chart API** | yes | **WORKS.** 220/220 daily opens matched the bhavcopy exactly |
+| **Upstox** | no (daily token) | **WORKS.** Filled GMMPFAUDLR at 1053.00, SAHYADRI at 388.00 |
+| ICICI Breeze | no | their FAQ: daily key "required as per SEBI regulations" |
+| Zerodha Kite | no | daily login, plus Rs 2,000/month |
+| Angel One SmartAPI | yes, via TOTP | needs trading password + TOTP seed on disk |
+| 5paisa Xstream | probably | same trade |
+| Groww | unknown | docs never say how tokens are issued |
+| nseindia.com/api/* | NO | edge-blocked, see method below |
+| parse.bot | yes | third-party scraper, free tier 200 calls/month |
+| 0xramm/Indian-Stock-Market-API | — | Yahoo underneath, plain HTTP, bare IP, offline when tested |
+| yfinance | — | wraps the SAME Yahoo hosts; cannot bypass their rate limit |
+
+**SEBI mandates daily re-authentication for broker APIs.** Regulatory, not
+technical. It is why no official broker route runs unattended, and why the
+TOTP ones only do so by storing a full trading credential on disk -- which for
+a system that merely READS prices is a bad trade at any price.
+
+### The method, which is the part worth keeping
+
+**To tell a header problem from a TLS problem from an IP problem, use three
+probes.** For nseindia.com:
+
+    curl (OpenSSL, HTTP/2)        -> 403     two different TLS stacks
+    python urllib (HTTP/1.1)      -> 403     both refused
+    curl -> nsearchives host      -> 200     same IP, same second
+
+Two unrelated TLS stacks refused while a sibling host serves us from the same
+address rules out both headers and IP reputation, leaving TLS/HTTP2
+fingerprinting and a JS-computed cookie. Nothing that speaks plain HTTP gets
+past that, which is why no library -- yfinance included -- can help.
+
+**To tell a session problem from an IP problem**, probe the website and the API
+host separately. Yahoo, while rate-limited:
+
+    finance.yahoo.com             -> 200     site fine, cookie issued
+    query1.../v1/test/getcrumb    -> 429     API host limited
+
+The site working while the API host refuses proves the limit is on the API
+host for our address. A fresh cookie or a wrapper changes nothing.
+
+### Four Upstox bugs, three of which looked identical
+
+Any of these alone produced "no data" and would have been blamed on the token:
+
+1. **Cloudflare 403 error 1010** -- urllib sends "Python-urllib/3.x" and is
+   banned before Upstox sees the request. A User-Agent is mandatory.
+2. **Instrument keys are ISIN-based** -- NSE_EQ|INE330T01021, never
+   NSE_EQ|HAPPYFORGE.
+3. **An empty value reads as a set key** -- "UPSTOX_ACCESS_TOKEN=" with
+   nothing after it passed every "is it configured?" check.
+4. **Tokens expire daily ~03:30 IST** -- the first one supplied was six days
+   stale. Upstox answers 401 "Invalid token", which reads as a paste error.
+   `quotes.token_hours_left()` now decodes the JWT `exp` and says so.
+
+### Standing conclusion
+
+Yahoo for unattended fills, Upstox when a fresh token happens to exist, and the
+official bhavcopy as the source of truth for everything. The morning path only
+changes WHEN a fill is recorded, never at what price -- the open is fixed at
+09:15. Do not spend another morning on this without new evidence that Yahoo is
+unreliable under NORMAL load, which is 2-5 requests once a day, not the 300-bar
+sweep that got us rate-limited.

@@ -265,7 +265,7 @@ def cmd_clusters(_=None):
             sym, who = r["symbol"], owner.get(r["symbol"])
             mark = ("🟢" if who == pbook.MAIN else "📊" if who
                     else "🔸" if sym in trig else "▫️")
-            tag = f"  →  _{who}_" if who else ""
+            tag = f"  →  _{pbook.label(who)}_" if who else ""
             out.append(f"  rank {n}. {mark} {sym}  score {r['score']:.0f}{tag}")
         if len(inc) > depth:
             out.append(f"  _...{len(inc) - depth} more, ranked too low for "
@@ -316,7 +316,8 @@ def cmd_bucket(_=None):
         out.append("")
         out.append("*The other portfolios are buying:*")
         for n, syms in others.items():
-            out.append(f"  {n}: {', '.join(syms) if syms else '_nothing_'}")
+            out.append(f"  {pbook.label(n)}: "
+                       f"{', '.join(syms) if syms else '_nothing_'}")
         out.append("_Same rules, further down the same ranking. /clusters "
                    "shows where each one sits._")
     return "\n".join(out)
@@ -351,7 +352,8 @@ def cmd_next_orders(_=None):
         sp = pbook.portfolio_cfg(r["portfolio"])["stop_pct"]
         total += val
         risk += val * sp / 100
-        tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
+        tag = ("" if r["portfolio"] == pbook.MAIN
+               else f"  ·  _{pbook.label(r['portfolio'])}_")
         out.append(f"*{r['symbol']}* ({SIZE.get(r['cluster'], r['cluster'])}){tag}")
         out.append(f"   buy {r['qty']} at about {px:,.2f}   = {_rs(val)}")
         out.append(f"   sell if it falls to {r['stop']:,.2f}  (−{sp:g}%)")
@@ -403,7 +405,8 @@ def cmd_open_orders(_=None):
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
         to_tgt = (r["target"] / px - 1) * 100 if px else 0
-        tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
+        tag = ("" if r["portfolio"] == pbook.MAIN
+               else f"  ·  _{pbook.label(r['portfolio'])}_")
         out.append(f"{icon} *{r['symbol']}* "
                    f"({SIZE.get(r['cluster'], r['cluster'])}){tag}  {pct:+.1f}%")
         out.append(f"   in at {r['entry_px']:,.2f} → now {px:,.2f}")
@@ -443,7 +446,8 @@ def cmd_closed_orders(_=None):
     for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
         icon = "✅" if (r["net"] or 0) > 0 else "❌"
-        tag = "" if r["portfolio"] == pbook.MAIN else f"  ·  _{r['portfolio']}_"
+        tag = ("" if r["portfolio"] == pbook.MAIN
+               else f"  ·  _{pbook.label(r['portfolio'])}_")
         out.append(f"{icon} *{r['symbol']}* ({r['cluster']}){tag}  {pct:+.1f}%  "
                    f"Rs {r['net']:+,.0f}")
         out.append(f"    {r['entry_px']:,.2f} → {r['exit_px']:,.2f} · "
@@ -565,7 +569,7 @@ def cmd_portfolios(_=None):
         s = pbook.summary(conn, which=name)
         tot_closed += s["closed"]
         mark = "⭐" if name == pbook.MAIN else ("🔬" if not cfg["pool"] else "📊")
-        out.append(f"{mark} *{name}*  _{pbook.role_of(name)}_")
+        out.append(f"{mark} *{pbook.label(name)}*  _{pbook.role_of(name)}_")
         out.append(f"    {s['open']} held · {s['pending']} buying tomorrow · "
                    f"{s['closed']} finished · banked {_rs(s['realised'])}")
     pooled = [n for n, c in pbook.PORTFOLIOS.items() if c["pool"]]
@@ -610,7 +614,7 @@ def cmd_review(_=None):
     allb = pbook.summary(which=None)
     closed = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     out = [_title("DAILY REVIEW", str(datetime.now().date())), "",
-           f"*Main portfolio*  {s['open']} held · {s['pending']} buying "
+           f"*{pbook.label(pbook.MAIN).capitalize()}*  {s['open']} held · {s['pending']} buying "
            f"tomorrow · {s['closed']} finished · worth {_rs(s['equity'])}"]
     # Counting only main here said "0 queued" while /next_orders said "2
     # waiting". Both were right about their own scope and the pair was

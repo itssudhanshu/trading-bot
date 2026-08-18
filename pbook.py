@@ -104,6 +104,16 @@ def slice_of(name):
                      for c, k in portfolio.TAKE_PER_CLUSTER.items())
 
 
+def label(name):
+    """-> the name as a person should read it: 'third portfolio'.
+
+    Display only. The stored key stays short because it is a database value and
+    two migrations have already gone wrong today; rules.md R5 puts the plain
+    wording at the edge, not in the column.
+    """
+    return f"{name} portfolio"
+
+
 def role_of(name):
     """-> the slice, plus any standing note about the book."""
     n = (PORTFOLIOS.get(name) or PORTFOLIOS[MAIN]).get("note")

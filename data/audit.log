@@ -53,7 +53,7 @@ FILLS AND EXITS
   [PASS] every trade exits by stop, target or time
          Counter({'time': 94, 'stop': 77, 'target': 60})
   [PASS] wallet total equals cash plus holdings
-         total 301,415 vs cash 255,245 + invested 46,171
+         total 302,411 vs cash 255,245 + invested 47,166
   [PASS] every tg.* call from the daily runner resolves
          none
   [PASS] every cmd_* called inside tg.py exists
