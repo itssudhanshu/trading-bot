@@ -1397,3 +1397,37 @@ On 2026-08-17, SHAHALLOYS and WORTHPERI both scored 76.2 and took micro ranks 3
 and 4 -- so one entered the bucket and the other went to the next cohort on
 nothing but list position. Harmless between adjacent cohorts, but it means a
 rank boundary is not always a real distinction.
+
+## L56 — Four portfolios fit the ranking, and deepening it would change nothing
+
+Running four paper portfolios off one ranked list raised an obvious worry: the
+deepest reaches micro rank 12, and on 2026-08-17 only 13 micro names survived
+the 200-day-average gate, the surveillance flags and the sizing cap. One name
+of headroom.
+
+**Measured rather than watched.** Across 94 sessions sampled from 2020-12-17:
+
+| cluster | min | median | max | sessions short of what four portfolios need |
+|---|---|---|---|---|
+| micro | 13 | 20 | 20 | 0 of 94 |
+| small | 19 | 20 | 20 | 0 of 94 |
+
+It has never starved. The median sits at the `PER_CLUSTER = 20` cap, so the
+binding constraint is normally the cap itself, not the filters; 2026-08-17 was
+an outlier where seven of the top twenty were dropped.
+
+**The obvious fix is a no-op, which is why it was checked before being made.**
+Raising `PER_CLUSTER` from 20 to 30 changed the picks of NONE of the four
+portfolios on five sampled dates. Four portfolios reach at most micro rank 12
+and small rank 8, both well inside the top twenty, so a deeper list only adds
+names nobody reaches. It would help solely in the case where fewer than twelve
+survive the filters, which has not happened.
+
+So: no change. The margin is real but has never been consumed, and the remedy
+is available and provably safe if it ever is.
+
+**Turned into an alarm instead of a habit.** `agent.attention()` now fires when
+any cluster's surviving candidate count falls below what the portfolios need,
+naming the fix. It is silent today at 13 against 12, and was verified to fire
+by adding a fifth portfolio (15 places needed, 13 available). A monitor that
+has never fired is not known to work.
