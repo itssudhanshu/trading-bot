@@ -5,7 +5,7 @@ Fourteen modules each derived the data directory from their own file location
 (`Path(__file__).resolve().parent / "data"`). That works only while every file
 sits in the repo root -- move one into a subdirectory and it silently points at
 a `data/` that does not exist, and because these paths are created on demand it
-would not error, it would create a fresh empty one and the live book would look
+would not error, it would create a fresh empty one and the live bucket would look
 empty. That made the layout unchangeable, so it is fixed here first.
 
 Also puts the source directories on sys.path, so `import features` keeps
@@ -23,7 +23,7 @@ RAW = DATA / "raw"
 
 # Source directories, in import-resolution order. Root last so a stray name
 # there cannot shadow a real module.
-SRC = ("core", "book", "research", "ops")
+SRC = ("core", "bucket", "research", "ops")
 
 for _d in SRC:
     _p = str(ROOT / _d)

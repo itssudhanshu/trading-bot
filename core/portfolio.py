@@ -23,7 +23,7 @@ across trades turn out to be opposed here.
 
 Why a 10% stop rather than the 3% asked for: at 3% the stop sits inside these
 stocks' daily noise and is hit 70-77% of the time, giving -0.6%/trade. Widening
-it is the single change that flips the book positive. Operator agreed 10% now,
+it is the single change that flips the bucket positive. Operator agreed 10% now,
 3-5% later once entry timing improves -- which is the right order: a tight stop
 needs a precise entry to survive.
 
@@ -68,11 +68,11 @@ MAX_POSITIONS = 5
 # Open risk at a full book is DEPLOY_PCT * STOP_PCT / 100 = 7.5% of capital.
 # engine.MAX_PORTFOLIO_HEAT (6%) is NOT a constraint on this path -- it is
 # checked only inside engine's own signal function, which nothing here calls.
-# An earlier comment cited it as though it bound this book; it never did, and
+# An earlier comment cited it as though it bound this bucket; it never did, and
 # quoting a guard that does not run is the failure this project keeps making.
 # The real cap is arithmetic: 5 stocks x Rs 45k x 10% stop.
 # 75% of Rs 3L over 5 stocks = Rs 45k each. The cap does less than its name
-# suggests: average occupancy is 3.09 of 5, so the book is really ~46%
+# suggests: average occupancy is 3.09 of 5, so the bucket is really ~46%
 # invested, not 75%. Raising it from 60% was worth +2.7 points of CAGR for
 # +4.6 of drawdown, measured, not assumed.
 DEPLOY_PCT = 75.0
@@ -105,7 +105,7 @@ def size_mult(scheme, rank, vol_pct, med_vol_pct):
 
 def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT, mult=1.0):
     """-> (qty, rupees_at_risk). Risk-based, then capped so one name cannot
-    exceed its share of the book."""
+    exceed its share of the bucket."""
     risk_rupees = capital * risk_pct / 100
     risk_per_share = entry * stop_pct / 100
     if risk_per_share <= 0:
@@ -146,7 +146,7 @@ def _why(r):
 # "per_cluster" ranks inside each size band; "pooled" ranks every tradeable
 # name against every other. Pooled makes the cluster split cosmetic, since the
 # book then takes whatever ranks highest regardless of band.
-# "pooled": every tradeable stock is ranked against every other and the book
+# "pooled": every tradeable stock is ranked against every other and the bucket
 # takes the best five outright. The size clusters then only decide WHO IS
 # ELIGIBLE (the least-liquid 67%), not how the five are split.
 #
@@ -174,7 +174,7 @@ TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
 # tested and cost 4 points of CAGR.
 #
 # 0 = no floor. 1 is NOT the same as 0: it forces a position on days when
-# nothing triggered, which the book would otherwise sit out. That distinction
+# nothing triggered, which the bucket would otherwise sit out. That distinction
 # moved the result by 4 points and was nearly missed because the constant was
 # mislabelled.
 MIN_POSITIONS = 0
@@ -269,7 +269,7 @@ def _corr(a, b):
 def decorrelate(rows, corpus, as_of, max_corr):
     """Drop a candidate that moves too closely with one already taken.
 
-    The book had no diversification rule beyond cluster counts, and it showed:
+    The bucket had no diversification rule beyond cluster counts, and it showed:
     two of five positions were hospital chains. Sector labels do not exist in
     this corpus, but correlation is computable from the price history already
     on disk and captures the same risk without needing a classification.
@@ -322,7 +322,7 @@ def allocate(rows, take_per_cluster=None, offset=0):
     take_per_cluster = take_per_cluster or dict(TAKE_PER_CLUSTER)
     # ROUND-ROBIN, not cluster-blocks. Returning micro's picks first and then
     # slicing rows[:room] took two micro whenever only two slots were free and
-    # never reached small or mid -- the book traded 178 micro / 28 small / 3 mid
+    # never reached small or mid -- the bucket traded 178 micro / 28 small / 3 mid
     # against a 2/2/1 design. Interleaving means any prefix of the result is
     # still spread across clusters.
     if rows and not (set(take_per_cluster) & {r["cluster"] for r in rows}):
@@ -332,7 +332,7 @@ def allocate(rows, take_per_cluster=None, offset=0):
     # `offset` walks DOWN the ranking: offset 0 is the top 2 micro / 2 small /
     # 1 mid, offset 1 is the next 2/2/1, and so on. Running each cohort as its
     # own book turns "is the score real?" into a measurement -- if rank carries
-    # information the books must decay with depth, and if they do not, the
+    # information the buckets must decay with depth, and if they do not, the
     # ranking is decoration and the top book was luck.
     per = {b: [r for r in rows if r["cluster"] == b][offset * k:offset * k + k]
            for b, k in take_per_cluster.items()}
@@ -370,7 +370,7 @@ def _selftest():
     assert abs(risk - cap_each * STOP_PCT / 100) < 1, (risk, cap_each)
     cap = cap_each
     # a full book must leave cash on the table
-    assert cap * MAX_POSITIONS <= 500_000 * 0.75, "book must not be fully invested"
+    assert cap * MAX_POSITIONS <= 500_000 * 0.75, "the bucket must not be fully invested"
     q2, _ = position_size(500_000, 10.0)
     assert q2 * 10.0 <= cap + 1, q2 * 10.0
     assert position_size(500_000, 0)[0] == 0
@@ -380,17 +380,17 @@ def _selftest():
     assert b < a, (a, b)
 
     # allocation must spread across clusters, not collapse into the richest one
-    # `small` deliberately carries the highest scores: a book that ranked
+    # `small` deliberately carries the highest scores: a bucket that ranked
     # globally would be all small, and the per-cluster split is what stops it.
     fake = ([{"cluster": "small", "score": 90 - i, "symbol": f"S{i}"} for i in range(20)]
             + [{"cluster": "micro", "score": 50 - i, "symbol": f"C{i}"} for i in range(20)])
     fake.sort(key=lambda r: -r["score"])
-    book = allocate(fake)
+    picked = allocate(fake)
     got = {}
-    for r in book:
+    for r in picked:
         got[r["cluster"]] = got.get(r["cluster"], 0) + 1
     # Assert the PROPERTY, not a hardcoded mix: the fixture gives `mid` the
-    # highest scores, so a book that ranked globally would be all mid. What
+    # highest scores, so a bucket that ranked globally would be all mid. What
     # must hold is that the configured mix is honoured exactly, whatever it is
     # -- hardcoding the numbers made this fail every time the mix changed, for
     # a reason unrelated to what it was protecting.
@@ -399,14 +399,14 @@ def _selftest():
         # supply the whole book. That is the design, not the slice bug -- but
         # it is a real concentration the 3/2 split used to prevent, so assert
         # it deliberately rather than letting it pass unremarked.
-        assert len(book) == MAX_POSITIONS, len(book)
+        assert len(picked) == MAX_POSITIONS, len(picked)
         assert [r["symbol"] for r in book] == [r["symbol"] for r in fake[:5]], \
             "pooled must take the top five by score, in order"
     else:
         expected = dict(TAKE_PER_CLUSTER)
         assert got == expected, (got, expected)
-        assert max(got.values()) < len(book), "one cluster must not supply the whole book"
-        assert sum(got.values()) == len(book)
+        assert max(got.values()) < len(picked), "one cluster must not supply the whole bucket"
+        assert sum(got.values()) == len(picked)
 
     # ANY PREFIX must stay spread -- only meaningful under per-cluster
     # ranking, which is the mode that promises a spread at all.
@@ -427,19 +427,19 @@ if __name__ == "__main__":
         days = sorted({d for s in c.values() for d in s.days})
         as_of = days[-1]
         rows = build(c, as_of)
-        book = allocate(rows)
+        picked = allocate(rows)
         print(f"PAPER PORTFOLIO  Rs {CAPITAL:,}   selection as of {as_of}")
         print(f"entry: next session open | stop {STOP_PCT}% | target {TARGET_PCT}% "
               f"| exit {HOLD_DAYS}d | no trail\n")
         print(f"  {'sym':<13}{'clu':<7}{'ref':>9}{'entry':>8}{'stop':>9}{'target':>9}"
               f"{'qty':>7}{'value':>10}{'risk':>8}")
-        for r in book:
+        for r in picked:
             print(f"  {r['symbol']:<13}{r['cluster']:<7}{r['ref_close']:>9,.2f}"
                   f"{'open':>8}{r['stop']:>9,.2f}{r['target']:>9,.2f}"
                   f"{r['qty']:>7,}{r['value']:>10,}{r['risk']:>8,}")
-        inv = sum(r["value"] for r in book)
-        rsk = sum(r["risk"] for r in book)
+        inv = sum(r["value"] for r in picked)
+        rsk = sum(r["risk"] for r in picked)
         print(f"\n  deployed Rs {inv:,} of {CAPITAL:,} ({inv/CAPITAL*100:.0f}%)"
               f"   total at risk Rs {rsk:,} ({rsk/CAPITAL*100:.1f}%)")
-        json.dump(book, open("data/paper_portfolio.json", "w"), indent=1, default=str)
+        json.dump(picked, open("data/paper_portfolio.json", "w"), indent=1, default=str)
         print(f"  written to data/paper_portfolio.json")

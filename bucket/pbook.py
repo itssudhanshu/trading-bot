@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Rs 3,00,000 cluster book -- executed and tracked SEPARATELY.
+"""The Rs 3,00,000 bucket -- executed and tracked SEPARATELY.
 
 Kept apart from the generated-spec book on purpose. Merging them would make it
 impossible to say which approach worked, and they carry different risk rules:
@@ -13,7 +13,7 @@ Rules (operator's design, one parameter changed on evidence):
   time exit 10 trading days
   trail     none -- every trailing variant tested lowered expectancy
 
-Every closed trade feeds learning.py tagged `source: portfolio`, so this book's
+Every closed trade feeds learning.py tagged `source: portfolio`, so this bucket's
 results stay distinguishable from the historical seed and the spec book.
 """
 
@@ -32,7 +32,7 @@ from paths import ROOT      # one definition; see paths.py
 DB = ROOT / "data" / "pbook.db"
 
 # The exit rules are READ from portfolio, never restated. A second copy of
-# these constants would let the live book and the simulation that validates it
+# these constants would let the live bucket and the simulation that validates it
 # drift apart silently -- and the whole point of matching cost models and exit
 # rules is that a divergence between the two is readable.
 import portfolio
@@ -40,16 +40,16 @@ import portfolio
 CAPITAL = portfolio.CAPITAL
 STOP_PCT, TARGET_PCT, HOLD_DAYS = (portfolio.STOP_PCT, portfolio.TARGET_PCT,
                                    portfolio.HOLD_DAYS)
-# Same charge model as the simulation. A paper book that costs differently
+# Same charge model as the simulation. A paper bucket that costs differently
 # from the backtest cannot validate it -- any divergence would be unreadable.
 COSTS = __import__("engine").Costs()
 
 
-# Parallel paper books. Trade count is the binding constraint on this project
+# Parallel paper buckets. Trade count is the binding constraint on this project
 # -- one book produces ~71 trades a year, and 105 are needed before a 3%/trade
-# edge is resolvable at all. More books is the only lever that moves that.
+# edge is resolvable at all. More buckets is the only lever that moves that.
 #
-# THE CONSTRAINT THAT MAKES THIS HONEST: books 1-3 run the SAME rules at
+# THE CONSTRAINT THAT MAKES THIS HONEST: buckets 1-3 run the SAME rules at
 # different RANK DEPTHS, so their positions are disjoint by construction and
 # their trades pool as near-independent samples. They multiply evidence for the
 # question that matters -- does the score rank? -- without creating a choice.
@@ -68,65 +68,44 @@ COSTS = __import__("engine").Costs()
 # falsify the simulator's fill and gap model, which predicts 62% of positions
 # stop out at 5% against 37% at 10%. If forward reality disagrees, the model is
 # wrong and every backtest built on it moves. It may never be promoted on P&L.
-PORTFOLIOS = {
-    "main":  dict(offset=0, stop_pct=None, pool=True,
-                  note="the one we judge results by"),
-    # Plain ordinals (rules.md R2), and never "rank1/2/3": a portfolio called
-    # `rank2` printed beside a stock at rank 5 put two meanings of "rank" on
-    # one line saying different numbers.
-    #
-    # The ordinal names the SET, not the offset -- `second` has offset 1
-    # because it holds the second-best set of picks. "cohort1" invited that
-    # off-by-one every time it was read.
-    "second": dict(offset=1, stop_pct=None, pool=True, note=""),
-    "third":  dict(offset=2, stop_pct=None, pool=True, note=""),
-    "fourth": dict(offset=3, stop_pct=None, pool=True, note=""),
-}
-# There is deliberately NO variant book. A `tight` book running a 5% stop was
-# built and removed: to be a paired test it must enter the same name at the
-# same price on the same day as main, and a separately-queued book cannot --
-# it queues when IT has room, so it entered a position main had already held
-# for a session and was 3.2% into. That is chasing, not pairing, and it also
-# put a duplicate order in /next_orders for a name already live.
+# ONE bucket. It buys the top of the ranking and nothing else: ranks 1-3 of
+# the smallest cluster, 1-2 of the small one.
 #
-# `shadow_stop` answers the same question exactly and without a second order:
-# a tighter stop either was or was not touched between the real entry and the
-# real exit, and main's own bars settle it. Exact beats approximately-paired.
+# Three deeper buckets were run alongside it for one day and removed. They
+# bought ranks 4-12, and the ranking says plainly what that costs: -0.90% per
+# rank step down (give or take 0.35), +6.41% per trade between the top and the
+# deepest (give or take 1.89), measured across 1,068 trades. Buying stocks the
+# score has already marked as worse, in order to gather evidence faster, is not
+# a trade this bucket should make -- if the ranking is worth having, it is worth
+# obeying.
+#
+# What it cost to remove: about 71 trades a year instead of 284, so "is the
+# edge above zero" needs roughly 1.5 years of forward trading rather than five
+# months. That is the honest price of only buying what we believe is best.
+#
+# The two positions opened under the old design keep their labels until they
+# exit on their own rules. Nothing is sold to tidy up a naming decision.
 MAIN = "main"
+BUCKET = dict(offset=0, stop_pct=None,
+              note="ranks 1-3 smallest, 1-2 small -- the top of the ranking")
 
 
-def slice_of(name):
-    """-> 'ranks 7-9 micro, 5-6 small' for a portfolio, DERIVED not restated.
+def slice_of(name=MAIN):
+    """-> 'ranks 1-3 micro, 1-2 small', DERIVED from the mix, not restated.
 
     Written out by hand this went stale the moment the mix changed -- the same
     way a comment describing a 2/2/1 bucket survived a minute past the design
     that made it true.
     """
     import portfolio
-    off = (PORTFOLIOS.get(name) or PORTFOLIOS[MAIN])["offset"]
-    return ", ".join(f"ranks {off * k + 1}-{off * k + k} {c}"
+    return ", ".join(f"ranks 1-{k} {c}"
                      for c, k in portfolio.TAKE_PER_CLUSTER.items())
 
 
-def label(name):
-    """-> the name as a person should read it: 'third portfolio'.
-
-    Display only. The stored key stays short because it is a database value and
-    two migrations have already gone wrong today; rules.md R5 puts the plain
-    wording at the edge, not in the column.
-    """
-    return f"{name} portfolio"
-
-
-def role_of(name):
-    """-> the slice, plus any standing note about the book."""
-    n = (PORTFOLIOS.get(name) or PORTFOLIOS[MAIN]).get("note")
-    return slice_of(name) + (f" — {n}" if n else "")
-
-
-def portfolio_cfg(name):
-    """-> the book's config, with None meaning 'the live rule'."""
-    b = dict(PORTFOLIOS.get(name) or PORTFOLIOS[MAIN])
+def bucket_cfg(name=MAIN):
+    """-> the bucket's rules. Legacy names from the retired deeper buckets
+    still resolve, so their open positions keep running to their own exits."""
+    b = dict(BUCKET)
     b["stop_pct"] = STOP_PCT if b["stop_pct"] is None else b["stop_pct"]
     return b
 
@@ -141,24 +120,26 @@ def db():
       exit_reason TEXT, net REAL, features TEXT, fill_source TEXT);
     CREATE INDEX IF NOT EXISTS ix_pos_status ON pos(status);
     """)
-    # Existing rows predate the parallel books and are the record: they become
+    # Existing rows predate the parallel buckets and are the record: they become
     # 'main'. Done as a migration rather than a fresh table so the one live
     # position keeps its id and history.
     cols = {r[1] for r in c.execute("PRAGMA table_info(pos)")}
-    if "portfolio" not in cols:
-        c.execute(f"ALTER TABLE pos ADD COLUMN portfolio TEXT DEFAULT '{MAIN}'")
+    if "bucket" not in cols:
+        c.execute(f"ALTER TABLE pos ADD COLUMN bucket TEXT DEFAULT '{MAIN}'")
         # `book` was a third word for something already called bucket and
-        # portfolio (rules.md R1). Carry its values across -- these are live
-        # positions and the label is which portfolio owns them.
-        if "book" in cols:
-            c.execute("UPDATE pos SET portfolio = book WHERE book IS NOT NULL")
-        c.execute(f"UPDATE pos SET portfolio = '{MAIN}' WHERE portfolio IS NULL")
+        # portfolio (rules.md R1). Carry values across from whichever earlier
+        # name exists -- these are live positions.
+        for old in ("portfolio", "book"):
+            if old in cols:
+                c.execute(f"UPDATE pos SET bucket = {old} WHERE {old} IS NOT NULL")
+                break
+        c.execute(f"UPDATE pos SET bucket = '{MAIN}' WHERE bucket IS NULL")
     c.commit()
     return c
 
 
 def queue(rows, day, conn=None, which=MAIN):
-    """Queue a book's picks for entry at the NEXT session's open.
+    """Queue a bucket's picks for entry at the NEXT session's open.
 
     Dedup is PER BOOK, not global. `tight` is meant to hold the same names as
     `main` -- that pairing is what makes its stop-hit comparison run on
@@ -167,20 +148,20 @@ def queue(rows, day, conn=None, which=MAIN):
     """
     c = conn or db()
     held = {r[0] for r in c.execute(
-        "SELECT symbol FROM pos WHERE status IN ('pending','open') AND portfolio=?",
+        "SELECT symbol FROM pos WHERE status IN ('pending','open') AND bucket=?",
         (which,))}
-    cfg = portfolio_cfg(which)
+    cfg = bucket_cfg(which)
     n = 0
     for r in rows:
         if r["symbol"] in held:
             continue
-        # A book with its own stop re-derives stop and target from the
+        # A bucket with its own stop re-derives stop and target from the
         # reference close rather than inheriting main's levels.
         stop, target = r["stop"], r["target"]
         if cfg["stop_pct"] != STOP_PCT:
             ref = r["ref_close"]
             stop = round(ref * (1 - cfg["stop_pct"] / 100), 2)
-        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target,portfolio)"
+        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target,bucket)"
                   " VALUES(?,?,'pending',?,?,?,?,?)",
                   (r["symbol"], r["cluster"], str(day), r["qty"], stop, target, which))
         n += 1
@@ -192,7 +173,7 @@ def fill_live(day, conn=None):
     """Fill pending orders at TODAY'S opening price, fetched live.
 
     The evening run fills from the bhavcopy and is the record of truth. This
-    runs in the morning so the book reflects reality within minutes of the open
+    runs in the morning so the bucket reflects reality within minutes of the open
     instead of nine hours later. Both fill at the same price -- the day's open
     -- so the evening run reconciles rather than re-fills.
 
@@ -230,7 +211,7 @@ def fill_live(day, conn=None):
         px = (q.get(p["symbol"]) or {}).get("open")
         if not px:
             continue
-        sp = portfolio_cfg(p["portfolio"])["stop_pct"]
+        sp = bucket_cfg(p["bucket"])["stop_pct"]
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, fill_source='live' WHERE id=?",
                   (str(day), px, px * (1 - sp / 100),
@@ -244,7 +225,7 @@ def reconcile(corpus, day, conn=None):
     """Check live fills against the official open once the bhavcopy lands.
 
     A live quote is a convenience; the bhavcopy is the record. If they differ
-    the book is corrected and the difference reported, because a fill price
+    the bucket is corrected and the difference reported, because a fill price
     that quietly drifts is a P&L error that compounds.
     """
     c = conn or db()
@@ -261,7 +242,7 @@ def reconcile(corpus, day, conn=None):
             continue
         official = s.open[i]
         if official and abs(official - p["entry_px"]) > 0.005:
-            sp = portfolio_cfg(p["portfolio"])["stop_pct"]
+            sp = bucket_cfg(p["bucket"])["stop_pct"]
             c.execute("UPDATE pos SET entry_px=?, stop=?, target=?,"
                       " fill_source='reconciled' WHERE id=?",
                       (official, official * (1 - sp / 100),
@@ -296,7 +277,7 @@ def step(corpus, day, conn=None):
             continue
         # Stop and target are recomputed from the ACTUAL fill, not from the
         # reference close used when queueing -- an overnight gap moves both.
-        sp = portfolio_cfg(p["portfolio"])["stop_pct"]
+        sp = bucket_cfg(p["bucket"])["stop_pct"]
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, features=? WHERE id=?",
                   (str(day), px, px * (1 - sp / 100), px * (1 + TARGET_PCT / 100),
@@ -330,7 +311,7 @@ def step(corpus, day, conn=None):
                 learning.record([{**f, "ret": (px / p["entry_px"] - 1) * 100,
                                   "net": net, "exit": why, "symbol": p["symbol"],
                                   "cluster": p["cluster"], "date": str(day),
-                                  "portfolio": p["portfolio"], "source": "portfolio"}])
+                                  "portfolio": p["bucket"], "source": "portfolio"}])
         except Exception:
             pass
     c.commit()
@@ -339,7 +320,7 @@ def step(corpus, day, conn=None):
 
 
 def shadow_stop(corpus, conn=None, pct=5.0, which=MAIN):
-    """Would a `pct` stop have been hit on this book's OWN positions?
+    """Would a `pct` stop have been hit on this bucket's OWN positions?
 
     The counterfactual is exact rather than approximate: same entry price, same
     bars, so there is nothing to pair up and nothing that can drift. It answers
@@ -375,7 +356,7 @@ def shadow_stop(corpus, conn=None, pct=5.0, which=MAIN):
             if s.low[i] <= lvl:
                 hit, day = True, d
                 break
-        out.append({"symbol": r["symbol"], "portfolio": r["portfolio"],
+        out.append({"symbol": r["symbol"], "bucket": r["bucket"],
                     "entry": r["entry_px"], "level": lvl, "real_stop": real,
                     "shadow_hit": bool(hit), "shadow_day": day,
                     "real_exit": r["exit_reason"], "status": r["status"]})
@@ -395,7 +376,7 @@ def summary(conn=None, which=MAIN):
     """
     c = conn or db()
     c.row_factory = sqlite3.Row
-    q = "SELECT * FROM pos" + ("" if which is None else " WHERE portfolio=?")
+    q = "SELECT * FROM pos" + ("" if which is None else " WHERE bucket=?")
     rows = [dict(r) for r in c.execute(q, () if which is None else (which,)).fetchall()]
     c.row_factory = None
     closed = [r for r in rows if r["status"] == "closed"]
@@ -454,7 +435,7 @@ def __selftest_body():
             filled, closed = step(corpus, days[201], c)
             assert len(filled) == 2 and not closed, (filled, closed)
             got = dict(c.execute(
-                "SELECT portfolio, stop FROM pos WHERE status='open'").fetchall())
+                "SELECT bucket, stop FROM pos WHERE status='open'").fetchall())
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
             assert abs(got["second"] - 90.0) < 1e-9, got
 

@@ -88,13 +88,13 @@ def _pct_rank(vals):
 # Overridable so a caller can test a weight set WITHOUT saving it. These were
 # function-locals inside score(), which made them look injectable while every
 # call silently re-read the file: four different weight configurations returned
-# byte-identical books, and the only clue was that they matched to the digit.
+# byte-identical buckets, and the only clue was that they matched to the digit.
 W = None
 INVERTED = None
 
 # --- literature-derived knobs, both OFF by default -------------------------
 # These change SELECTION, so they default to the current behaviour and are
-# switched on only by a test. Anything that silently altered the live book
+# switched on only by a test. Anything that silently altered the live bucket
 # would invalidate every measurement taken before it.
 
 # Jegadeesh & Titman momentum is measured to t-1 MONTH, not to t: the most
@@ -199,7 +199,7 @@ def pick_pooled(corpus, as_of, n=PER_CLUSTER * len(CLUSTERS)):
     Percentile ranks are then computed across every tradeable name rather than
     within a size band, so `liq` is no longer neutralised by comparing a stock
     only against others of similar turnover. Under the old three-cluster design
-    this collapsed the book into the largest band for exactly that reason; with
+    this collapsed the bucket into the largest band for exactly that reason; with
     the most liquid third now discarded entirely, the question is open again.
     """
     bands = size_clusters(corpus, as_of, names=CLUSTERS)

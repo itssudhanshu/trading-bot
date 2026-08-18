@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Daily driver for the Rs 3,00,000 cluster book.
+"""Daily driver for the Rs 3,00,000 bucket.
 
-Re-selects only when the book has room. Re-running the screen every session and
-queueing the new top-5 would churn the book daily and never let a 15-day thesis
-play out -- the holding period IS the strategy.
+Re-selects only when the bucket has room. Re-running the screen every session
+and queueing the new top-5 would churn it daily and never let a thesis play out
+-- the holding period IS the strategy.
 """
 
-# First: puts core/, book/, research/ and ops/ on sys.path.
+# First: puts core/, bucket/, research/ and ops/ on sys.path.
 import paths  # noqa: F401
 import sys
 from datetime import date
@@ -59,31 +59,18 @@ def main(day=None):
     filled, closed = pbook.step(corpus, day, conn)
     s = pbook.summary(conn)
 
-    # Rank ONCE, allocate per book. build() is the expensive call and every
-    # book reads the same ranking -- the books differ only in how far down it
-    # they reach, which is exactly what makes their positions disjoint.
     rows = portfolio.build(corpus, day, capital=s["equity"])
-    queued = {}
-    for name, cfg in pbook.PORTFOLIOS.items():
-        bs = pbook.summary(conn, which=name)
-        room = portfolio.MAX_POSITIONS - (bs["open"] + bs["pending"])
-        if room <= 0:
-            continue
-        picks = portfolio.allocate(rows, offset=cfg["offset"])
-        n = pbook.queue(picks[:room], day, conn, which=name)
-        if n:
-            queued[name] = n
+    room = portfolio.MAX_POSITIONS - (s["open"] + s["pending"])
+    queued = pbook.queue(portfolio.allocate(rows)[:room], day, conn) if room > 0 else 0
 
     print(f"{day}  equity Rs {s['equity']:,.0f}  realised Rs {s['realised']:+,.0f}")
-    print(f"  filled {len(filled)}  closed {len(closed)}  "
-          f"queued {sum(queued.values())} {queued or ''}")
-    print(f"  main: open {s['open']}  pending {s['pending']}  "
+    print(f"  filled {len(filled)}  closed {len(closed)}  queued {queued}")
+    print(f"  bucket: open {s['open']}  pending {s['pending']}  "
           f"closed-total {s['closed']}")
     allb = pbook.summary(conn, which=None)
-    print(f"  all portfolios: open {allb['open']}  pending {allb['pending']}  "
-          f"closed-total {allb['closed']}  "
-          f"({len(pbook.PORTFOLIOS)} portfolios, "
-          f"~{71 * len(pbook.PORTFOLIOS):.0f} trades/yr)")
+    if allb["open"] != s["open"] or allb["closed"] != s["closed"]:
+        print(f"  incl. retired buckets: open {allb['open']}  "
+              f"closed-total {allb['closed']}")
 
     # Record the findings after every session that closed something, so the
     # per-stock and per-cluster picture accumulates instead of being recomputed

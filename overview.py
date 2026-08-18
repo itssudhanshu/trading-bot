@@ -7,7 +7,7 @@ project has been a confident claim no file supported (a flag printing
 this module states nothing it did not just read.
 """
 
-# First: puts core/, book/, research/ and ops/ on sys.path.
+# First: puts core/, bucket/, research/ and ops/ on sys.path.
 import paths  # noqa: F401
 import json
 import sqlite3
@@ -51,24 +51,23 @@ def state():
     s["sims_positive"] = sum(1 for r in sims if r.get("cagr", 0) > 0)
     s["candidates"] = simulate.load_strats("candidate", track="cluster")
 
-    # MAIN ONLY. The research books (rank cohorts, the paired tight-stop portfolio)
-    # deliberately generate more forward trades, and folding them in here would
-    # overstate the evidence this page exists to report honestly. They are
-    # reported separately by /books.
-    s["portfolio"] = {"pending": 0, "open": 0, "closed": 0, "net": 0.0}
+    # The one bucket. Two positions opened by the retired deeper buckets are
+    # excluded here: they were bought at ranks the score marks as worse, and
+    # folding them into the headline would misreport what the strategy did.
+    s["bucket"] = {"pending": 0, "open": 0, "closed": 0, "net": 0.0}
     if (D / "pbook.db").exists():
         import pbook
         con = sqlite3.connect(D / "pbook.db")
         cols = {r[1] for r in con.execute("PRAGMA table_info(pos)")}
-        where, arg = ("", ()) if "portfolio" not in cols else (
-            " WHERE portfolio=?", (pbook.MAIN,))
+        where, arg = ("", ()) if "bucket" not in cols else (
+            " WHERE bucket=?", (pbook.MAIN,))
         for st_, n in con.execute(
                 f"select status, count(*) from pos{where} group by status", arg):
-            s["portfolio"][st_] = n
+            s["bucket"][st_] = n
         (net,) = con.execute(
             "select coalesce(sum(net),0) from pos where status='closed'"
-            + (" AND portfolio=?" if where else ""), arg).fetchone()
-        s["portfolio"]["net"] = net
+            + (" AND bucket=?" if where else ""), arg).fetchone()
+        s["bucket"]["net"] = net
         con.close()
 
     try:
@@ -93,8 +92,8 @@ def gates(s):
     g.append(("Market impact modelled", "PASS",
               "sqrt(participation) x volatility on both sides; baseline "
               "+10.85% at c=1.0 (was +13.97% assuming free fills)"))
-    b = s["portfolio"]
-    # How long until forward trades can settle anything, at the book's own
+    b = s["bucket"]
+    # How long until forward trades can settle anything, at the bucket's own
     # turnover. Roughly 3 positions on 15-day holds is ~52 trades a year.
     try:
         import analysis, portfolio
@@ -116,7 +115,7 @@ def gates(s):
 
 def direction(s):
     """-> (verdict, reasons). Backtests cannot produce a YES."""
-    b = s["portfolio"]
+    b = s["bucket"]
     if b["closed"] >= 30:
         return ("YES" if b["net"] > 0 else "NO"), [
             f"{b['closed']} forward trades, realised {b['net']:+,.0f}"]
@@ -134,7 +133,7 @@ def render(s=None):
     g = gates(s)
     verdict, why = direction(s)
     mix = " / ".join(f"{v} {k}" for k, v in s["mix"].items())
-    b = s["portfolio"]
+    b = s["bucket"]
     L = [f"OVERVIEW  {date.today()}", "=" * 62, "",
          "THE APPROACH",
          f"  Universe   NSE equities, {s['days']} sessions "
@@ -176,7 +175,7 @@ def _selftest():
     assert g and all(len(x) == 3 for x in g), g
     v, why = direction(s)
     if v.startswith("YES"):
-        assert s["portfolio"]["closed"] >= 30, "unearned YES"
+        assert s["bucket"]["closed"] >= 30, "unearned YES"
     assert why, "a verdict must carry its reasons"
     assert "GATES" in render(s), "render must include the gates section"
     print("overview selftest ok")

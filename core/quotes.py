@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live intraday prices.
 
-The book is otherwise driven by the end-of-day bhavcopy, which is the right
+The bucket is otherwise driven by the end-of-day bhavcopy, which is the right
 source for anything that must be reproducible. This module exists only for the
 two things that genuinely need the market to be open: filling an order at the
 morning's actual opening price, and showing a running position's profit while
@@ -35,7 +35,7 @@ def set_provider(fn):
     """Register a callable: symbols -> {symbol: {"ltp", "open", "high", "low"}}.
 
     Kept as a hook rather than a hard-coded broker so the credentialed source
-    can be swapped without touching the book.
+    can be swapped without touching the bucket.
     """
     global _PROVIDER
     _PROVIDER = fn

@@ -147,7 +147,7 @@ def main():
     q, risk = portfolio.position_size(portfolio.CAPITAL, 100.0)
     check("position size matches the deployment cap", abs(q * 100.0 - per) < 100,
           f"Rs {q*100:,.0f} per stock vs cap Rs {per:,.0f}")
-    check("a full book stays inside the deployment cap",
+    check("a full bucket stays inside the deployment cap",
           per * portfolio.MAX_POSITIONS <= portfolio.CAPITAL * portfolio.DEPLOY_PCT / 100 + 1,
           f"Rs {per*portfolio.MAX_POSITIONS:,.0f} of Rs {portfolio.CAPITAL:,}")
     big, _ = portfolio.position_size(portfolio.CAPITAL, 100.0, mult=99)
@@ -254,50 +254,29 @@ def main():
                    - {c for c in tg.COMMANDS if c.replace("_", "\\_") in tg.cmd_help()})
     check("every command appears in /help", not undoc, f"{undoc or 'none'}")
 
-    # ------------------------------------------------------------- PORTFOLIOS
-    section("PARALLEL PORTFOLIOS")
+    # -------------------------------------------------------------- BUCKET
+    section("THE BUCKET")
     import pbook
     conn = pbook.db()
-    # The whole design rests on the pooled books holding DISJOINT positions. If
-    # they overlap, their trades are correlated and pooling them overstates the
-    # evidence -- the exact error this was built to avoid.
-    pooled = [n for n, c in pbook.PORTFOLIOS.items() if c["pool"]]
-    live = {}
-    for n in pooled:
-        live[n] = {r["symbol"] for r in pbook.summary(conn, which=n)["rows"]
-                   if r["status"] in ("open", "pending")}
-    dupes = [(a, b, sorted(live[a] & live[b])) for i, a in enumerate(pooled)
-             for b in pooled[i + 1:] if live[a] & live[b]]
-    check("counted-together portfolios share no stocks", not dupes,
-          f"{dupes or 'none'}")
 
-    # Disjoint BY CONSTRUCTION, not just today by luck.
-    sel = {n: {r["symbol"] for r in
-               portfolio.allocate(rows, offset=pbook.PORTFOLIOS[n]["offset"])}
-           for n in pooled}
-    over = [(a, b) for i, a in enumerate(pooled) for b in pooled[i + 1:]
-            if sel[a] & sel[b]]
-    check("the portfolios pick different stocks", not over,
-          f"{ {k: len(v) for k, v in sel.items()} }, overlaps {over or 'none'}")
+    # One bucket, buying the top of the ranking. The deeper buckets that ran
+    # for a day are gone; what they bought is still open and still labelled,
+    # so the check is that nothing NEW is created outside the one bucket.
+    sel = {r["symbol"] for r in portfolio.allocate(rows)}
+    top = set()
+    for c, k in portfolio.TAKE_PER_CLUSTER.items():
+        top |= {r["symbol"] for r in rows if r["cluster"] == c}.intersection(
+            {r["symbol"] for r in [x for x in rows if x["cluster"] == c][:k]})
+    check("the bucket only buys the top of each cluster", sel <= top,
+          f"selected {sorted(sel)}; outside the top ranks: {sorted(sel - top) or 'none'}")
 
-    # Every stored label must map to a portfolio that exists. Two renames have
-    # now left rows pointing at a name the code no longer defines, and both
-    # times the position simply stopped being counted anywhere.
-    stored = {r[0] for r in conn.execute("SELECT DISTINCT portfolio FROM pos")}
-    orphans = stored - set(pbook.PORTFOLIOS)
-    check("every stored position belongs to a known portfolio", not orphans,
-          f"{sorted(stored)}; orphaned {sorted(orphans) or 'none'}")
+    queued = {r["bucket"] for r in pbook.summary(conn, which=None)["rows"]
+              if r["status"] == "pending"}
+    check("nothing is queued outside the one bucket",
+          queued <= {pbook.MAIN}, f"queued into {sorted(queued) or 'nothing'}")
 
-    # No portfolio may run its own parameters. One with different rules is a
-    # competitor, a leaderboard forms, and the leaderboard gets picked from --
-    # which contaminates the one evidence stream a search cannot reach.
-    variants = [n for n, c in pbook.PORTFOLIOS.items()
-                if c["stop_pct"] not in (None, portfolio.STOP_PCT)]
-    check("every portfolio runs identical rules", not variants,
-          f"{variants or 'none'}; they differ only by rank depth")
-
-    # The tighter-stop counterfactual must be exact, i.e. computed on positions
-    # that really existed, and must refuse a level at or above the entry.
+    # The tighter-stop counterfactual must be exact -- computed on positions
+    # that really existed -- and must refuse a level at or above the entry.
     sh = pbook.shadow_stop(features.load_corpus(), conn, pct=5.0)
     bad = [x for x in sh if not (0 < x["level"] < x["entry"])]
     check("the shadow stop sits below every real entry", not bad,

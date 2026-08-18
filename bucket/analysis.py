@@ -3,7 +3,7 @@
 
 Per-stock numbers are reported but must not be used to pick stocks. A symbol
 contributes one or two trades over six years, so its win rate is noise; acting
-on it would teach the book to chase whatever got lucky. Features recur across
+on it would teach the bucket to chase whatever got lucky. Features recur across
 thousands of trades and can be measured -- symbols cannot. What per-stock data
 IS good for is concentration: if a handful of names produced the entire
 result, the strategy is one lucky streak wearing a track record.
@@ -101,7 +101,7 @@ def _selftest():
     pc = per_cluster(t)
     assert pc["micro"]["n"] == 2 and abs(pc["micro"]["total"] - 8.0) < 1e-9
     assert set(pc) <= {"micro", "small"}, pc
-    # a book whose gains all sit in one name must report 100%
+    # a bucket whose gains all sit in one name must report 100%
     assert concentration([{"sym": "X", "ret": 5.0, "clu": "m"}])["top1"] == 100.0
     print("analysis selftest ok")
 
@@ -117,7 +117,7 @@ FINDINGS = paths.DATA / "findings.jsonl"
 
 
 def record(label, trades, extra=None):
-    """Append one dated finding: what the book did, and what it means.
+    """Append one dated finding: what the bucket did, and what it means.
 
     Append-only. A finding recorded under one set of rules is not comparable to
     one recorded under another, so each row carries the configuration that
@@ -167,9 +167,9 @@ OCC_BASELINE = paths.DATA / "occupancy_baseline.json"
 
 
 def save_occupancy(dist, mean, config):
-    """Store how often the book holds n stocks, historically.
+    """Store how often the bucket holds n stocks, historically.
 
-    Without this, a book showing one stock looks broken. It is not: one stock
+    Without this, a bucket showing one stock looks broken. It is not: one stock
     is the normal state 14% of the time. The baseline is what turns "we only
     hold 1" into "we hold 1, which happens about one session in seven".
     """
@@ -222,7 +222,7 @@ def stats(trades):
 def trades_needed(edge_pct, sd_pct=TRADE_SD):
     """-> how many trades before an edge of `edge_pct` per trade is detectable.
 
-    16% is the measured standard deviation of trade returns in this book. The
+    16% is the measured standard deviation of trade returns in this bucket. The
     answer is large and that is the point: a handful of good weeks proves
     nothing, and knowing the number up front stops us reading one.
     """

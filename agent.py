@@ -16,7 +16,7 @@ runs `pipeline.py --consult` deliberately. An unattended loop would exhaust 50
 lifetime consultations in a weekend.
 """
 
-# First: puts core/, book/, research/ and ops/ on sys.path.
+# First: puts core/, bucket/, research/ and ops/ on sys.path.
 import paths  # noqa: F401
 import argparse
 import json
@@ -80,14 +80,14 @@ _JOBS = {
     "catchup":  ["ops/snapshot.py", "--catchup"],
     "pbook":    ["pbook_run.py"],
     # Morning: fill pending orders at the day's actual open, rather than
-    # leaving the book nine hours behind the market.
+    # leaving the bucket nine hours behind the market.
     "fill":     ["pbook_run.py", "--fill-live"],
     # Nothing refreshed data/audit.log, so /review reported whatever number was
     # written the last time someone ran it by hand -- it was still claiming
     # "21 passed" after the suite had grown to 30. A self-check nobody runs is
     # not a self-check.
     "audit":    ["ops/audit.py"],
-    # Evening, after the book has stepped and the audit has run: push the day's
+    # Evening, after the bucket has stepped and the audit has run: push the day's
     # ranking, the evidence so far, and any weight change that has EARNED
     # itself. It proposes and never applies -- see tg.cmd_review.
     "review":   ["tg.py", "--review"],
@@ -143,7 +143,7 @@ def due(now=None):
     # This used to test for asm.json, which is served all day. Running the
     # snapshot once in the MORNING therefore created asm.json while the
     # bhavcopy was still 404 -- and the evening check then saw asm.json, judged
-    # the day collected, and never fetched the prices. The book sat unfilled
+    # the day collected, and never fetched the prices. The bucket sat unfilled
     # with the job reporting "ok". Test for the file that actually matters.
     raw = ROOT / "data" / "raw"
     today = now.date()
@@ -158,7 +158,7 @@ def due(now=None):
         todo.append("catchup")
     if st.get("last_pbook") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("pbook")
-    # After pbook, so both read a book that has already stepped today. Order
+    # After pbook, so both read a bucket that has already stepped today. Order
     # matters: audit writes the log that review quotes.
     if st.get("last_audit") != str(today) and now.weekday() < 5 and now.hour >= 18:
         todo.append("audit")
@@ -260,7 +260,7 @@ def attention():
         _rows = _p.build(_corpus, _day)
         for _cl, _k in _p.TAKE_PER_CLUSTER.items():
             _have = len([r for r in _rows if r["cluster"] == _cl])
-            _need = _k * len(_pb.PORTFOLIOS)
+            _need = _k
             if _have < _need:
                 out.append(f"only {_have} {_cl} candidates for {_need} portfolio "
                            f"places -- the deepest portfolios will find nothing "
@@ -269,7 +269,7 @@ def attention():
     except Exception:
         pass
 
-    # The book is queued but nothing has filled for several sessions: either
+    # The bucket is queued but nothing has filled for several sessions: either
     # no candidate is triggering, which is normal, or pbook has stopped running.
     try:
         import pbook
@@ -299,11 +299,11 @@ def digest():
     try:
         import pbook, portfolio
         s = pbook.summary()
-        lines.append(f"- book: **{s['open']}** open, **{s['pending']}** queued, "
+        lines.append(f"- bucket: **{s['open']}** open, **{s['pending']}** queued, "
                      f"**{s['closed']}** closed, realised "
                      f"**Rs {s['realised']:+,.0f}** of Rs {portfolio.CAPITAL:,}")
     except Exception as e:
-        lines.append(f"- book: unavailable ({type(e).__name__})")
+        lines.append(f"- bucket: unavailable ({type(e).__name__})")
     lines += ["", f"last tasks: {json.dumps({k: str(v) for k, v in st.items()})}"]
     DIGEST.write_text("\n".join(lines) + "\n")
     return DIGEST
@@ -397,7 +397,7 @@ def _selftest():
         with tempfile.TemporaryDirectory() as td:
             STATE, DIGEST, LOCK = (Path(td) / "s.json", Path(td) / "d.md",
                                    Path(td) / "l")
-            # The cycle is data collection plus the book. Nothing runs on a
+            # The cycle is data collection plus the bucket. Nothing runs on a
             # weekend beyond catch-up, and nothing runs before the close.
             sat = datetime(2026, 8, 15, 10)      # Saturday
             assert "pbook" not in due(sat), due(sat)
@@ -461,7 +461,7 @@ def _selftest():
             assert not any("waiting for a deliberate" in m for m in msgs), msgs
     finally:
         STATE, DIGEST, LOCK = o
-    # The agent runs only data collection and the book. Assert against the
+    # The agent runs only data collection and the bucket. Assert against the
     # COMMAND TABLE, not the source text -- a source scan for forbidden names
     # matches the list of forbidden names itself and can never pass.
     allowed = {"ops/snapshot.py", "pbook_run.py", "tg.py", "ops/audit.py",
@@ -472,10 +472,17 @@ def _selftest():
     assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill",
                               "review", "audit"}, _JOB_NAMES
     # The fill must not be attempted before the open has printed, and must
-    # still be due later in the day if it was.
-    assert "fill" not in due(datetime(2026, 8, 18, 9, 0)), "tried before the open"
-    assert "fill" in due(datetime(2026, 8, 18, 9, 20)), "never tries after it"
-    assert "fill" in due(datetime(2026, 8, 18, 14, 0)), "gave up mid-session"
+    # still be due later in the day if it was. Against an EMPTY state file --
+    # reading the live one made this pass or fail depending on whether today's
+    # fill had already run, which is a test of the clock, not of the rule.
+    _o = STATE
+    try:
+        STATE = Path(tempfile.mkdtemp()) / "s.json"
+        assert "fill" not in due(datetime(2026, 8, 18, 9, 0)), "tried before the open"
+        assert "fill" in due(datetime(2026, 8, 18, 9, 20)), "never tries after it"
+        assert "fill" in due(datetime(2026, 8, 18, 14, 0)), "gave up mid-session"
+    finally:
+        STATE = _o
 
     # review must run AFTER pbook and AFTER audit on the same tick: pbook so it
     # reports today's book, audit so it quotes today's self-check.

@@ -302,7 +302,7 @@ def _selftest():
     from datetime import timedelta
 
     # The corpus cache must invalidate when NSE publishes a new day. A cache
-    # that never invalidates serves yesterday's prices to a live book, which
+    # that never invalidates serves yesterday's prices to a live bucket, which
     # would be far worse than the 18s it saves.
     global RAW, _CORPUS
     import tempfile

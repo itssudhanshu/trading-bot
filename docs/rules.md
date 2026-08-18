@@ -11,10 +11,13 @@ Before introducing a term, check whether the project already names that thing.
 If it does, use that name. If two names exist for one thing, one of them is
 wrong and must be deleted, not tolerated.
 
-**How this was broken:** `book` was added for a paper portfolio while `bucket`
-and `portfolio` already existed for overlapping ideas. That produced `BOOKS`,
-`/books`, a `book` column and the phrase "the record book" — three words for
-one concept, none of which a newcomer could rank against the others.
+**How this was broken, twice.** `book` was added for a paper portfolio while
+`bucket` and `portfolio` already existed for overlapping ideas — three words
+for one concept. It was then "fixed" by deleting `bucket` and keeping
+`portfolio`, which was the wrong survivor: the operator's word is **bucket**,
+and renaming toward the unfamiliar one is not a fix, it is a second rename.
+
+The canonical word is `bucket`. Not portfolio, not book, not holdings.
 
 **The related failure**, one layer down: a name that collides with an existing
 word in a *different* sense is the same bug. `rank2` as a portfolio name
@@ -31,7 +34,7 @@ could a friend who has never bought a share tell what happened?
 
 | instead of | say |
 |---|---|
-| book / bucket | portfolio, or "today's picks" |
+| portfolio, book, holdings | **bucket** — the one word for the stocks we hold |
 | cluster | size group |
 | micro / small | smallest companies / small companies |
 | liquidity, illiquid | how easily it trades / thinly traded |

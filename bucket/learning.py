@@ -62,7 +62,7 @@ DEFAULT_WEIGHTS = {f: 1.0 for f in ("rs", "deliv", "liq", "near_high")}
 #
 # EMPTY, and the reason matters. `deliv` qualified on every test available --
 # consistent negative spread (-0.97 -> -0.70 across halves), split-check passed
-# -- and inverting it took the book from +6.37% CAGR / 48% DD to -19.92% / 89%.
+# -- and inverting it took the bucket from +6.37% CAGR / 48% DD to -19.92% / 89%.
 #
 # The measurement was CONDITIONED ON SELECTION: those 2,758 trades were chosen
 # partly BY delivery, so the spread describes "among stocks already picked for
