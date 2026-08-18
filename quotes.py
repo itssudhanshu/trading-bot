@@ -53,6 +53,51 @@ def provider_name():
 INSTRUMENTS = __import__("pathlib").Path(__file__).resolve().parent / "data" / "upstox_instruments.json"
 
 
+def token_hours_left(tok):
+    """-> hours until an Upstox JWT expires, or None if it is not a JWT.
+
+    Only the `exp` claim is read. Nothing identifying is decoded or logged.
+    """
+    import base64
+    import datetime as _dt
+    import json as _j
+    parts = (tok or "").split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        pad = parts[1] + "=" * (-len(parts[1]) % 4)
+        exp = _j.loads(base64.urlsafe_b64decode(pad)).get("exp")
+    except Exception:
+        return None
+    if not exp:
+        return None
+    return (exp - _dt.datetime.now().timestamp()) / 3600
+
+
+def env_value(name):
+    """-> a value from the environment or .env, or "" if unset/blank.
+
+    Tolerant of `export `, surrounding quotes and stray whitespace, and treats
+    a key present with an EMPTY value as unset -- which is exactly how an
+    unfilled `UPSTOX_ACCESS_TOKEN=` line presented, while every check for "is
+    the key there?" said yes.
+    """
+    import os
+    v = os.environ.get(name) or ""
+    if not v.strip():
+        p = __import__("pathlib").Path(__file__).resolve().parent / ".env"
+        if p.exists():
+            for line in p.read_text().splitlines():
+                s = line.strip()
+                if s.startswith("export "):
+                    s = s[7:].lstrip()
+                k, sep, val = s.partition("=")
+                if sep and k.strip() == name:
+                    v = val.strip().strip("'\"")
+                    break
+    return v.strip()
+
+
 def instrument_keys(symbols=None, refresh=False):
     """-> {trading_symbol: instrument_key} for NSE equities.
 
@@ -100,23 +145,31 @@ def upstox(symbols):
     flow to mint a fresh one. Until then this returns {} after expiry and the
     fill falls through to Yahoo, which is why the chain is ordered that way.
     """
-    import os
-    tok = os.environ.get("UPSTOX_ACCESS_TOKEN")
+    tok = env_value("UPSTOX_ACCESS_TOKEN")
     if not tok:
-        p = __import__("pathlib").Path(__file__).resolve().parent / ".env"
-        if p.exists():
-            for line in p.read_text().splitlines():
-                if line.startswith("UPSTOX_ACCESS_TOKEN="):
-                    tok = line.split("=", 1)[1].strip()
-    if not tok:
+        upstox.last_error = "no UPSTOX_ACCESS_TOKEN in .env"
+        return {}
+    # Check the expiry OURSELVES. Upstox tokens are JWTs that die around 03:30
+    # IST daily, and a stale one answers 401 "Invalid token" -- which reads as
+    # "you pasted it wrong" and sent this debugging down the wrong path. A
+    # token six days past expiry should say so.
+    left = token_hours_left(tok)
+    if left is not None and left <= 0:
+        upstox.last_error = (f"UPSTOX_ACCESS_TOKEN expired {-left:.0f}h ago; "
+                             f"run `python3 upstox_login.py`")
         return {}
     keymap = instrument_keys(symbols)
     keys = ",".join(keymap[s] for s in symbols if s in keymap)
     if not keys:
         return {}
+    # A User-Agent is REQUIRED. Without one urllib sends "Python-urllib/3.x"
+    # and Cloudflare answers 403 error 1010 "browser_signature_banned" before
+    # the request reaches Upstox at all -- which looks exactly like a bad
+    # token and sent this debugging down the wrong path once.
     req = urllib.request.Request(
         f"https://api.upstox.com/v2/market-quote/quotes?instrument_key={keys}",
-        headers={"Authorization": f"Bearer {tok}", "Accept": "application/json"})
+        headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
+                 "User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             data = json.loads(r.read()).get("data", {})
@@ -241,9 +294,14 @@ def yahoo_bar(result, on):
 yahoo.authoritative = True
 
 
+upstox.last_error = None
+
+
 def why_no_quote():
-    """-> a human reason the last authoritative fetch produced nothing."""
-    return getattr(yahoo, "last_error", None) or "no reason recorded"
+    """-> a human reason the authoritative sources produced nothing."""
+    reasons = [r for r in (getattr(upstox, "last_error", None),
+                           getattr(yahoo, "last_error", None)) if r]
+    return "; ".join(reasons) or "no reason recorded"
 
 
 def _nse(symbols):
@@ -350,6 +408,16 @@ def _upstox_selftest():
     finally:
         if had:
             os.environ["UPSTOX_ACCESS_TOKEN"] = had
+    # the expiry gate is what turns a useless 401 into a usable message
+    import base64 as _b64, json as _j, time as _t
+    def _jwt(exp_delta):
+        p = _b64.urlsafe_b64encode(
+            _j.dumps({"exp": int(_t.time()) + exp_delta}).encode()).decode().rstrip("=")
+        return f"header.{p}.sig"
+    assert token_hours_left(_jwt(3600)) > 0.9
+    assert token_hours_left(_jwt(-3600)) < 0, "an expired token must read negative"
+    assert token_hours_left("not-a-jwt") is None
+    assert token_hours_left("") is None
     print(f"  upstox instrument keys ok ({len(m)} cached)")
 
 
