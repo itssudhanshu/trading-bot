@@ -112,6 +112,10 @@ def bucket_cfg(name=MAIN):
 
 def db():
     c = sqlite3.connect(DB)
+    # Two processes write this file -- the hourly launchd agent and the Telegram
+    # listener -- and SQLite's default on a busy file is to fail INSTANTLY with
+    # "database is locked" rather than wait for the other writer to finish.
+    c.execute("PRAGMA busy_timeout=5000")
     c.executescript("""
     CREATE TABLE IF NOT EXISTS pos(
       id INTEGER PRIMARY KEY, symbol TEXT, cluster TEXT, status TEXT,
@@ -134,17 +138,106 @@ def db():
                 c.execute(f"UPDATE pos SET bucket = {old} WHERE {old} IS NOT NULL")
                 break
         c.execute(f"UPDATE pos SET bucket = '{MAIN}' WHERE bucket IS NULL")
+    # Which ranking produced the position. The retired deeper buckets bought
+    # ranks the score marks as worse (-0.90%/step), so their trades must stay
+    # separable from the score's own picks even after the bucket LABEL is gone
+    # -- otherwise the first closed forward trades read as evidence for a
+    # selection that did not make them. NULL means the score picked it.
+    if "origin" not in cols:
+        c.execute("ALTER TABLE pos ADD COLUMN origin TEXT")
+    _append_only(c)
     c.commit()
     return c
+
+
+def _audit_triggers(cols):
+    """Trigger SQL snapshotting every column, BUILT from the live schema.
+
+    Enumerated by hand this goes stale the moment a column is added -- `bucket`
+    and `origin` were both added by migration above, and an audit trail missing
+    the column that says where a position came from is not an audit trail.
+    Rebuilt on every open, so an ALTER cannot leave it behind.
+    """
+    obj = ", ".join(f"'{c}', new.{c}" for c in cols)
+    return f"""
+    DROP TRIGGER IF EXISTS pos_log_ins;
+    DROP TRIGGER IF EXISTS pos_log_upd;
+    CREATE TRIGGER pos_log_ins AFTER INSERT ON pos BEGIN
+      INSERT INTO pos_log(pos_id, action, row)
+      VALUES(new.id, 'insert', json_object({obj}));
+    END;
+    CREATE TRIGGER pos_log_upd AFTER UPDATE ON pos BEGIN
+      INSERT INTO pos_log(pos_id, action, row)
+      VALUES(new.id, 'update', json_object({obj}));
+    END;
+    """
+
+
+def _append_only(c):
+    """Make the record immutable-by-subtraction: rows may be edited, never gone.
+
+    All four rules live in the DATABASE, not in this module, because the file is
+    also opened by the sqlite3 CLI, by ops scripts and by anything future. A
+    rule enforced in Python is a rule that the next writer does not inherit --
+    and the position that vanished in the pbook -> positions rename was lost
+    exactly that way, by a path that never went through this code.
+    """
+    cols = [r[1] for r in c.execute("PRAGMA table_info(pos)")]
+    c.executescript("""
+    -- No delete, at any depth. Editing is the only way to retire a row, which
+    -- is why a wrong entry is closed with an exit_reason rather than removed.
+    CREATE TRIGGER IF NOT EXISTS pos_no_delete BEFORE DELETE ON pos BEGIN
+      SELECT RAISE(ABORT,
+        'pos is append-only: a position may be edited, never deleted');
+    END;
+    -- Every insert and every edit, kept forever. Append-only is only half a
+    -- guarantee without it: a row that can be edited without a trail can be
+    -- blanked, which is a delete wearing a different hat.
+    CREATE TABLE IF NOT EXISTS pos_log(
+      seq INTEGER PRIMARY KEY,
+      at TEXT NOT NULL DEFAULT (datetime('now')),
+      pos_id INTEGER NOT NULL, action TEXT NOT NULL, row TEXT NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS pos_log_no_delete BEFORE DELETE ON pos_log BEGIN
+      SELECT RAISE(ABORT, 'pos_log is the audit trail and is append-only');
+    END;
+    -- The three order books the operator asks for by name. VIEWS, not tables:
+    -- a pending order that fills would otherwise have to be DELETEd from
+    -- next_orders to appear in open_orders, and no-delete forbids that. One
+    -- table with a status, three names to read it by.
+    CREATE VIEW IF NOT EXISTS next_orders   AS SELECT * FROM pos WHERE status='pending';
+    CREATE VIEW IF NOT EXISTS open_orders   AS SELECT * FROM pos WHERE status='open';
+    CREATE VIEW IF NOT EXISTS closed_orders AS SELECT * FROM pos WHERE status='closed';
+    """)
+    c.executescript(_audit_triggers(cols))
+    # One live row per symbol, whatever the bucket. The app-level dedup in
+    # queue() only ever consulted ONE bucket's holdings, so it could not see a
+    # second entry arriving by any other path -- and that is precisely how
+    # HAPPYFORGE came to be open twice at two prices. Re-entry AFTER an exit is
+    # still allowed: the index only constrains 'pending' and 'open'.
+    try:
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_pos_live "
+                  "ON pos(symbol) WHERE status IN ('pending','open')")
+    except sqlite3.IntegrityError:
+        dup = ", ".join(r[0] for r in c.execute(
+            "SELECT symbol FROM pos WHERE status IN ('pending','open') "
+            "GROUP BY symbol HAVING count(*) > 1"))
+        raise SystemExit(
+            f"{DB} already holds the same symbol live twice: {dup}.\n"
+            f"Rows are append-only, so RETIRE the wrong one instead of deleting "
+            f"it:\n  UPDATE pos SET status='void', "
+            f"exit_reason='<why>' WHERE id=<id>;\n"
+            f"'void' is deliberately not 'closed' -- an order that should never "
+            f"have been placed is not a trade, and counting it as one would put "
+            f"a return into the forward evidence that no decision produced.")
 
 
 def queue(rows, day, conn=None, which=MAIN):
     """Queue a bucket's picks for entry at the NEXT session's open.
 
-    Dedup is PER BOOK, not global. `tight` is meant to hold the same names as
-    `main` -- that pairing is what makes its stop-hit comparison run on
-    identical price paths -- so a global "already held" check would silently
-    empty it and the test would look like it ran.
+    A symbol already pending or open is skipped, and `ux_pos_live` refuses it
+    in the database besides. The check here is per bucket and could only ever
+    see its own holdings; the index is global, which is what actually stops a
+    second entry in a name the bucket is already running.
     """
     c = conn or db()
     held = {r[0] for r in c.execute(
@@ -161,9 +254,16 @@ def queue(rows, day, conn=None, which=MAIN):
         if cfg["stop_pct"] != STOP_PCT:
             ref = r["ref_close"]
             stop = round(ref * (1 - cfg["stop_pct"] / 100), 2)
-        c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target,bucket)"
-                  " VALUES(?,?,'pending',?,?,?,?,?)",
-                  (r["symbol"], r["cluster"], str(day), r["qty"], stop, target, which))
+        try:
+            c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,stop,target,bucket)"
+                      " VALUES(?,?,'pending',?,?,?,?,?)",
+                      (r["symbol"], r["cluster"], str(day), r["qty"], stop, target, which))
+        except sqlite3.IntegrityError:
+            # The index caught what the per-bucket check could not see. Report
+            # and carry on: killing the nightly run over one skipped candidate
+            # would also skip the four that were fine.
+            print(f"  skipped {r['symbol']}: already live (ux_pos_live)")
+            continue
         n += 1
     c.commit()
     return n
@@ -311,7 +411,8 @@ def step(corpus, day, conn=None):
                 learning.record([{**f, "ret": (px / p["entry_px"] - 1) * 100,
                                   "net": net, "exit": why, "symbol": p["symbol"],
                                   "cluster": p["cluster"], "date": str(day),
-                                  "portfolio": p["bucket"], "source": "portfolio"}])
+                                  "portfolio": p["bucket"],
+                                  "origin": p["origin"], "source": "portfolio"}])
         except Exception:
             pass
     c.commit()
@@ -418,8 +519,71 @@ def _bars_held_selftest():
     print("  bars_held ok (bars not calendar; never negative)")
 
 
+def _append_only_selftest():
+    """The four database rules, asserted against the database, not the module.
+
+    Enforcement lives in triggers and an index precisely so that a writer which
+    never imports this file still obeys them -- so the check has to go through
+    raw SQL, the way such a writer would.
+    """
+    import tempfile
+    global DB
+    _odb = DB
+    with tempfile.TemporaryDirectory() as td:
+        DB = Path(td) / "ao.db"
+        try:
+            c = db()
+            c.execute("INSERT INTO pos(symbol,status,qty) VALUES('AAA','open',10)")
+            (pid,) = c.execute("SELECT id FROM pos").fetchone()
+
+            # 1. no delete, and the message must say what to do instead
+            for stmt in ("DELETE FROM pos WHERE id=?", "DELETE FROM pos"):
+                try:
+                    c.execute(stmt, (pid,) if "?" in stmt else ())
+                    raise AssertionError(f"a position was deleted by: {stmt}")
+                except sqlite3.IntegrityError as e:
+                    assert "append-only" in str(e), e
+
+            # 2. edits are allowed, and every one of them is recorded
+            c.execute("UPDATE pos SET stop=9.0 WHERE id=?", (pid,))
+            c.execute("UPDATE pos SET stop=8.0 WHERE id=?", (pid,))
+            log = c.execute("SELECT action, row FROM pos_log WHERE pos_id=? "
+                            "ORDER BY seq", (pid,)).fetchall()
+            assert [a for a, _ in log] == ["insert", "update", "update"], log
+            assert json.loads(log[-1][1])["stop"] == 8.0, log[-1]
+            # the trail snapshots EVERY column, including ones added by migration
+            assert set(json.loads(log[0][1])) == {
+                r[1] for r in c.execute("PRAGMA table_info(pos)")}
+            try:
+                c.execute("DELETE FROM pos_log")
+                raise AssertionError("the audit trail was deletable")
+            except sqlite3.IntegrityError:
+                pass
+
+            # 3. one live row per symbol -- the bug this whole change exists for
+            for st in ("open", "pending"):
+                try:
+                    c.execute("INSERT INTO pos(symbol,status,qty) VALUES('AAA',?,5)", (st,))
+                    raise AssertionError(f"AAA went live twice as {st}")
+                except sqlite3.IntegrityError:
+                    pass
+
+            # 4. the three views ARE the three order books
+            c.execute("INSERT INTO pos(symbol,status,qty) VALUES('BBB','pending',5)")
+            c.execute("INSERT INTO pos(symbol,status,qty) VALUES('CCC','closed',5)")
+            for view, want in (("next_orders", {"BBB"}), ("open_orders", {"AAA"}),
+                               ("closed_orders", {"CCC"})):
+                got = {r[0] for r in c.execute(f"SELECT symbol FROM {view}")}
+                assert got == want, f"{view} -> {got}, want {want}"
+            c.close()
+        finally:
+            DB = _odb
+    print("  append-only ok (no delete, edits logged, one live row/symbol, 3 views)")
+
+
 def _selftest():
     _bars_held_selftest()
+    _append_only_selftest()
     import tempfile, learning
     _orig_ledger = learning.LEDGER
     learning.LEDGER = __import__("pathlib").Path(tempfile.gettempdir()) / "pbook_selftest_ledger.jsonl"
@@ -460,16 +624,24 @@ def __selftest_body():
             assert queue([row_in], days[200], c) == 1
             # queueing the same symbol twice must not double it
             assert queue([row_in], days[200], c) == 0
-            # ...but a DIFFERENT bucket must still take it. Dedup is per portfolio,
-            # so one portfolio is never blocked by what another holds.
-            assert queue([row_in], days[200], c, which="second") == 1
+            # A SECOND BUCKET MUST NOT TAKE IT EITHER. This assertion is the
+            # reverse of what it said before, and the reversal is deliberate:
+            # it used to protect the `tight` bucket, which held main's names on
+            # purpose so a 5% stop could be compared on identical price paths.
+            # That bucket is gone (STATE.md), one bucket remains, and the thing
+            # the old assertion permitted is the thing that actually went wrong
+            # -- HAPPYFORGE open twice at two prices. The property now is: one
+            # live row per symbol, whatever bucket asks.
+            assert queue([row_in], days[200], c, which="second") == 0, \
+                "a second bucket took a name already live"
+            assert c.execute("SELECT count(*) FROM pos WHERE symbol='T' AND "
+                             "status IN ('pending','open')").fetchone()[0] == 1
 
             filled, closed = step(corpus, days[201], c)
-            assert len(filled) == 2 and not closed, (filled, closed)
+            assert len(filled) == 1 and not closed, (filled, closed)
             got = dict(c.execute(
                 "SELECT bucket, stop FROM pos WHERE status='open'").fetchall())
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
-            assert abs(got["second"] - 90.0) < 1e-9, got
 
             # The shadow stop replaces the variant bucket: exact, same entry,
             # same bars. A 5% stop sits at 95 and this path never trades below
@@ -491,8 +663,13 @@ def __selftest_body():
             assert all(x[2] > 0 for x in c2), "target exit must be profitable"
             s2 = summary(c)                       # defaults to main only
             assert s2["closed"] == 1 and s2["realised"] > 0, s2
-            assert summary(c, which=None)["closed"] == 2, "which=None must pool"
-            assert summary(c, which="second")["closed"] == 1
+            # One bucket, so pooling every bucket must find exactly the same
+            # trade -- not a second copy of it.
+            assert summary(c, which=None)["closed"] == 1, "which=None must pool"
+            assert summary(c, which="second")["closed"] == 0
+            # A closed name is free to be re-entered; the index only binds live rows.
+            assert queue([row_in], days[212], c) == 1, \
+                "re-entry after an exit must still be allowed"
         finally:
             DB = _odb
     print("pbook selftest ok")

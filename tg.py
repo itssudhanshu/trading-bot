@@ -276,7 +276,12 @@ def cmd_bucket(_=None):
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
     rows = selection.build(corpus, as_of)
-    held = {r["symbol"]: r["status"] for r in positions.summary()["rows"]}
+    # Live rows only. A symbol can now hold more than one row -- a retired
+    # 'void' entry alongside the real position -- and keying by symbol without
+    # this filter let whichever row came last in the table decide whether the
+    # stock showed as running.
+    held = {r["symbol"]: r["status"] for r in positions.summary()["rows"]
+            if r["status"] in ("open", "pending")}
     mix = selection.TAKE_PER_CLUSTER
     out = [_title("THE BUCKET",
                   " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(python3 -c ' *)",
+      "Bash(git reset *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }

@@ -46,3 +46,6 @@ data/fundamentals/
 # Kept deliberately: pbook.db is the record of real forward trades and cannot
 # be regenerated from anything. findings/strategies/simulations/walkforward
 # jsonl, the baselines and holidays.json are evidence, not runtime state.
+
+# Pre-migration copies of the order record. Kept on disk, never committed.
+data/positions.db.bak-*

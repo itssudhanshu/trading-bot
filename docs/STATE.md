@@ -115,6 +115,61 @@ Capital is Rs 300,000, notional. Even if the cohort buckets ever returned, they
 could not be run as a single Rs 15,00,000 book -- several buckets trading these
 microcaps simultaneously would move the very prices they are measuring.
 
+## The order record is append-only (2026-08-19)
+
+`data/positions.db` holds ONE table, `pos`, with a `status`, and three views to
+read it by the names the operator uses:
+
+| view | rows |
+|---|---|
+| `next_orders` | `status='pending'` -- queued, enters at the next open |
+| `open_orders` | `status='open'` -- running |
+| `closed_orders` | `status='closed'` -- exited on a rule. THE forward evidence |
+
+**Three separate tables were asked for and cannot work.** A pending order that
+fills has to leave `next_orders` and appear in `open_orders`, and leaving a
+table is a DELETE -- which the no-delete rule forbids. One table with a status
+and three views gives the three names without ever moving a row.
+
+Four rules live in the DATABASE -- triggers and one index -- not in
+`positions.py`, because the file is also opened by the sqlite3 CLI and by ops
+scripts, and a rule enforced in Python is a rule the next writer does not
+inherit:
+
+- `pos_no_delete` -- a position may be EDITED, never deleted.
+- `pos_log` + `pos_log_ins`/`pos_log_upd` -- every insert and every edit
+  snapshotted as JSON, forever, and itself undeletable. Append-only without an
+  edit trail is half a guarantee: a row that can be blanked is a delete in
+  disguise. The trigger SQL is generated from `PRAGMA table_info`, so a column
+  added by migration cannot quietly fall out of the trail.
+- `ux_pos_live` -- UNIQUE(symbol) WHERE status IN ('pending','open'). One live
+  row per symbol, whatever the bucket. Re-entry AFTER an exit is still allowed.
+- `status='void'` -- a fourth status, for an order that should never have been
+  placed. It appears in NONE of the three views and in none of `summary()`'s
+  counts, so a mistake never contributes a return to the forward evidence.
+
+**What this was built for.** The `pbook.db -> positions.db` rename left an empty
+database. Three open positions stayed behind in the old file, and because the
+new one had no memory of them the daily run bought HAPPYFORGE a SECOND time --
+already open since 2026-08-17 at 2,131.20, bought again on 2026-08-19 at
+2,280.00, 7% higher. The dedup in `queue()` could not see it: it only ever
+consulted rows that were in the file. That is why the rule is now an index.
+
+`ops/restore_orphans.py` recovered the three positions into the one bucket,
+dropped the `third`/`fourth` labels and retired the duplicate as `void`. It
+copies prices from the old file rather than restating them, is idempotent, and
+asserts the mix, the position count and the deployment cap before committing --
+rolling back if any of them fails.
+
+`origin` records which ranking produced a position: NULL for the score's own
+picks, `rank-cohort` for the two recovered from the retired deeper buckets. The
+bucket label is gone, but those two bought ranks the score marks as worse
+(-0.90%/step), so when they close they must not read as evidence for a
+selection that did not make them. Nothing filters on it yet.
+
+The bucket now holds 4 of 5: HAPPYFORGE, GMMPFAUDLR (small), SAHYADRI, YUKEN
+(micro), Rs 179,501 of the Rs 225,000 cap. Still 0 closed trades.
+
 ## What has been tested and REJECTED
 
 Do not re-add these without evidence that addresses the stated reason.
