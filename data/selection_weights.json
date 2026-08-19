@@ -6,5 +6,5 @@
   "near_high": 1.0
  },
  "updated": "2026-08-16T17:21:46.631209",
- "note": "deliv +50%: unconditioned spread +1.22% on 954 randomly-sampled trades; confirmed by simulation (+24.10% CAGR / 27.0% DD vs +12.66% / 38.9% neutral). liq inversion NOT adopted: raises CAGR but drawdown 27->49%."
+ "note": "deliv +50%. RE-MEASURED post-guard (weight_test.py, batch 20260819-postlock): +7.59% CAGR / 31.0% DD / n=195 against neutral +4.61% / 36.2% / n=199, i.e. +0.55% per trade +/- 1.58 (t +0.35) -- inside the noise, kept on direction (better CAGR AND better drawdown) not on significance. The earlier note in this field claimed +24.10% vs +12.66% neutral; that gap was 11.4 points where the corrected engine gives 3.0, because those fills included circuit-locked bars (L58). deliv 2.0 measured HIGHER (+9.20%) and was NOT adopted: 2 of 5 variants beat live at t<0.5, which is a noise search, and deliv is the only raised weight leaving both clusters positive. liq inversion NOT adopted: raises CAGR but drawdown 27->49%."
 }

@@ -1749,3 +1749,61 @@ believes in* — so the failure landed in the same-sessions branch, which had no
 way to re-record. The audit would have failed forever until someone hand-edited
 the JSON, and a permanently-red check is a check nobody reads. The flag is the
 deliberate act; it does not need a blessed branch.
+
+### The last knob: deliv 1.5 survives, its justification does not
+
+`data/selection_weights.json` was the last thing still carrying a pre-guard
+number, and it was carrying it as a *reason*:
+
+    "deliv +50%: unconditioned spread +1.22% on 954 randomly-sampled trades;
+     confirmed by simulation (+24.10% CAGR / 27.0% DD vs +12.66% / 38.9% neutral)"
+
+Both halves were unsound before this re-run. The spread came from 954 samples,
+and a later 2,337-sample run of the same test read deliv +0.93% and put `rs`
+highest instead — at ~0.46% standard error those are the same measurement twice.
+The simulation was pre-guard, so its fills included bars no buyer could have
+traded.
+
+`research/weight_test.py`, five pre-registered variants, batch 20260819-postlock:
+
+| weights | CAGR | maxDD | n | per trade | vs neutral | t | worst blk |
+|---|---|---|---|---|---|---|---|
+| neutral 1/1/1/1 (control) | +4.61% | 36.2% | 199 | +1.60% ± 1.16% | — | — | -115.9% |
+| **live: deliv 1.5** | **+7.59%** | **31.0%** | **195** | **+2.15% ± 1.08%** | **+0.55% ± 1.58%** | **+0.35** | -126.7% |
+| deliv 2.0 | +9.20% | 29.2% | 211 | +2.29% ± 1.03% | +0.68% ± 1.55% | +0.44 | -126.9% |
+| rs 1.5 | +7.06% | 33.1% | 198 | +2.11% ± 1.17% | +0.50% ± 1.65% | +0.31 | -119.1% |
+| near_high 1.5 | +8.09% | 28.9% | 207 | +2.18% ± 1.05% | +0.57% ± 1.57% | +0.36 | -89.0% |
+
+The live row reproduces the recorded baseline to the digit (+7.59% / 31.0% / 195),
+which is the check that the harness is measuring the live bucket and not something
+adjacent to it.
+
+**The decision survives in direction and only in direction.** deliv 1.5 beats
+neutral on CAGR *and* on drawdown — same shape as the 10-day hold, and the same
+verdict: kept because both axes agree, not because anything resolved. t = +0.35.
+
+**The published gap was four times too big.** 11.4 points claimed, 3.0 points
+measured. Nobody inflated it; the engine did, by filling circuit-locked bars, and
+the note was never re-derived after L58 landed.
+
+**Two of five variants beat the live one, at t < 0.5.** That is the diagnostic.
+A knob with a real effect does not produce two rival winners inside half a
+standard error, and `deliv 2.0` being monotone above 1.5 is the most tempting
+shape in the table precisely because monotone-and-insignificant is what a lucky
+path looks like. The 2% participation cap was rejected for the mirror-image
+reason (non-monotonic, 2% best, 1% and 5% worse). Neither shape is evidence;
+they are the two ways noise presents.
+
+**One observation worth keeping, stated as shape rather than finding.** deliv is
+the only raised weight that leaves both clusters positive — micro +2.35% / small
++1.87%, against rs 1.5 at +3.23%/+0.55% and near_high 1.5 at +3.13%/+0.72%. Both
+of those buy micro performance by gutting small, which would make the 3/2 mix a
+worse container for them. Per-cluster n is ~80, so those gaps are inside one
+standard error as well; it is a reason to prefer the weight already in place, not
+a reason to have chosen it.
+
+**The re-measurement programme is now complete.** Every number in CLAUDE.md was
+measured against the corrected engine, and the pattern held in all four places it
+was tested: the levels moved a long way, the rankings barely moved, and the only
+claim that gained strength was the one about rank depth — which is the claim that
+says the edge is in *selection* rather than in any of these knobs.

@@ -101,11 +101,37 @@ resolvable -- much of what this project has called a finding sits inside that
 band.
 
 **But the t-statistics did not transfer.** Weighting rs up to 1.5, despite it
-having the highest t, produced the WORST book of five variants (+8.93% against
-+13.57%, both pre-guard figures -- the comparison was run at one setting, so the
-ranking is what carries). rs is already captured by the 200-DMA gate and the breakout trigger,
-so more of it is redundant while crowding out deliv, which is orthogonal.
-Univariate significance is not marginal portfolio value. Weights unchanged.
+having the highest t, produced the WORST book of five variants. rs is already
+captured by the 200-DMA gate and the breakout trigger, so more of it is redundant
+while crowding out deliv, which is orthogonal. Univariate significance is not
+marginal portfolio value. Weights unchanged.
+
+**Re-run post-guard** (`research/weight_test.py`, batch 20260819-postlock), and
+the conclusion holds while the evidence for it thins out:
+
+| weights | CAGR | maxDD | n | per trade | vs neutral | t |
+|---|---|---|---|---|---|---|
+| neutral 1/1/1/1 (control) | +4.61% | 36.2% | 199 | +1.60% | -- | -- |
+| **live: deliv 1.5** | **+7.59%** | **31.0%** | **195** | **+2.15%** | **+0.55%** | **+0.35** |
+| deliv 2.0 | +9.20% | 29.2% | 211 | +2.29% | +0.68% | +0.44 |
+| rs 1.5 | +7.06% | 33.1% | 198 | +2.11% | +0.50% | +0.31 |
+| near_high 1.5 | +8.09% | 28.9% | 207 | +2.18% | +0.57% | +0.36 |
+
+Raising deliv survives in DIRECTION -- better CAGR and better drawdown than
+neutral, the same shape as the 10-day hold. But its published justification was
+four times too large: the weights file claimed +24.10% against +12.66% neutral,
+an 11.4-point gap, where the corrected engine gives +7.59% against +4.61%. And
+rs 1.5 is no longer a disaster, only a shrug: it trailed by 4.64 points
+pre-guard, by 0.53 now.
+
+**Two of five variants "beat" the live one, at t < 0.5.** That is what a noise
+search looks like, and it is the reason nothing is adopted here. deliv 2.0 is
+monotone above 1.5, which is the most tempting shape in the table and still not
+evidence at 195 trades. The one non-CAGR observation worth keeping: deliv is the
+only raised weight that leaves BOTH clusters positive (micro +2.35% / small
++1.87%), where rs 1.5 and near_high 1.5 buy micro performance by gutting small
+(+3.23%/+0.55% and +3.13%/+0.72%). Shape, not finding -- per-cluster n is ~80
+and those gaps are under one standard error too.
 
 ## Every design decision was re-checked with error bars
 
@@ -121,7 +147,7 @@ behind it clears its own noise. Checked at current settings:
 | kept the breakout trigger | +9.79 | +1.99% | 1.54% | +1.29 | inside the noise |
 | chose 10-day hold over 15 | +2.27 | +0.44% | 1.59% | +0.28 | inside the noise |
 | chose 3 micro / 2 small | -2.34 | -0.36% | 1.50% | -0.24 | inside the noise |
-| raised deliv to 1.5 | not re-run | | | | pre-guard figure was +0.53% +/- 1.58% |
+| raised deliv to 1.5 | +2.98 | +0.55% | 1.58% | +0.35 | inside the noise |
 
 **Still none of them clears it, and the ordering barely moved** -- which is the
 useful result, because the guard removed 6.5 CAGR points, MORE than two of these
