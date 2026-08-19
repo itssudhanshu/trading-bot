@@ -150,6 +150,36 @@ def _title(name, sub=""):
     return f"*{name}*" + (f" — {sub}" if sub else "")
 
 
+def _fields(*pairs):
+    """-> ["name - value", ...]. THE definition of the order layout.
+
+    All three order commands render through this, so a field cannot be spelled
+    one way in /open\\_orders and another in /closed\\_orders. A None value is
+    dropped rather than printed as "None"; a field the record does not hold is
+    not a field worth a line.
+    """
+    return [f"{k} - {v}" for k, v in pairs if v is not None]
+
+
+def _review(r, pct, held):
+    """-> one plain line: how the trade did, and why it ended.
+
+    Written from the STORED exit reason, never re-derived from the prices, so
+    the sentence cannot disagree with the rule that actually sold the stock.
+    """
+    import positions
+    sp = positions.bucket_cfg(r["bucket"])["stop_pct"]
+    d = f"{held} day" + ("" if held == 1 else "s")
+    return {
+        "target": f"Worked. {pct:+.1f}% in {d} — reached the "
+                  f"+{positions.TARGET_PCT:g}% target and sold itself.",
+        "stop": f"Did not work. {pct:+.1f}% in {d} — reached the −{sp:g}% stop "
+                f"and was sold before the loss could grow.",
+        "time": f"Went nowhere. {pct:+.1f}% in {d} — neither price was reached, "
+                f"so the {positions.HOLD_DAYS}-day limit sold it at the close.",
+    }.get(r["exit_reason"], f"{pct:+.1f}% in {d} — sold: {r['exit_reason']}")
+
+
 def _lag_note():
     """-> one line explaining the end-of-day lag, or '' when there is none.
 
@@ -316,11 +346,11 @@ def cmd_next_orders(_=None):
     s = positions.summary(which=None)
     pend = [r for r in s["rows"] if r["status"] == "pending"]
     if not pend:
-        return (_title("NEXT ORDERS") + "\nNothing waiting. No stock in the "
+        return (_title("next\\_orders") + "\nNothing waiting. No stock in the "
                 "picks has broken out, so the money stays in cash.")
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
-    out = [_title("NEXT ORDERS", f"{len(pend)} waiting"),
+    out = [_title("next\\_orders", f"{len(pend)} waiting"),
            "_These are bought at tomorrow morning's opening price._"]
     note = _lag_note()
     if note:
@@ -336,13 +366,18 @@ def cmd_next_orders(_=None):
         sp = positions.bucket_cfg()["stop_pct"]
         total += val
         risk += val * sp / 100
-        tag = ""
-        out.append(f"*{r['symbol']}* ({SIZE.get(r['cluster'], r['cluster'])}){tag}")
-        out.append(f"   buy {r['qty']} at about {px:,.2f}   = {_rs(val)}")
-        out.append(f"   sell if it falls to {r['stop']:,.2f}  (−{sp:g}%)")
-        out.append(f"   sell if it rises to {r['target']:,.2f}  "
-                   f"(+{positions.TARGET_PCT:g}%)")
-        out.append(f"   most it can lose {_rs(val * sp / 100)}")
+        out.append(f"*{r['symbol']}* ({SIZE.get(r['cluster'], r['cluster'])})")
+        out += _fields(
+            # `filled` is n/a and `entry` is an ESTIMATE off the last close --
+            # the fill happens at tomorrow's open, which nobody knows yet.
+            # Printing the estimate as a plain entry price would put a number
+            # the bucket never paid into the record a person reads.
+            ("filled", "n/a"),
+            ("entry", f"about {px:,.2f} at the next open"),
+            ("qty", f"{r['qty']}   = {_rs(val)}"),
+            ("stop", f"{r['stop']:,.2f}   (−{sp:g}%, most it can lose "
+                     f"{_rs(val * sp / 100)})"),
+            ("target", f"{r['target']:,.2f}   (+{positions.TARGET_PCT:g}%)"))
         out.append("")
     out.append(f"*Total being spent*  {_rs(total)}")
     out.append(f"*Most it can lose*   {_rs(risk)}")
@@ -360,7 +395,7 @@ def cmd_open_orders(_=None):
     live = [r for r in s["rows"] if r["status"] == "open"]
     if not live:
         pend = s["pending"]
-        out = [_title("OPEN ORDERS"), "Nothing recorded as live yet."]
+        out = [_title("open\\_orders"), "Nothing recorded as live yet."]
         if pend:
             out += ["", f"{pend} order(s) queued — see /next\\_orders."]
         note = _lag_note()
@@ -372,7 +407,7 @@ def cmd_open_orders(_=None):
     days = sorted({d for x in corpus.values() for d in x.days})
     q = quotes.live([r["symbol"] for r in live])
     src = ("live" if q else f"last close {days[-1]}")
-    out = [_title("OPEN ORDERS", f"{len(live)} live"),
+    out = [_title("open\\_orders", f"{len(live)} live"),
            f"_Prices: {src}._", ""]
     tot_val = tot_pl = 0.0
     for r in live:
@@ -388,17 +423,18 @@ def cmd_open_orders(_=None):
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
         to_tgt = (r["target"] / px - 1) * 100 if px else 0
-        tag = ""
         out.append(f"{icon} *{r['symbol']}* "
-                   f"({SIZE.get(r['cluster'], r['cluster'])}){tag}  {pct:+.1f}%")
-        out.append(f"   in at {r['entry_px']:,.2f} → now {px:,.2f}")
-        out.append(f"   worth {_rs(val)}   profit Rs {pl:+,.0f}")
-        out.append(f"   sells if it falls to {r['stop']:,.2f} "
-                   f"({to_stop:+.1f}% away)")
-        out.append(f"   sells if it rises to {r['target']:,.2f} "
-                   f"({to_tgt:+.1f}% away)")
-        out.append(f"   held {held} of {selection.HOLD_DAYS} days, then sold "
-                   f"either way")
+                   f"({SIZE.get(r['cluster'], r['cluster'])})")
+        out += _fields(
+            ("filled", r["entry_day"]),
+            ("entry", f"{r['entry_px']:,.2f} → now {px:,.2f}"),
+            ("qty", f"{r['qty']}   = {_rs(val)} now"),
+            ("stop", f"{r['stop']:,.2f}   ({to_stop:+.1f}% away)"),
+            ("target", f"{r['target']:,.2f}   ({to_tgt:+.1f}% away)"),
+            ("pnl", f"Rs {pl:+,.0f}   ({pct:+.1f}%)"),
+            # bars_held, not a date subtraction: a calendar gap counts weekends
+            # and would print a number the 10-day exit rule does not use.
+            ("day(s)", f"{held} of {selection.HOLD_DAYS}, then sold either way"))
         out.append("")
     out.append(f"*Total worth*  {_rs(tot_val)}")
     out.append(f"*Total profit* Rs {tot_pl:+,.0f}  "
@@ -408,12 +444,12 @@ def cmd_open_orders(_=None):
 
 def cmd_closed_orders(_=None):
     """Finished trades and what they made or lost."""
-    import analysis, positions
+    import analysis, features, positions
     from collections import defaultdict
     s = positions.summary(which=None)
     done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     if not done:
-        return (_title("CLOSED ORDERS") + "\nNothing has been sold yet. Only "
+        return (_title("closed\\_orders") + "\nNothing has been sold yet. Only "
                 "real trades made going forward show up here — never anything "
                 "replayed from past data.")
     # Statistics come from the POOLED buckets only. `tight` holds the same names
@@ -423,20 +459,32 @@ def cmd_closed_orders(_=None):
     ev = done
     rets = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100,
              "sym": r["symbol"], "clu": r["cluster"]} for r in ev]
-    out = [_title("CLOSED ORDERS", f"{len(done)} finished"), ""]
+    out = [_title("closed\\_orders", f"{len(done)} finished"), ""]
+    corpus = features.load_corpus()
     for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
         icon = "✅" if (r["net"] or 0) > 0 else "❌"
-        tag = ""
-        out.append(f"{icon} *{r['symbol']}* ({r['cluster']}){tag}  {pct:+.1f}%  "
-                   f"Rs {r['net']:+,.0f}")
-        out.append(f"    {r['entry_px']:,.2f} → {r['exit_px']:,.2f} · "
-                   f"{r['exit_reason']} · {r['exit_day']}")
+        held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
+                                   r["exit_day"])
+        out.append(f"{icon} *{r['symbol']}* "
+                   f"({SIZE.get(r['cluster'], r['cluster'])})")
+        out += _fields(
+            ("filled", r["entry_day"]),
+            ("exit", f"{r['exit_day']} at {r['exit_px']:,.2f}"),
+            ("entry", f"{r['entry_px']:,.2f}"),
+            ("qty", r["qty"]),
+            ("stop", f"{r['stop']:,.2f}" if r["stop"] else None),
+            ("target", f"{r['target']:,.2f}" if r["target"] else None),
+            ("pnl", f"Rs {r['net'] or 0:+,.0f} after costs   ({pct:+.1f}% "
+                    f"on the price)"),
+            ("day(s)", held),
+            ("review", _review(r, pct, held)))
+        out.append("")
     won = sum(1 for r in done if (r["net"] or 0) > 0)
     main_net = sum(r["net"] or 0 for r in done if r["bucket"] == positions.MAIN)
-    out += ["", f"*Won* {won}   *Lost* {len(done) - won}   "
+    out += [f"*Won* {won}   *Lost* {len(done) - won}   "
                 f"*Hit rate* {won / len(done) * 100:.0f}%",
-            f"*Total (the record portfolio)* Rs {main_net:+,.0f}"]
+            f"*Total* Rs {main_net:+,.0f}"]
     if len(done) != len(ev) or any(r["bucket"] != positions.MAIN for r in done):
         out.append(f"_Includes Rs {s['realised']:+,.0f} from the retired "
                    f"deeper buckets, still running to their own exits._")
@@ -773,6 +821,22 @@ def _selftest():
             assert isinstance(out, str) and out, name
     finally:
         _pb.summary = _orig
+    # The order layout. Asserted on the two helpers plus a source check that
+    # all three commands route through them -- rendering a real command needs
+    # the corpus and a live quote, and a check that needs the network is a
+    # check that gets skipped.
+    assert _fields(("filled", "n/a"), ("entry", None), ("qty", 51)) == \
+        ["filled - n/a", "qty - 51"], "a blank field must be dropped, not printed"
+    assert _fields() == []
+    _r = {"bucket": _pb.MAIN}
+    assert _review({**_r, "exit_reason": "target"}, 20.0, 6).startswith("Worked.")
+    assert "before the loss" in _review({**_r, "exit_reason": "stop"}, -10.2, 3)
+    assert "10-day limit" in _review({**_r, "exit_reason": "time"}, 1.4, 10)
+    # an unrecognised reason must still say what happened, not invent a rule
+    assert "sold: void" in _review({**_r, "exit_reason": "void"}, 0.0, 1)
+    for _c in ("cmd_next_orders", "cmd_open_orders", "cmd_closed_orders"):
+        assert "_fields(" in src.split(f"def {_c}")[1].split("\ndef ")[0], \
+            f"{_c} does not use the shared layout; the three will drift apart"
     print("tg selftest ok")
 
 
