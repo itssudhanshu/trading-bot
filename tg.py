@@ -77,7 +77,7 @@ def owner():
     return ids[0] if ids else ""
 
 
-def _call(method, params, timeout=30):
+def _call_raw(method, params, timeout=30):
     token = env("TELEGRAM_BOT_TOKEN")
     if not token:
         return {"ok": False, "error": "TELEGRAM_BOT_TOKEN not set in .env"}
@@ -98,6 +98,33 @@ def _call(method, params, timeout=30):
             return {"ok": False, "error": f"{type(e).__name__}"}
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}"}
+
+
+def _call(method, params, timeout=30):
+    """-> _call_raw's result, and LOGS it when the call failed.
+
+    _call_raw already captured Telegram's explanation. EVERY caller threw it
+    away: poll_once discards send()'s return value and returns 0 when getUpdates
+    fails, and agent.py ignores both of its pushes. So a revoked token, a reply
+    Telegram rejected, and a dropped connection all produced the same thing --
+    "recv '/open_orders'" followed by silence, a log that reads as a healthy
+    poll, and no answer on the phone. Six minutes of that is indistinguishable
+    from a wedged handler, which is exactly the state this was debugged in.
+
+    Logged HERE because it is the one point every outbound call passes through,
+    so a new caller cannot reintroduce the blind spot by forgetting to check.
+
+    Consecutive identical failures print once. An outage repeats every 25s
+    forever, and a log that says the same line 3,000 times has buried whatever
+    came before it.
+    """
+    r = _call_raw(method, params, timeout)
+    if not r.get("ok"):
+        m = f"{method} failed: {r.get('error', '')} {r.get('description', '')}".rstrip()
+        if m != getattr(_call, "_last", None):
+            print(m, flush=True)
+            _call._last = m
+    return r
 
 
 def send_document(path, caption="", chat_id=None):
@@ -826,6 +853,31 @@ def _selftest():
         OFFSET = o_off
 
     # ------------------------------------------------------------------
+    # A FAILED SEND MUST REACH THE LOG. It did not: poll_once discarded the
+    # return value, so a rejected reply left "recv" as the last line and the
+    # listener read as healthy while answering nothing.
+    # ------------------------------------------------------------------
+    import contextlib, io
+    o_raw, _call._last = _call_raw, None
+    try:
+        globals()["_call_raw"] = lambda m, p, t=30: {
+            "ok": False, "error": "HTTPError",
+            "description": "Bad Request: can't parse entities"}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            r = _call("sendMessage", {"text": "x"})
+            _call("sendMessage", {"text": "x"})      # same failure again
+        assert not r.get("ok")
+        log = buf.getvalue()
+        assert "can't parse entities" in log, \
+            f"the reason Telegram gave was not logged: {log!r}"
+        assert log.count("sendMessage failed") == 1, \
+            f"a repeated outage flooded the log: {log!r}"
+    finally:
+        globals()["_call_raw"], _call._last = o_raw, None
+    print("  a failed send reaches the log ok (once per distinct reason)")
+
+    # ------------------------------------------------------------------
     # THE ALLOWLIST IS THE WHOLE SECURITY MODEL, so it is tested by driving
     # poll_once itself rather than by grepping for the line that implements it.
     # The previous version asserted the source contained `if chat != owner:`,
@@ -981,6 +1033,6 @@ if __name__ == "__main__":
             except SystemExit:
                 raise
             except Exception as e:
-                print(f"poll error: {type(e).__name__}", flush=True)
+                print(f"poll error: {type(e).__name__}: {e}", flush=True)
     else:
         print(__doc__)
