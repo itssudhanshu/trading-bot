@@ -439,20 +439,35 @@ def _selftest():
     from datetime import date, timedelta
     d0 = date(2024, 1, 1)
     days = [d0 + timedelta(days=k) for k in range(420)]
-    corpus = {}
-    for j in range(30):
-        s = features.Series(f"S{j:02d}", list(days))
-        for k in range(420):
-            px = 100.0 + j * 0.001 * k              # near-flat, slight spread
-            if k >= 301:
-                px = 100.0 + min(k - 300, 10) * 3.0  # +30% over 10 sessions
-            if k >= 311:
-                px = max(130.0 - (k - 310), 60.0)    # then bleed 1/day, no gaps
-            s.open.append(px); s.high.append(px); s.low.append(px)
-            s.close.append(px); s.volume.append(1000)
-            s.turnover.append(1e6 * (j + 1)); s.deliv_pct.append(40.0 + j)
-            s.surveillance_known.append(True); s.restricted.append(False)
-        corpus[s.symbol] = s
+    def _corpus(prefix, locked=False):
+        """`locked` = every bar prints ONE price, i.e. band-locked every day.
+
+        Fresh symbols per prefix because _ATR_CACHE and entry._ind cache on
+        symbol name; reusing "S" would serve the unlocked indicators.
+        """
+        out = {}
+        for j in range(30):
+            s = features.Series(f"{prefix}{j:02d}", list(days))
+            for k in range(420):
+                px = 100.0 + j * 0.001 * k              # near-flat, slight spread
+                if k >= 301:
+                    px = 100.0 + min(k - 300, 10) * 3.0  # +30% over 10 sessions
+                if k >= 311:
+                    px = max(130.0 - (k - 310), 60.0)    # then bleed 1/day, no gaps
+                # A real bar has a RANGE. This fixture printed open==high==low
+                # on every bar until 2026-08-19, so every name in it was
+                # circuit-locked every session -- which is exactly why the
+                # missing lock guard could never be caught here.
+                s.open.append(px)
+                s.high.append(px if locked else px * 1.001)
+                s.low.append(px if locked else px * 0.999)
+                s.close.append(px); s.volume.append(1000)
+                s.turnover.append(1e6 * (j + 1)); s.deliv_pct.append(40.0 + j)
+                s.surveillance_known.append(True); s.restricted.append(False)
+            out[s.symbol] = s
+        return out
+
+    corpus = _corpus("S")
 
     kw = dict(start_idx=300, trigger="none", impact_c=0.0, stop_pct=10.0,
               target_pct=100.0, hold=60)
@@ -463,6 +478,11 @@ def _selftest():
     only_s = run(corpus, days, stop_to=(10.0, 0.0), **kw)
 
     assert base["trades"], "control took no trades; the fixture is broken"
+    # Nothing may be bought on a locked bar. One price all day means no sellers
+    # at the band, so the next-open fill this engine assumes cannot be got --
+    # and 8.7% +/- 1.5% of real picks had exactly that fill bar.
+    assert not run(_corpus("L", locked=True), days, **kw)["trades"], \
+        "bought a stock that was band-locked every session"
     assert all(t["why"] == "stop" for t in base["trades"]), \
         [t["why"] for t in base["trades"]]
     parts = [t for t in sc["trades"] if t["why"] == "partial"]

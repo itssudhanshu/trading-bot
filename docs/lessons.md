@@ -1510,3 +1510,119 @@ changes WHEN a fill is recorded, never at what price -- the open is fixed at
 09:15. Do not spend another morning on this without new evidence that Yahoo is
 unreliable under NORMAL load, which is 2-5 requests once a day, not the 300-bar
 sweep that got us rate-limited.
+
+## L58 — The circuit-lock guard was written, tested, and never called (decisive)
+
+`engine.gate()` rejects `bar.high == bar.low` and has since it was written.
+`engine.entry_fill()` returns `None` on the same condition. Both are covered by
+asserts in `engine._selftest()`, and both pass.
+
+**Nothing calls either function.** A grep for `gate(` and `entry_fill(` outside
+`engine.py` returns only those selftests. `selection.py:69` says so out loud
+about the neighbouring heat check — *"engine.MAX_PORTFOLIO_HEAT (6%) is NOT a
+constraint on this path -- it is checked only inside engine's own signal
+function, which nothing here calls"* — so the fact was written down and never
+followed to its conclusion: `circuit_locked`, `asm`, `gsm`, `fo_ban`,
+`costs_exceed_risk` and `portfolio_heat` were all unreachable from both
+`daily.py` and `research/simulate.py`. `simulate.py:211` fills at
+`e = s.open[i + 1]` unconditionally.
+
+This is the exact failure mode CLAUDE.md names as **"a status message is not
+evidence"**, in its most expensive form: not a flag that prints "enabled" while
+doing nothing, but a guard with a *passing test* while doing nothing. The test
+proved the function was correct. Nothing proved the function was reached.
+
+### How often it mattered
+
+357 picks, `selection.build` + `allocate` on the live config, every third
+session from 2021:
+
+| | share of picks | std err |
+|---|---|---|
+| trigger bar locked (the breakout the score saw) | 9.8% | ±1.6% |
+| fill bar locked (the next open the book claims to buy at) | 8.7% | ±1.5% |
+| locked at the LOWER band | **0.0%** | — |
+
+**Every lock was an UPPER lock — not one lower lock in 357 picks.** That is not
+luck, it is structural: the score selects momentum and the breakout trigger
+requires a 20-day-high close, so a lower-circuit name can never qualify. The
+only band this book ever meets is the one with no sellers at it. So roughly
+**one fill in eleven was physically impossible**, and those were the strongest
+names in the sample rather than a random ninth of it.
+
+### What it was worth
+
+Same config either way (`stop 10 / target 20 / hold 10 / max_pos 5 / refresh 5 /
+breakout / impact_c 1.0`):
+
+| | CAGR | maxDD | n | win | per trade |
+|---|---|---|---|---|---|
+| filling locked bars (every number this project has quoted) | +14.14% | 25.8% | 232 | 50% | +2.94% ±0.98% |
+| locked bars untriggered | **+7.59%** | **31.0%** | 195 | 47% | +2.15% ±1.08% |
+
+**About half the backtested CAGR came from fills that could not have been got.**
+Drawdown gets *worse* once they are removed, which is the tell: the phantom
+fills were disproportionately winners, so they were flattering the path twice
+over.
+
+### The error bars do NOT get a vote here, and that is the point
+
+The per-trade gap is +0.79% against a combined standard error near 1.46%, so
+t ≈ 0.54 — comfortably inside the noise band that CLAUDE.md correctly uses to
+refuse re-deciding knobs. **That verdict does not apply to this change.** The
+noise discipline exists to stop the project preferring rule A over rule B on
+one path's arithmetic. This is not a preference between two rules: one of them
+books trades that the market could not have given us at any price. The lower
+number is not the better-tested number, it is the *true* one, and it would stay
+the true one at t = 0.
+
+Read the other way round, this is the more uncomfortable finding: a 6.5-point
+CAGR difference that a per-trade test cannot resolve means the per-trade test
+could not have found this bug either. Only reading the fill assumption could.
+
+### Why the fixture could never catch it
+
+`simulate._selftest()` built its 30-name synthetic corpus with
+`s.open.append(px); s.high.append(px); s.low.append(px)` — **every bar one
+price.** The fixture represented thirty stocks that were band-locked every
+session for 420 sessions, so adding the guard made it take zero trades and trip
+its own `"control took no trades; the fixture is broken"` assert. The message
+was accurate; the fixture *was* broken, and had been the whole time. A fixture
+that cannot represent a real bar cannot test what happens on one. Re-derived
+with a ±0.1% range, and the locked case is now an explicit assertion rather
+than an accident of the fixture.
+
+### The fix, and where it had to go
+
+One line, at `selection.build`'s `"triggered"` key:
+
+    "triggered": bool(fn(s, i)) and not locked,
+
+That is the single choke point every trigger in `entry.TRIGGERS` passes through,
+and both `daily.py` and `simulate.py` reach it through `selection.build`, so one
+edit covers all seven triggers and both paths. **MARKED untriggered, not
+filtered** — filtering would let `allocate()` reach further down the list and
+buy a worse name, the same trap the note above `picks` already documents. The
+bucket holds cash instead.
+
+`high == low` remains a *proxy* for the true 2/5/10/20% price band, the same
+ceiling `engine.py:142` already admits. Upgrading it needs the NSE price-band
+file. The proxy also catches a single-print illiquid day, which is un-buyable
+at a knowable price for a different reason, so it is a tightening either way.
+
+### What it cost live
+
+VCL was queued for 2026-08-20 on a trigger bar that was an upper circuit lock:
+`O=H=L=C 1.94`, +4.86%, 129 trades, and **nine of the previous twenty bars
+locked at a single price** on an unbroken run from 1.17 (08-04) to 1.94 (08-19)
+at +4.3% to +5.0% a day. The order was Rs 44,998 against an ADV of Rs 779,450
+— 5.8% of ADV, at a tick worth 0.52% of the price, with 1.17% of modelled
+impact per side against a median trade's 0.30%. `deliv 100.0%` was not
+conviction, it was the lock.
+
+Voided as `pos` id 6, which is what `status='void'` exists for: an order that
+should never have been placed is not a trade, and recording a return for it
+would have put the first number into the forward evidence that no decision
+produced. Under the guard VCL is no longer triggered and `allocate()` returns
+only a name already held, so the correct answer for 2026-08-20 is **no new
+pick**.

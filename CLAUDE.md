@@ -168,6 +168,21 @@ count alongside any performance figure.
 trades can, and there are currently zero. `overview.py` encodes this: no number
 of positive simulations can produce a YES.
 
+## Every CAGR on this page predates the circuit-lock guard (L58)
+
+`engine.gate()` has always rejected `high == low`, and nothing ever called
+`engine.gate()`. So every backtest quoted above filled circuit-locked bars:
+9.8% of picks had a locked trigger bar, 8.7% a locked FILL bar, and **all of
+them upper locks** -- no sellers, no fill, at any price. With the guard in
+place the same config gives **+7.59% / 31.0% DD / 195 trades** where it gave
++14.14% / 25.8% / 232.
+
+**About half the CAGR was phantom.** The per-trade gap does not clear its error
+bar (t = 0.54) and that is irrelevant: error bars decide which rule to prefer,
+not which fills the market could have given. Re-measure before quoting any
+absolute figure below; the RANKINGS and the shapes are likely to survive, the
+levels are not.
+
 ## Market impact
 
 Modelled as `c * daily_vol% * sqrt(order_value / ADV)` on BOTH sides, the

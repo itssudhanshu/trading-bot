@@ -220,6 +220,22 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
             if (i < len(s.restricted) and s.restricted[i]
                     and i < len(s.surveillance_known) and s.surveillance_known[i]):
                 continue
+            # high==low means the bar never traded away from one price: an
+            # NSE price-band lock, or a single-print illiquid day. The breakout
+            # "high" IS the band, and at an UPPER lock there are no sellers, so
+            # the next-open fill this row promises cannot be got. engine.gate()
+            # has rejected this since it was written -- but nothing calls
+            # engine.gate() (selection.py:69 says so about its heat check too),
+            # so neither daily.py nor simulate.py ever saw it. Measured on 357
+            # picks: 9.8% +/- 1.6% locked trigger bar, 8.7% +/- 1.5% locked
+            # FILL bar, and every single one an upper lock -- the score selects
+            # momentum, so the only band it ever meets is the un-buyable one.
+            # MARKED untriggered, not skipped, for the same reason as the note
+            # above: filtering here would make allocate() reach further down
+            # the list. Hold cash instead.
+            # ponytail: high==low is the proxy engine.py:142 already uses; the
+            # true 2/5/10/20% band needs the NSE price-band file.
+            locked = s.high[i] == s.low[i]
             ref = s.close[i]
             qty, risk = position_size(capital, ref)
             if qty < 1:
@@ -233,7 +249,7 @@ def build(corpus, as_of, capital=CAPITAL, trigger=None):
                 "qty": qty, "value": round(qty * ref),
                 "risk": round(risk),
                 "exit_by": f"{HOLD_DAYS} trading days",
-                "triggered": bool(fn(s, i)),
+                "triggered": bool(fn(s, i)) and not locked,
                 "why": _why(ranks.get(sym, {})),
                 "ranks": ranks.get(sym, {}),
             })
