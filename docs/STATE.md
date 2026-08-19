@@ -68,38 +68,34 @@ Occupancy: the book holds 2.83 stocks on average. Distribution:
 
 A book holding 1 stock is normal, not broken.
 
-## Live books — five, running in parallel
+## The live bucket — one, `main`
 
-Trade count is the binding constraint: one book makes ~71 trades a year and
-105 are needed before a 3%/trade edge is resolvable at all. Five books cut
-"is there an edge?" from ~1.5 years to ~5 months.
+There is ONE bucket: 3 micro + 2 small, `main`. `overview.py`, STATE.md and the
+audit all key off it, and the audit enforces that nothing is queued outside it
+(`queued into ['main']`).
 
-| portfolio | what it is | counted together? |
-|---|---|---|
-| `main` | the record. STATE.md, `overview.py` and the audit key off THIS book only | ⭐ |
-| `cohort1..3` | same rules, deeper slices of the same ranking. Disjoint by construction | yes |
-
-**Every book runs identical rules.** There is no variant book and the audit
-enforces it: a book with its own parameters is a competitor, side-by-side
-competitors are a leaderboard, and a leaderboard gets picked from.
-
-**The rank books multiply evidence without creating a choice.** Same rules,
-different depth in the ranking, so their positions never overlap and their
-trades pool as near-independent samples. They answer the question that matters
--- does the score rank? -- faster, and there is nothing to select between them.
-
-**They are NOT a parameter search, and this is not a style preference.**
-Comparing two parameter settings on RETURN needs 238 trades per arm (3.4 years)
-for the largest gap ever measured here, 2,856 (40 years) for the ladder, and
-162,554 for the 10d-vs-15d hold. Parallel books do not help: each arm still
-needs its own sample. Running variants forward and adopting the leader would
+**A multi-bucket variant was explored and removed within the day.** The
+arithmetic that motivated it is real: one bucket makes ~71 trades a year and
+~105 are needed before a 3%/trade edge is resolvable, so several DISJOINT
+cohort buckets -- same rules, deeper slices of the same ranking -- would pool
+as near-independent samples and cut time-to-evidence from ~1.5 years to ~5
+months (L54). They were never a parameter search: every bucket ran identical
+rules, so there was nothing to select between them, and adopting a leader would
 contaminate the one evidence stream a search cannot reach (L47; PBO 0.929 in
-L41). `audit.py` checks the books stay disjoint and that no variant book is
-pooled.
+L41).
 
-**The tighter-stop question is a counterfactual, not a book.**
-`pbook.shadow_stop()` asks whether a 5% stop would have been touched between a
-real entry and its real exit, on the record book's own positions. That is exact
+**But the deeper cohorts buy ranks the score already marks as worse** --
+-0.90% per rank step, +6.41% between the top cohort and the deepest across six
+disjoint cohorts (1,068 trades) -- and knowingly trading picks you believe are
+worse in order to gather evidence faster is not a trade this book makes. So
+they were removed (L56). `overview.py` still carries the note "two positions
+opened by the retired deeper buckets"; the cohort machinery now survives only
+in `research/rank_test.py`, which slices cohorts to MEASURE that rank decay,
+never to trade them.
+
+**The tighter-stop question is a counterfactual, not a bucket.**
+`positions.shadow_stop()` asks whether a 5% stop would have been touched between a
+real entry and its real exit, on the record bucket's own positions. That is exact
 -- same entry price, same bars -- and needs no second order.
 
 A `tight` BOOK was built for this and removed within the day. To be a paired
@@ -115,9 +111,9 @@ stop out at 5% against 37% at 10%. If forward reality disagrees, the fill and
 gap model is wrong. It can never say which stop is better: once a tighter stop
 fires the paths diverge, and that divergence is deliberately not modelled.
 
-Capital is Rs 300,000 per book, notional. They are alternative hypothetical
-portfolios, not a Rs 15,00,000 book -- five books trading these microcaps
-simultaneously would move the prices they are measuring.
+Capital is Rs 300,000, notional. Even if the cohort buckets ever returned, they
+could not be run as a single Rs 15,00,000 book -- several buckets trading these
+microcaps simultaneously would move the very prices they are measuring.
 
 ## What has been tested and REJECTED
 
