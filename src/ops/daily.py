@@ -6,7 +6,9 @@ and queueing the new top-5 would churn it daily and never let a thesis play out
 -- the holding period IS the strategy.
 """
 
-# First: puts core/, bucket/, research/ and ops/ on sys.path.
+# First: finds src/paths.py, which puts every source dir on sys.path.
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401
 import sys
 from datetime import date

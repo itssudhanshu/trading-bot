@@ -135,7 +135,7 @@ band.
 having the highest t, produced the WORST book of five variants. rs is already
 captured by the 200-DMA gate and the breakout trigger, so more of it is redundant
 while crowding out deliv, which is orthogonal. Univariate significance is not
-marginal portfolio value. Weights unchanged.
+marginal value to the bucket. Weights unchanged.
 
 **Re-run post-guard** (`src/research/weight_test.py`, batch 20260819-postlock), and
 the conclusion holds while the evidence for it thins out:
@@ -331,13 +331,26 @@ against.
 
 ## Layout, and the one command that checks it
 
-Source is under `src/` (`core`, `bucket`, `research`, `ops`, `strategies`),
-shell in `scripts/`, and the four entry points plus `paths.py` stay at the ROOT
-because launchd and every documented command invoke them by name. Anything that
-SPAWNS a script rather than importing it must go through `paths.script()` --
-`agent.py` runs `python3 <path>` in a subprocess whose failure lands in a log
-nobody reads, so a stale string there leaves the scheduler reporting healthy
-while nothing runs. Its `_selftest` asserts every job path exists on disk.
+Source is under `src/` (`core`, `bucket`, `research`, `ops`, `strategies`), shell
+in `scripts/`, tests in `tests/`. **Nothing lives at the root but `CLAUDE.md` and
+`README.md`.** The four entry points are in `src/ops/` (`daily.py`, `tg.py`,
+`agent.py`, `overview.py`), so every documented command, plist and shell script
+names them there.
+
+**`paths.py` is in `src/`, and that is load-bearing.** Every module bootstraps
+with `sys.path.insert(0, parents[1])` then `import paths`, so `parents[1]` must
+resolve to the directory holding `paths.py`. While it sat at the root and the
+source did not, all 23 of those lines pointed one level too shallow -- and every
+selftest passed anyway, because the shell running them exported `PYTHONPATH=.`
+and the children inherited it. The sweep now strips `PYTHONPATH` from its
+children; a check that passes because of the operator's shell is not a check.
+`src/strategies/sprout` sits one deeper and uses `parents[2]`.
+
+Anything that SPAWNS a script rather than importing it must go through
+`paths.script()` -- `agent.py` runs `python3 <path>` in a subprocess whose
+failure lands in a log nobody reads, so a stale string there leaves the scheduler
+reporting healthy while nothing runs. Its `_selftest` asserts every job path
+exists on disk, and it caught exactly that the day the files moved.
 
     python3 tests/run_selftests.py
 

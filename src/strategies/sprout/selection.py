@@ -32,7 +32,7 @@ position per Rs 10,000 risked -- five concurrent, fully invested.
 """
 
 import sys as _sys, pathlib as _pl
-_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2]))  # -> src/
 import paths  # noqa: F401  -- puts the source dirs on sys.path
 import sys
 from datetime import date
@@ -118,14 +118,18 @@ def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT, mult=1.0
 # Percentile bands for prose. A rank is only meaningful against its cluster --
 # "85th percentile on delivery" means among names of comparable turnover, not
 # against the whole market.
+# rules.md R2: these labels are read by a person, not a trader. Say what the
+# feature IS, not what a factor sheet calls it. Module-level because the bot
+# renders the same four names and was carrying its own copy of this dict.
+FEATURE_LABELS = {"rs": "6-month price gain", "deliv": "shares actually kept",
+                  "liq": "easy to trade", "near_high": "near its recent high"}
+
+
 def _why(r):
     """-> plain-language reason this name ranked where it did."""
     if not r:
         return "no rank detail"
-    # rules.md R2: these labels are read by a person, not a trader. Say what
-    # the feature IS, not what a factor sheet calls it.
-    label = {"rs": "6-month price gain", "deliv": "shares actually kept",
-             "liq": "easy to trade", "near_high": "near its recent high"}
+    label = FEATURE_LABELS
     strong = [label[f] for f, v in sorted(r.items(), key=lambda kv: -kv[1]) if v >= 70]
     weak = [label[f] for f, v in r.items() if v <= 30]
     parts = []

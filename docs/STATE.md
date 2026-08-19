@@ -92,11 +92,21 @@ Everything else is shared and strategy-agnostic: price data
 backtest harness (`src/research/simulate`), the order book (`positions.db`), the
 Telegram bot, the audit.
 
-All source moved under `src/` on 2026-08-20, with the four entry points
-(`daily.py`, `tg.py`, `agent.py`, `overview.py`) and `paths.py` left at the root
--- every launchd plist and every documented command invokes those by name, and
-`paths.py` derives `ROOT` from its own location. Shell scripts are in
-`scripts/`. The whole sweep is one command now:
+All source moved under `src/` on 2026-08-20. Nothing is left at the root but
+`CLAUDE.md` and `README.md`: the four entry points are `src/ops/` (`daily.py`,
+`tg.py`, `agent.py`, `overview.py`), shell is `scripts/`, and `paths.py` sits in
+`src/`.
+
+**`src/paths.py` is where it is for a reason.** Every module bootstraps with
+`sys.path.insert(0, parents[1])` then `import paths`, so `parents[1]` from
+`src/core`, `src/bucket`, `src/research` and `src/ops` has to land on the
+directory holding `paths.py`. While that file sat at the root and the source did
+not, all 23 of those lines pointed one level too shallow -- and every selftest
+still passed, because the shell running them exported `PYTHONPATH=.` and the
+children inherited it. Moving the file fixed 23 modules with no edits;
+`src/strategies/sprout` is one deeper and uses `parents[2]`. The sweep now
+strips `PYTHONPATH` from its children so it can never pass on the operator's
+shell again:
 
     python3 tests/run_selftests.py
 
@@ -109,6 +119,12 @@ selection` would resolve to whichever came first and every number after that
 would describe a bucket nobody chose. `paths._selftest()` asserts that no
 inactive strategy is reachable. No import statement anywhere changed when the
 files moved -- that is what `paths.py` was built for.
+
+Anything that SPAWNS a script rather than importing it goes through
+`paths.script()`. `agent.py` runs `python3 <path>` in a subprocess whose failure
+lands in a log nobody reads, so a stale string leaves the scheduler reporting
+healthy while nothing runs; its `_selftest` asserts every job path exists on
+disk, and it caught exactly this the day the files moved.
 
 **The order book is deliberately NOT strategy-scoped.** `positions.db` is real
 money and one bucket. If a second strategy ever trades forward, that is a
@@ -453,9 +469,17 @@ Whether to progress to real money is the user's decision, not a technical one.
 
 ## Daily operation
 
-launchd runs `agent.py --once` hourly. On a weekday after 18:00 it does
+launchd runs `src/ops/agent.py --once` hourly. On a weekday after 18:00 it does
 `snapshot -> catchup -> pbook`. The Telegram listener runs via
 `scripts/run_listener.sh` and must be restarted after ANY code change.
+
+**Both installed plists are stale right now, and this is the one open item.**
+They carry absolute paths to the deleted root `tg.py` and `agent.py`, so the
+listener is down and no scheduled job is registered; the agent plist is also
+installed under its repo filename rather than its Label, which is why
+`launchctl list` finds nothing even when the file is present. The reinstall
+command is in README under Scheduling, and `audit.py` FAILS until it is run --
+the one failing check of 35, and it is failing about a real thing.
 
 Retired work (the spec-search track: generator, pipeline, judge, holdout
 ledger) is archived in `data/retired/` and deleted from the tree. It never

@@ -40,7 +40,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-    <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/agent.py</string>
+    <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/src/ops/agent.py</string>
     <string>--once</string>
     <string>--telegram</string>
   </array>

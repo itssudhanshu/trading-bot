@@ -238,6 +238,8 @@ def main():
         shutil.rmtree(tmp, ignore_errors=True)
 
     # gap handling, on the real simulator
+    now_config = (f"{selection.STOP_PCT:g}/{selection.TARGET_PCT:g}/"
+                  f"{selection.HOLD_DAYS}d")
     r = simulate.run(corpus, days, stop_pct=selection.STOP_PCT,
                      target_pct=selection.TARGET_PCT, hold=selection.HOLD_DAYS,
                      max_pos=5, refresh=5, trigger="breakout", impact_c=1.0)
@@ -266,10 +268,23 @@ def main():
         skip("wallet total equals cash plus holdings", "could not parse /wallet")
 
     # every tg.* call made from the daily runner must actually resolve
-    import ast, tg
+    import ast, importlib.util, tg
+
+    def _src(mod):
+        """Read a module's source by RESOLVING it, not by guessing where it sits.
+
+        These were `features.ROOT / "daily.py"`, correct while every file lived
+        at the repo root and a FileNotFoundError the day they moved into
+        src/ops/. find_spec goes through sys.path -- the same mechanism the
+        import above uses -- and does not execute the module.
+        """
+        s = importlib.util.find_spec(mod)
+        assert s and s.origin, f"cannot locate {mod}.py to audit it"
+        return Path(s.origin).read_text()
+
     missing = []
-    for f in ("daily.py", "agent.py"):
-        src = (features.ROOT / f).read_text()
+    for f in ("daily", "agent"):
+        src = _src(f)
         for node in ast.walk(ast.parse(src)):
             if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
                     and node.value.id == "tg" and not hasattr(tg, node.attr)):
@@ -282,7 +297,7 @@ def main():
     # the audit stayed green. A CLI branch nobody runs daily is exactly where a
     # dead name survives.
     own = []
-    for node in ast.walk(ast.parse((features.ROOT / "tg.py").read_text())):
+    for node in ast.walk(ast.parse(_src("tg"))):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id.startswith("cmd_") and not hasattr(tg, node.func.id)):
             own.append(f"tg.py: {node.func.id}()")
@@ -293,6 +308,59 @@ def main():
     undoc = sorted(set(tg.COMMANDS) - tg.ALIASES
                    - {c for c in tg.COMMANDS if c.replace("_", "\\_") in tg.cmd_help()})
     check("every command appears in /help", not undoc, f"{undoc or 'none'}")
+
+    # RENDER every one of them and check the markup Telegram will parse. This
+    # lived only inside send(), so the only way to find an unbalanced * or _ was
+    # to post the message -- three of them reached the user's phone that way.
+    # Here because the audit already pays for the corpus; a command that raises
+    # while building its own text also fails, which is the other half of it.
+    bad = []
+    for name in sorted(set(tg.COMMANDS) - {"/start"}):
+        try:
+            tg.check_markup(tg.COMMANDS[name](None))
+        except Exception as e:
+            bad.append(f"{name}: {type(e).__name__} {str(e)[:90]}")
+    check("every command renders and its markup is balanced", not bad,
+          f"{len(tg.COMMANDS) - 1} rendered" if not bad else " | ".join(bad))
+
+    # The INSTALLED plists, not the ones in the repo. paths.script() and its
+    # selftest cover the paths agent.py spawns; nothing covered the two paths
+    # launchd spawns, and both pointed at the deleted root tg.py and agent.py
+    # for a day after the src/ move -- the listener simply stopped and the
+    # scheduler never started. launchd's failure is a line in a log nobody
+    # reads, so the check has to live somewhere a person looks.
+    # plutil, not plistlib: these plists carry "--" inside their XML comments,
+    # which expat rejects and CFPropertyList accepts. The authority on whether
+    # launchd can read a plist is the parser launchd uses, so asking Python's
+    # would have failed both files for a reason launchd does not care about.
+    import json as _json, subprocess as _sp
+    la = _pl.Path.home() / "Library" / "LaunchAgents"
+    plists = sorted(la.glob("*tradingbot*.plist")) + sorted(la.glob("trading-bot*.plist"))
+    if not plists:
+        skip("every installed launchd job points at a file that exists",
+             f"nothing installed in {la} -- run the cp/launchctl step in README")
+    else:
+        stale = []
+        for p in plists:
+            # NOT `r` -- main() reuses that name for a stored result 100 lines
+            # down, and shadowing it here raised where the shadow was invisible.
+            conv = _sp.run(["plutil", "-convert", "json", "-o", "-", str(p)],
+                           capture_output=True, text=True)
+            if conv.returncode:
+                stale.append(f"{p.name}: launchd cannot parse it -- "
+                             f"{conv.stderr.strip()[:80]}")
+                continue
+            d = _json.loads(conv.stdout)
+            # A plist whose filename is not its Label loads by path but is not
+            # found by label, so `launchctl list` shows nothing and /health is
+            # right to say no job is registered.
+            if p.stem != d.get("Label"):
+                stale.append(f"{p.name}: Label is {d.get('Label')}")
+            for a in d.get("ProgramArguments", []):
+                if str(a).startswith(str(paths.ROOT)) and not _pl.Path(a).exists():
+                    stale.append(f"{p.name}: {a} does not exist")
+        check("every installed launchd job points at a file that exists",
+              not stale, f"{len(plists)} installed" if not stale else " | ".join(stale))
 
     # -------------------------------------------------------------- BUCKET
     section("THE BUCKET")
@@ -339,6 +407,33 @@ def main():
         skip("the committed order record matches the live database",
              f"{positions.RECORD.name} not written yet -- run daily.py")
 
+    # /wallet tells the operator "holding 4 of 5, typical is X" from a STORED
+    # baseline, and nothing in the pipeline ever wrote that file. It said 2.83
+    # against a true 3.09, and 20% of sessions against a true 27% -- a derived
+    # number with no writer, which is this project's most repeated defect. The
+    # live simulation is already in hand two hundred lines up, so comparing them
+    # costs nothing; --rebaseline rewrites it the same way it rewrites the
+    # headline.
+    import analysis
+    _occ = analysis.load_occupancy()
+    if _occ:
+        _live_occ = {"dist": {int(k): v for k, v in r["occ_dist"].items()},
+                     "mean": round(r["occupancy"], 3),
+                     "config": now_config}
+        _drift = abs(_occ["mean"] - _live_occ["mean"])
+        if "--rebaseline" in sys.argv and _drift > 0.05:
+            analysis.save_occupancy(_live_occ["dist"], _live_occ["mean"], now_config)
+            print(f"         REBASELINED occupancy to {_live_occ['mean']}")
+            _occ = analysis.load_occupancy()
+            _drift = abs(_occ["mean"] - _live_occ["mean"])
+        check("the occupancy /wallet quotes matches the live simulation",
+              _drift <= 0.05 and _occ.get("config") == now_config,
+              f"stored {_occ['mean']:.2f} ({_occ.get('config')}) vs live "
+              f"{_live_occ['mean']:.2f} ({now_config})")
+    else:
+        skip("the occupancy /wallet quotes matches the live simulation",
+             "no occupancy baseline stored")
+
     # The tighter-stop counterfactual must be exact -- computed on positions
     # that really existed -- and must refuse a level at or above the entry.
     sh = positions.shadow_stop(features.load_corpus(), conn, pct=5.0)
@@ -356,8 +451,7 @@ def main():
     bf = paths.SDATA / "baseline.json"   # this strategy's headline, not the repo's
     now_b = {"sessions": len(days), "cagr": round(r["cagr"], 2),
              "n": len(t), "maxdd": round(r["maxdd"], 1),
-             "config": f"{selection.STOP_PCT:g}/{selection.TARGET_PCT:g}/"
-                       f"{selection.HOLD_DAYS}d"}
+             "config": now_config}
     if not bf.exists():
         bf.write_text(_j.dumps(now_b, indent=1))
         skip("the recorded baseline still reproduces",

@@ -13,15 +13,14 @@ python3 tests/run_selftests.py
 ## Layout
 
 ```
-agent.py daily.py tg.py overview.py    entry points; launchd runs agent.py
-paths.py                               ROOT, DATA and which strategy is live
+src/paths.py                           ROOT, DATA and which strategy is live
 src/strategies/sprout/                 THE STRATEGY: clusters selection entry learning
 src/core/                              universe features engine quotes fundamentals
 src/bucket/                            positions analysis -- the bucket and its evidence
 src/research/                          simulate and the *_test.py experiments
-src/ops/                               snapshot backfill audit upstox_login patch_helper
+src/ops/                               agent daily tg overview + snapshot backfill audit
 tests/run_selftests.py                 runs every selftest and the audit
-scripts/                               setup.sh run_listener.sh deploy/
+scripts/                               setup.sh run_listener.sh deploy/ claude/
 docs/                                  glossary.md lessons.md rules.md STATE.md
 data/sprout/                           the strategy's weights, baseline, trade ledger
 data/                                  raw/ plus shared state and logs
@@ -29,8 +28,10 @@ data/                                  raw/ plus shared state and logs
 ```
 
 Modules import each other by bare name (`import features`) from anywhere:
-`paths.py` puts the source directories on `sys.path`, and each module loads it
-first, so any file can still be run directly for its selftest.
+`src/paths.py` puts the source directories on `sys.path`, and each module loads
+it first, so any file can still be run directly for its selftest. That file
+lives in `src/` deliberately -- every module bootstraps with
+`parents[1] / paths`, so it must resolve to the directory holding the source.
 
 **One strategy at a time.** Only the active strategy's directory goes on
 `sys.path`, so a second strategy that also defines `selection` cannot be reached
@@ -66,7 +67,7 @@ daily.py       daily driver (morning fill, evening step + re-select)
 learning.py    per-trade feature ledger; proposes score weights on evidence
      |
 agent.py       what is due right now; launchd calls it hourly
-tg.py          Telegram: read-only reporting and the daily push
+tg.py          Telegram: ten read-only commands and the daily push
 audit.py       cross-checks the real system, and mutation-tests its own checks
 overview.py    the one honest status page; backtests cannot make it say YES
 ```
@@ -118,17 +119,38 @@ python3 src/ops/snapshot.py                     # today's capture
 python3 src/ops/snapshot.py --catchup           # recover missed days, report what cannot be
 python3 src/ops/backfill.py --years 4           # historical bars
 python3 src/strategies/sprout/clusters.py       # today's selection, per cluster
-python3 daily.py                                # evening: fill, exit, re-select
-python3 daily.py --fill-live                    # morning: fill pending at the open
-python3 src/ops/audit.py                        # 32 cross-checks against the real system
-python3 overview.py                             # status, gates, and the honest verdict
+python3 src/ops/daily.py                        # evening: fill, exit, re-select
+python3 src/ops/daily.py --fill-live            # morning: fill pending at the open
+python3 src/ops/audit.py                        # 35 cross-checks against the real system
+python3 src/ops/overview.py                     # status, gates, and the honest verdict
 python3 tests/run_selftests.py                  # every selftest, then the audit
 ```
 
 Scheduling: use `scripts/deploy/*.plist` with launchd, not cron — cron skips
 jobs when the machine sleeps, and a missed session is a permanent hole in the
-point-in-time record. `agent.py` is the only job that needs scheduling; it works
-out what is due (snapshot, catchup, evening step, digest) and runs it.
+point-in-time record. `src/ops/agent.py` is the only job that needs
+scheduling; it works out what is due (snapshot, catchup, evening step, digest)
+and runs it. Anything that SPAWNS another script goes through `paths.script()`,
+never a hardcoded path -- a stale string in a subprocess call leaves the
+scheduler reporting healthy while nothing runs.
+
+**Install them under their Label, not their repo filename.** launchd finds a job
+by Label, so `trading-bot-agent.plist` loads by path and then answers to nothing:
+`launchctl list` shows no job and `/health` correctly reports that nothing is
+scheduled. Both files also carry the absolute path of the script they run, so the
+`src/` move broke both silently.
+
+```bash
+cp scripts/deploy/trading-bot-agent.plist    ~/Library/LaunchAgents/com.sudhanshu.tradingbot.agent.plist
+cp scripts/deploy/trading-bot-telegram.plist ~/Library/LaunchAgents/com.sudhanshu.tradingbot.telegram.plist
+rm -f ~/Library/LaunchAgents/trading-bot-agent.plist
+launchctl unload ~/Library/LaunchAgents/com.sudhanshu.tradingbot.{agent,telegram}.plist 2>/dev/null
+launchctl load   ~/Library/LaunchAgents/com.sudhanshu.tradingbot.{agent,telegram}.plist
+```
+
+`audit.py` checks both installed plists afterwards: that launchd can parse each
+one, that its filename matches its Label, and that every repo path it names still
+exists. That check FAILS today, which is why the listener is down.
 
 ## docs/lessons.md
 

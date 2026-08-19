@@ -201,6 +201,13 @@ def load_occupancy():
 BACKTEST_EDGE = 2.15
 TRADE_SD = 16.0     # measured 15.1 post-guard; kept at 16 as the conservative one
 
+# The day engine.gate() was first CALLED. Every finding recorded before it filled
+# circuit-locked bars -- about half the CAGR and 37 of 232 trades were fills the
+# market could not have given -- so those rows are not comparable to anything
+# measured since, and a screen that lists them together must say which is which.
+# A date, not a flag, because the rows are append-only and cannot be re-tagged.
+GUARD_DATE = "2026-08-19"
+
 
 def stats(trades):
     """-> mean return per trade, its standard error, 95% CI, t, n.
@@ -239,8 +246,16 @@ def trades_needed(edge_pct, sd_pct=TRADE_SD):
 def verdict(trades, sd_pct=TRADE_SD):
     """-> one plain sentence about what the results so far can support."""
     s = stats(trades)
-    if s["n"] < 2:
-        return f"{s['n']} trade so far. Nothing can be concluded."
+    # "0 trade so far" was the literal output for the case that will be true for
+    # months: ungrammatical, and it left a reader who had just seen four running
+    # positions in /wallet wondering which number to believe. Say what is
+    # actually missing -- a FINISHED trade -- because only a closed trade has a
+    # return to average.
+    if s["n"] == 0:
+        return ("No trade has finished yet, so there is nothing to judge. A "
+                "running trade has no result until it is sold.")
+    if s["n"] == 1:
+        return "One finished trade. Nothing can be concluded from one."
     if s["significant"]:
         d = "profitable" if s["mean"] > 0 else "losing"
         return (f"{s['n']} trades, {s['mean']:+.2f}% each "

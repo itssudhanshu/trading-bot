@@ -12,7 +12,7 @@ so nothing here can see a price it could not have traded on.
 """
 
 import sys as _sys, pathlib as _pl
-_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2]))  # -> src/
 import paths  # noqa: F401  -- puts the source dirs on sys.path
 import features
 

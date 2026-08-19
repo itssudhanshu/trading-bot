@@ -23,7 +23,9 @@ machine, not things triggerable from a phone.
     python3 tg.py --listen          # poll for commands (foreground)
 """
 
-# First: puts core/, bucket/, research/ and ops/ on sys.path.
+# First: finds src/paths.py, which puts every source dir on sys.path.
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401
 import json
 import sys
@@ -159,13 +161,14 @@ def send_document(path, caption="", chat_id=None):
         return {"ok": False, "error": f"{type(e).__name__}"}
 
 
-def send(text, chat_id=None):
-    """Telegram caps messages at 4096 chars.
+def check_markup(text):
+    """Raise if Telegram would reject `text`. Called by send(); no network.
 
-    '%%' is escaped-percent from format-string habit and renders literally
-    here -- these are plain strings, never %-formatted. It has reached the
-    user twice ("20%% STCG"), so it is now a hard error rather than a typo
-    that only shows up on their phone.
+    Split out of send() so it can be run against a command's output WITHOUT
+    posting it. While it lived inside send() the only way to discover that a
+    screen had an unbalanced marker was to send it, which means the user's phone
+    was the test environment -- and every one of the failures below reached it.
+    audit.py now renders every command through this.
     """
     if "%%" in text:
         raise ValueError("literal '%%' in message -- use a single % "
@@ -186,6 +189,12 @@ def send(text, chat_id=None):
                 f"unbalanced {_ch!r} outside code fences -- Telegram will reject "
                 f"the message. Wrap identifiers in backticks. "
                 f"near: ...{_outside[max(0, _i - 50):_i + 10]!r}")
+    return text
+
+
+def send(text, chat_id=None):
+    """Telegram caps messages at 4096 chars."""
+    check_markup(text)
     return _call("sendMessage", {
         "chat_id": chat_id or owner(),
         "text": text[:4000],
@@ -196,7 +205,8 @@ def send(text, chat_id=None):
 
 # --- command handlers: all read-only -------------------------------------
 
-SIZE = {"micro": "smallest", "small": "small"}
+SIZE = {"micro": "smallest companies", "small": "small companies"}
+
 
 
 def _rs(x):
@@ -330,6 +340,21 @@ def cmd_wallet(_=None):
     return "\n".join(out)
 
 
+def _chosen(rows, mix):
+    """-> the rows the bucket takes: the top k of each cluster, in that order.
+
+    ONE definition, because /bucket and /clusters both need it and computing it
+    separately is how they came to disagree. /clusters asked
+    selection.allocate(), which applies the breakout TRIGGER, so on any evening
+    where four of the five picks had not broken out yet it marked them "ranked
+    only" while /bucket listed them as picks 2-5 of the same ranking. Rank
+    first, trigger second (CLAUDE.md); the trigger decides WHEN a chosen stock
+    is bought, not whether it was chosen.
+    """
+    return [r for c, k in mix.items()
+            for r in [x for x in rows if x["cluster"] == c][:k]]
+
+
 # ============================================================ THE PIPELINE
 def cmd_clusters(_=None):
     """The ranking, deep enough to show which stocks the bucket buys."""
@@ -337,22 +362,27 @@ def cmd_clusters(_=None):
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
-    # ONE source of ranking. This used clusters.pick() while /picks used
+    # ONE source of ranking. This used clusters.pick() while /bucket used
     # selection.build(), and the two disagreed on the same day: build() also
     # drops surveillance-flagged names and anything too expensive to size, so
     # /clusters was advertising names that could never be bought and showing a
     # different top 5 than the picks taken from it.
     rows = selection.build(corpus, as_of)
     trig = {r["symbol"] for r in rows if r.get("triggered")}
-    # Which PORTFOLIO buys each stock. The deeper ones reach past the top 5,
-    # so a name absent from a short list used to look unranked when it had
-    # simply been taken further down.
-    owner = {r["symbol"] for r in selection.allocate(rows)}
+    chosen = {r["symbol"] for r in _chosen(rows, selection.TAKE_PER_CLUSTER)}
+    # Picked today and actually HELD are different things, and one mark for both
+    # made the legend a lie: a name chosen this evening shows 🟢 "in the bucket"
+    # before a single rupee has moved, and stays 🟢 the next day when the price
+    # never broke out and it was never bought (rules.md R1 -- a word already in
+    # use is not reused for something else).
+    live = {r["symbol"] for r in positions.summary(which=None)["rows"]
+            if r["status"] in ("open", "pending")}
     depth = max(selection.TAKE_PER_CLUSTER.values()) * 3
     out = [_title("RANKING", f"as of {as_of}"),
-           f"_The {clusters.TRADEABLE_PCT * 100:.0f}% of NSE shares that trade "
-           f"least each day, split into two size groups. All "
-           f"The bucket buys the top of it._", ""]
+           f"_Of the NSE shares that trade least each day, the "
+           f"{clusters.TRADEABLE_PCT * 100:.0f}% that this strategy will touch, "
+           f"split into two size groups and scored. The bucket buys from the top "
+           f"of each list._", ""]
     for c in clusters.CLUSTERS:
         take = selection.TAKE_PER_CLUSTER.get(c, 0)
         inc = [r for r in rows if r["cluster"] == c]
@@ -361,19 +391,23 @@ def cmd_clusters(_=None):
                    f"the bucket takes the top {take}")
         for n, r in enumerate(inc[:depth], 1):
             sym = r["symbol"]
-            mark = ("🟢" if sym in owner else "🔸" if sym in trig else "▫️")
+            mark = ("🟢" if sym in live else "🔵" if sym in chosen else
+                    "🔸" if sym in trig else "▫️")
             out.append(f"  rank {n}. {mark} {sym}  score {r['score']:.0f}")
         if len(inc) > depth:
             out.append(f"  _...{len(inc) - depth} more, ranked too low to buy_")
         out.append("")
-    out.append("_🟢 in the bucket · 🔸 price broke higher but ranked too low "
-               "to buy · ▫️ ranked only_")
+    out.append("_🟢 the bucket owns it now · 🔵 chosen, waiting for its price to "
+               "break higher · 🔸 price broke higher but ranked too low to buy · "
+               "▫️ ranked only_")
     return "\n".join(out)
 
 
 def cmd_bucket(_=None):
     """The stocks the bucket chose this session, and why."""
-    import clusters, features, selection, positions
+    import clusters, features, learning, selection, positions
+    FEATURE = selection.FEATURE_LABELS      # one definition, in the strategy
+    WEIGHTS = learning.load_weights()
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
     as_of = days[-1]
@@ -386,26 +420,55 @@ def cmd_bucket(_=None):
             if r["status"] in ("open", "pending")}
     mix = selection.TAKE_PER_CLUSTER
     out = [_title("THE BUCKET",
-                  " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),
-           f"_The {sum(mix.values())} best-ranked. Each is bought only once its "
+                  " + ".join(f"{v} of the {SIZE.get(k, k)}" for k, v in mix.items())),
+           f"_The {sum(mix.values())} best-scored. Each is bought only once its "
            f"price breaks above its recent high; until then that money stays in "
            f"cash._", ""]
-    n = 0
-    for c, k in mix.items():
-        for r in [x for x in rows if x["cluster"] == c][:k]:
-            n += 1
-            st = held.get(r["symbol"])
-            state = ("🟢 running" if st == "open" else
-                     "🟡 buying tomorrow" if st == "pending" else
-                     "⚪ waiting for the price to break higher")
-            out.append(f"*{n}. {r['symbol']}* ({c})  {state}")
-            out.append(f"    score {r['score']:.0f} · {r['why']}")
-    if not n:
+    picks = _chosen(rows, mix)
+    shown = {r["symbol"] for r in picks}
+    for n, r in enumerate(picks, 1):
+        st = held.get(r["symbol"])
+        state = ("🟢 the bucket owns it" if st == "open" else
+                 "🟡 buying at tomorrow's open" if st == "pending" else
+                 "⚪ waiting for the price to break higher")
+        out.append(f"*{n}. {r['symbol']}*  {state}")
+        # The four numbers, one per line, instead of the run-on sentence `why`
+        # builds. "among the best 30% for near its recent high, 6-month price
+        # gain, easy to trade, shares actually kept" is 90 characters that do
+        # not say WHICH was strongest, so it cannot answer the only question
+        # anyone asks of this screen: why this stock and not the one below it.
+        # The numbers can (rules.md R2).
+        out += ["    " + l for l in _fields(
+            ("size group", SIZE.get(r["cluster"], r["cluster"])),
+            ("score out of 100", f"{r['score']:.0f}"),
+            *[(FEATURE[f], f"{v:.0f}")
+              for f, v in sorted((r.get("ranks") or {}).items(),
+                                 key=lambda kv: -kv[1]) if f in FEATURE])]
+        out.append("")
+    if not picks:
         out.append("_No candidates today._")
-    import positions
-    live = sum(1 for v in held.values() if v in ("open", "pending"))
-    out += ["", f"_{live} of {sum(mix.values())} bought so far. The rest are "
-                f"waiting for their price to break higher._"]
+    # Stocks bought on an EARLIER evening, still running, and no longer in
+    # tonight's top five -- the ranking moves nightly, the holding period does
+    # not. Three of the four open positions were in exactly this state and this
+    # screen, titled THE BUCKET, did not mention them. Worse, the footer counted
+    # all four live positions and printed the total against these five names:
+    # "4 of 5 bought so far" when one of the five was held. Count what was
+    # printed; name what was not.
+    earlier = sorted(s for s in held if s not in shown)
+    if earlier:
+        out += [f"*Also held, bought earlier*  {', '.join(earlier)}",
+                "_Tonight's ranking no longer puts these in the top 5, and that "
+                "changes nothing: each one runs to its own stop, target or "
+                "10-day limit. /open\\_orders for the detail._", ""]
+    live = sum(1 for s in shown if s in held)
+    out += [f"_Each number is a place out of 100 against the other shares in the "
+            f"same size group -- 100 is the best. The score is their average, "
+            f"with '{FEATURE['deliv']}' counted {WEIGHTS.get('deliv', 1):g}x. "
+            f"Nothing is bought below its 200-day average price._",
+            f"_{live} of these {sum(mix.values())} is bought; the rest are "
+            f"waiting for their price to break higher._" if live == 1 else
+            f"_{live} of these {sum(mix.values())} are bought; the rest are "
+            f"waiting for their price to break higher._"]
     return "\n".join(out)
 
 
@@ -594,6 +657,13 @@ def cmd_findings(_=None):
         out.append(f"{'🧪' if sim else '📈'} *{r['label']}*  _{r['at'][:10]}_")
         out.append(f"  {'TESTED ON PAST DATA — proves nothing' if sim else 'real trades, made forward'}"
                    f" · {r['n']} trades")
+        # Rows older than the guard counted buys that could not have happened.
+        # Left in place -- the file is append-only and history is not edited --
+        # but a reader comparing "231 trades, +2.96% each" against today's 195
+        # and +2.15% deserves to know they are not the same measurement.
+        if r["at"][:10] < analysis.GUARD_DATE:
+            out.append("  ⚠️ counted buys at prices the market could not have "
+                       "given — see the note at the end")
         st = r.get("stats") or {}
         if st.get("se"):
             tag = "measurable" if st.get("significant") else "inside the noise"
@@ -601,13 +671,26 @@ def cmd_findings(_=None):
             out.append(f"  {st['mean']:+.2f}% average per trade, give or "
                        f"take {give:.2f}% — {tag}")
         for cl, v in sorted(r.get("by_cluster", {}).items()):
-            out.append(f"  {cl}: {v['n']} trades {v['total']:+.1f}%")
+            # AVERAGE per trade, not the sum of every trade's percentage.
+            # "137 trades +462.3%" reads as a 462% return to anyone who is not
+            # a trader, which is the one thing rules.md R2 forbids. The average
+            # was already stored in the same row.
+            out.append(f"  {SIZE.get(cl, cl)}: {v['n']} trades, "
+                       f"{v.get('avg', 0):+.2f}% each")
         out.append("")
     n_sim = sum(1 for r in rows if r.get("source") == "simulation")
-    out.append(f"_🧪 {n_sim} of {len(rows)} of these were run on past data. "
+    old = sum(1 for r in rows if r["at"][:10] < analysis.GUARD_DATE)
+    out.append(f"_🧪 {n_sim} of these {len(rows)} were run on past data. "
                f"Replaying history can always be made to look good, so none "
                f"of it counts. Only trades made going forward do, and there "
                f"are none finished yet._")
+    if old:
+        out.append(f"_⚠️ {old} were recorded before {analysis.GUARD_DATE}, when the "
+                   f"test still bought shares on days the price was frozen at its "
+                   f"limit and nobody was selling. Those buys were impossible, and "
+                   f"they were the best ones — removing them cut the tested return "
+                   f"roughly in half. Older numbers here read better than the "
+                   f"strategy is._")
     return "\n".join(out)
 
 
@@ -639,9 +722,24 @@ def cmd_health(_=None):
             return None
 
     m = _age(ROOT / "data" / "agent_heartbeat.json")
-    out.append("❌ Scheduler agent — never ran" if m is None else
-               ("✅" if m < 90 else "❌") +
-               f" Scheduler agent — last ran {m:.0f} min ago")
+    # A fresh heartbeat proves the agent RAN, not that anything will run it
+    # again: `agent.py --once` by hand stamps the same file. Ticking on the stamp
+    # alone put "✅ Scheduler agent — last ran 4 min ago" in the same message as
+    # "no launchd job registered -- nothing runs on a schedule". Both facts were
+    # true; the tick belonged to the one a person has to act on.
+    try:
+        import agent as _a
+        jobs = _a._jobs_loaded()
+    except Exception:
+        jobs = None          # cannot ask launchctl -- do not claim either way
+    if m is None:
+        out.append("❌ Scheduler agent — never ran")
+    elif jobs == []:
+        out.append(f"❌ Scheduler agent — ran {m:.0f} min ago, but no scheduled "
+                   f"job is registered, so nothing will run it again")
+    else:
+        out.append(("✅" if m < 90 else "❌") +
+                   f" Scheduler agent — last ran {m:.0f} min ago")
 
     # Its own stamp, not pgrep -- see _beat.
     m = _age(LISTENER_BEAT)
@@ -706,7 +804,7 @@ def cmd_health(_=None):
         # never marks the open positions to market, so with nothing closed it
         # returns the starting capital exactly. Printing that as "worth" reads
         # to anyone as today's value of the bucket, which it is not.
-        # /open\_orders and /review are where money is quoted, off real quotes.
+        # /wallet is the one place money is quoted, off live prices.
         out.append(f"✅ Bucket — {s['open']} held, {s['pending']} buying at the "
                    f"next open, {s['closed']} finished")
     except Exception as e:
@@ -738,9 +836,16 @@ def cmd_review(_=None):
     s = positions.summary()
     allb = positions.summary(which=None)
     closed = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
+    # COUNTS, not money. summary()["equity"] is CAPITAL + realised and never
+    # marks the open positions to market, so with nothing closed it returns the
+    # starting capital exactly -- this line printed "worth Rs 300,000" on the
+    # same day /wallet correctly said Rs 303,205. /health already carried a
+    # comment warning about this and pointed HERE as a place that got it right.
+    # It did not. Money is quoted in one place, off live prices: /wallet.
     out = [_title("DAILY REVIEW", str(datetime.now().date())), "",
            f"*Bucket*  {s['open']} held · {s['pending']} buying tomorrow · "
-           f"{s['closed']} finished · worth {_rs(s['equity'])}"]
+           f"{s['closed']} finished",
+           "_/wallet for what it is worth today._"]
     # Two positions were opened by the deeper buckets that have since been
     # removed. They run to their own exits and are counted here so the totals
     # match /open_orders, which would otherwise disagree.
@@ -794,7 +899,7 @@ def cmd_review(_=None):
                     else f"{days_old} days old — STALE")
             out += ["", f"*Self-audit*  {'✅' if ok else '❌'} {tail[-1]}  _({when})_"]
 
-    # A compact line per pick, not the whole of /picks. Pasting that in made
+    # A compact line per pick, not the whole of /bucket. Pasting that in made
     # the review four fifths duplicate, and two screens that must be kept in
     # step is one screen too many.
     try:
@@ -805,10 +910,11 @@ def cmd_review(_=None):
         picks = selection.allocate(selection.build(corpus, as_of))
         held = {r["symbol"] for r in positions.summary(which=None)["rows"]
                 if r["status"] in ("open", "pending")}
-        out += ["", f"*Picks* ({as_of})"]
+        out += ["", f"*Chosen tonight* ({as_of})"]
         for r in picks:
             out.append(f"  {'🟢' if r['symbol'] in held else '⚪'} "
-                       f"{r['symbol']} ({r['cluster']}) score {r['score']:.0f}")
+                       f"{r['symbol']} — {SIZE.get(r['cluster'], r['cluster'])}, "
+                       f"score {r['score']:.0f}")
         if not picks:
             out.append("  _nothing triggered_")
         out.append("_/bucket for why · /clusters for the full ranking._")
@@ -833,34 +939,43 @@ def notify(title, lines):
 
 
 def cmd_help(_=None):
-    return ("*COMMANDS*\n\n"
-            "*Money*\n"
-            "/wallet — cash, stocks held, profit\n\n"
-            "*The pipeline*, in order\n"
-            "/clusters — the ranking, and who buys what\n"
-            "/bucket — the stocks chosen this session, and why\n"
-            "/next\\_orders — waiting to enter, with entry, stop, target, value\n"
-            "/open\\_orders — trades live in the market now\n"
-            "/closed\\_orders — finished trades and their profit or loss\n\n"
-            "*Evidence*\n"
-            "/findings — what has been recorded\n"
-            "/review — the daily read: the bucket, evidence, suggestions\n"
+    """The nine commands, grouped by the question each one answers.
 
-            "*System*\n"
-            "/health — is everything running\n\n"
+    Grouped by QUESTION, not by module. The old list was ordered by where the
+    code lives -- "the pipeline, in order" -- which is the one ordering nobody
+    reading this has in their head. It also lost the blank line before *System*,
+    so /health rendered glued to the line above it.
+    """
+    return ("*WHAT YOU CAN ASK*\n\n"
+            "*How much money is there?*\n"
+            "/wallet — cash, what is invested, profit so far\n\n"
+            "*What am I in, and what is next?*\n"
+            "/open\\_orders — bought and running in the market now\n"
+            "/next\\_orders — chosen, waiting to be bought tomorrow morning\n"
+            "/closed\\_orders — finished, and what each one made or lost\n\n"
+            "*Why these stocks?*\n"
+            "/bucket — the 5 chosen this session, with the reason for each\n"
+            "/clusters — the full ranking they were chosen from\n\n"
+            "*Is any of this actually working?*\n"
+            "/findings — every result recorded, and what it can prove\n"
+            "/review — tonight\'s read: holdings, evidence, suggestions\n\n"
+            "*Is the bot alive?*\n"
+            "/health — every moving part, checked\n\n"
             "_Hyphens work too: /next-orders, /open-orders, /closed-orders._\n"
             "_Read-only. I never place a trade or change a setting from here._")
 
 
 # Telegram only autocompletes underscores, but the hyphen spellings are
 # what was asked for and arrive intact as plain text, so both are bound.
+# /portfolio and /picks are GONE, not renamed. Keeping an old spelling alive
+# looks free and is not: /portfolio is the word rules.md R1 bans by name, and
+# /picks was a second name for /bucket, so the same screen had two names and
+# the codebase had two vocabularies. An unknown command already answers with
+# /help, which is a better outcome than silently teaching the banned word.
 COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
-            "/bucket": cmd_bucket, "/picks": cmd_bucket,
+            "/bucket": cmd_bucket,
             "/next_orders": cmd_next_orders, "/next-orders": cmd_next_orders,
             "/open_orders": cmd_open_orders, "/open-orders": cmd_open_orders,
-            # /portfolio was the earlier name for the live trades; kept so it
-            # does not silently stop working.
-            "/portfolio": cmd_open_orders,
             "/closed_orders": cmd_closed_orders,
             "/closed-orders": cmd_closed_orders,
             "/findings": cmd_findings, "/review": cmd_review,
@@ -870,7 +985,7 @@ COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
 # Spellings that work but are deliberately not advertised: the hyphen forms
 # (Telegram only autocompletes underscores) and older names kept alive so they
 # do not silently break. Everything else must appear in /help.
-ALIASES = {"/start", "/help", "/portfolio", "/picks",
+ALIASES = {"/start", "/help",
            "/next-orders", "/open-orders", "/closed-orders"}
 
 
@@ -1013,6 +1128,33 @@ def _selftest():
     print("  /health reads the listener from its own stamp ok (both directions)")
 
     # ------------------------------------------------------------------
+    # ONE MESSAGE MUST NOT CONTRADICT ITSELF. /health ticked "Scheduler agent —
+    # last ran 4 min ago" four lines above its own "no launchd job registered --
+    # nothing runs on a schedule", because the stamp is written by any run,
+    # including `agent.py --once` typed by hand. Driven through cmd_health with
+    # _jobs_loaded stubbed, not grepped, so a correct rewrite still passes.
+    # ------------------------------------------------------------------
+    import agent as _ag
+    o_root, o_jobs = ROOT, _ag._jobs_loaded
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            ROOT = Path(td)
+            (ROOT / "data").mkdir()
+            (ROOT / "data" / "agent_heartbeat.json").write_text(
+                json.dumps({"at": datetime.now().isoformat()}))
+            _ag._jobs_loaded = lambda: ["com.sudhanshu.tradingbot.agent"]
+            assert "✅ Scheduler agent" in cmd_health(), \
+                "a scheduled agent that just ran read as broken"
+            _ag._jobs_loaded = lambda: []
+            h = cmd_health()
+            assert "✅ Scheduler agent" not in h, \
+                "a fresh stamp with no scheduled job wore a tick: nothing will run it again"
+            assert "no scheduled job is registered" in h, h[:400]
+    finally:
+        ROOT, _ag._jobs_loaded = o_root, o_jobs
+    print("  /health ticks the scheduler only when a job is registered ok")
+
+    # ------------------------------------------------------------------
     # THE ALLOWLIST IS THE WHOLE SECURITY MODEL, so it is tested by driving
     # poll_once itself rather than by grepping for the line that implements it.
     # The previous version asserted the source contained `if chat != owner:`,
@@ -1085,7 +1227,7 @@ def _selftest():
     try:
         _pb.summary = lambda *a, **k: {"pending": 0, "open": 0, "closed": 0,
                                        "realised": 0.0, "equity": 0.0, "rows": []}
-        for name in ("/wallet", "/portfolio", "/open_orders",
+        for name in ("/wallet", "/open_orders",
                      "/closed_orders", "/findings"):
             out = COMMANDS[name](None)
             assert isinstance(out, str) and out, name
@@ -1104,6 +1246,30 @@ def _selftest():
     assert _away(0, 810.0) == 0 and _away(100.0, None) == 0, "no divide by zero"
     assert "_away(px" in src.split("def cmd_open_orders")[1].split("\ndef ")[0], \
         "open_orders computes its own distance again; the two will drift apart"
+
+    # The chosen set is the top k of each cluster and nothing else. /bucket and
+    # /clusters both render off this, and they disagreed on every name that had
+    # not broken out yet while each computed it its own way.
+    _rw = [{"symbol": "A", "cluster": "micro"}, {"symbol": "B", "cluster": "micro"},
+           {"symbol": "C", "cluster": "micro"}, {"symbol": "D", "cluster": "small"}]
+    assert [r["symbol"] for r in _chosen(_rw, {"micro": 2, "small": 1})] == \
+        ["A", "B", "D"], "the bucket takes the top k of each cluster, in order"
+    assert _chosen(_rw, {"micro": 0, "small": 9}) == [_rw[3]], \
+        "k=0 takes none and k>n takes all of what there is"
+    assert _chosen([], {"micro": 3}) == [], "an empty ranking chooses nothing"
+    _cl = src.split("def cmd_clusters")[1].split("\ndef ")[0]
+    assert "allocate(" not in _cl, \
+        "/clusters marks names post-trigger again; it will disagree with /bucket"
+
+    # The listener restarts when its source changes, and "its source" has to mean
+    # every module it can import. Watching only src/ops/ is the state the src/
+    # move silently left it in, and a listener serving stale selection rules is
+    # the exact failure CLAUDE.md devotes a section to.
+    _w = {p.name for d in paths.SRC + ("src",)
+          for p in (paths.ROOT / d).glob("*.py")}
+    for _need in ("selection.py", "positions.py", "features.py", "tg.py",
+                  "paths.py", "engine.py"):
+        assert _need in _w, f"the listener would not notice {_need} changing"
 
     assert _fields(("filled", "n/a"), ("entry", None), ("qty", 51)) == \
         ["filled - n/a", "qty - 51"], "a blank field must be dropped, not printed"
@@ -1129,13 +1295,22 @@ if __name__ == "__main__":
     elif "--review" in sys.argv:
         print(json.dumps(send(cmd_review()).get("ok")))
     elif "--listen" in sys.argv:
-        # Watch EVERY project module, not just this file. tg.py imports agent,
-        # judge and engine at request time and holds them in memory, so editing
-        # agent.py left the bot serving stale logic while tg.py was untouched --
-        # it kept reporting attention items that had already been fixed. Watching
-        # only your own source catches your own edits and nothing else.
+        # Watch EVERY module this process can import, not just this file. tg.py
+        # imports selection, positions, features and agent at request time and
+        # holds them in memory, so editing one of them left the bot serving stale
+        # logic while tg.py was untouched -- it kept reporting attention items
+        # that had already been fixed.
+        #
+        # This globbed Path(__file__).parent, which MEANT the source tree while
+        # tg.py sat at the repo root and meant src/ops/ alone the moment it moved
+        # there: 10 files instead of 33, with selection.py, positions.py and
+        # features.py -- the ones an edit actually changes the answers of -- no
+        # longer watched. paths.SRC is the list of directories whose modules are
+        # importable here, which is the set this loop was always describing, and
+        # it cannot go stale when a file moves.
         _watched = {p: p.stat().st_mtime
-                    for p in Path(__file__).parent.glob("**/*.py")
+                    for d in paths.SRC + ("src",)
+                    for p in (paths.ROOT / d).glob("*.py")
                     if "__pycache__" not in p.parts}
         # Build the corpus BEFORE serving. It costs ~19s and is cached for the
         # life of the process, so paying it here means the operator's first

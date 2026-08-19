@@ -8,7 +8,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=%h/trading-bot
-ExecStart=/usr/bin/python3 agent.py --once
+ExecStart=/usr/bin/python3 src/ops/agent.py --once
 Nice=10
 StandardOutput=append:%h/trading-bot/data/agent.log
 StandardError=append:%h/trading-bot/data/agent.log

@@ -7,7 +7,9 @@ project has been a confident claim no file supported (a flag printing
 this module states nothing it did not just read.
 """
 
-# First: puts core/, bucket/, research/ and ops/ on sys.path.
+# First: finds src/paths.py, which puts every source dir on sys.path.
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401
 import json
 import sqlite3

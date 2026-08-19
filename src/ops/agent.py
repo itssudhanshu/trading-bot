@@ -16,7 +16,9 @@ runs `pipeline.py --consult` deliberately. An unattended loop would exhaust 50
 lifetime consultations in a weekend.
 """
 
-# First: puts core/, bucket/, research/ and ops/ on sys.path.
+# First: finds src/paths.py, which puts every source dir on sys.path.
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401
 import argparse
 import json
@@ -83,10 +85,10 @@ _S = paths.script
 _JOBS = {
     "snapshot": [_S("ops/snapshot.py")],
     "catchup":  [_S("ops/snapshot.py"), "--catchup"],
-    "pbook":    ["daily.py"],
+    "pbook":    [_S("ops/daily.py")],
     # Morning: fill pending orders at the day's actual open, rather than
     # leaving the bucket nine hours behind the market.
-    "fill":     ["daily.py", "--fill-live"],
+    "fill":     [_S("ops/daily.py"), "--fill-live"],
     # Nothing refreshed data/audit.log, so /review reported whatever number was
     # written the last time someone ran it by hand -- it was still claiming
     # "21 passed" after the suite had grown to 30. A self-check nobody runs is
@@ -95,7 +97,7 @@ _JOBS = {
     # Evening, after the bucket has stepped and the audit has run: push the day's
     # ranking, the evidence so far, and any weight change that has EARNED
     # itself. It proposes and never applies -- see tg.cmd_review.
-    "review":   ["tg.py", "--review"],
+    "review":   [_S("ops/tg.py"), "--review"],
 }
 _JOB_NAMES = tuple(_JOBS)
 
@@ -319,11 +321,18 @@ HEARTBEAT = ROOT / "data" / "agent_heartbeat.json"
 
 
 def beat():
-    """Written on EVERY run, including runs with nothing to do.
+    """Written on every SCHEDULED run, including runs with nothing to do.
 
     Without it there is no way to distinguish "the agent is running and nothing
     was due" from "the agent has not run for a week". Those look identical from
     the outside and only one of them is fine.
+
+    Called from __main__, NOT from once(). It was inside once(), and the selftest
+    calls once() to prove a job dispatches -- so `python3 tests/run_selftests.py`
+    stamped the file that /health reads as proof the scheduler is alive. /health
+    then printed "Scheduler agent - last ran 4 min ago" directly above its own
+    attention line saying no launchd job was registered at all. The stamp is a
+    claim that the SCHEDULER invoked us, and only the entry point knows that.
     """
     HEARTBEAT.parent.mkdir(parents=True, exist_ok=True)
     HEARTBEAT.write_text(json.dumps({"at": datetime.now().isoformat()}))
@@ -352,7 +361,6 @@ def health():
 
 
 def once(log=print):
-    beat()
     todo = due()
     if not todo:
         log("nothing due")
@@ -484,7 +492,7 @@ def _selftest():
     # layout, and it would have to be hand-edited every time the layout moved --
     # which is how it read before ops/ went under src/. The PROPERTY is "only
     # these four scripts and these three flags", and that is what survives.
-    allowed = {_S("ops/snapshot.py"), _S("daily.py"), _S("tg.py"),
+    allowed = {_S("ops/snapshot.py"), _S("ops/daily.py"), _S("ops/tg.py"),
                _S("ops/audit.py"), "--catchup", "--fill-live", "--review"}
     for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit"):
         for arg in _cmd_for(job)[1:]:
@@ -550,11 +558,13 @@ if __name__ == "__main__":
         print(f"agent daemon, checking every {a.interval}s", flush=True)
         while True:
             try:
+                beat()
                 once(log=lambda m: print(f"[{datetime.now():%H:%M}] {m}", flush=True))
             except Exception as e:
                 print(f"cycle error: {type(e).__name__}: {e}", flush=True)
             time.sleep(a.interval)
     else:
+        beat()
         done = once()
         if a.telegram:
             try:

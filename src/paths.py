@@ -13,12 +13,25 @@ working from anywhere. That preserves the project's convention that any module
 can be run directly for its selftest:
 
     python3 src/strategies/sprout/clusters.py --selftest
+
+THIS FILE LIVES IN src/ AND THAT IS LOAD-BEARING. Every module bootstraps with
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # -> src/
+    import paths
+
+so `parents[1]` from src/core, src/bucket, src/research and src/ops must land on
+the directory holding this file. When this file sat at the repo root and the
+source moved under src/, all of those lines silently pointed one level too
+shallow -- and every selftest still passed, because the shell that ran them had
+PYTHONPATH=. exported. Putting paths.py in src/ fixes them all at once;
+src/strategies/sprout sits one deeper and uses parents[2].
 """
 import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+# parents[1], not parent: this file is src/paths.py, and ROOT is the repo.
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 RAW = DATA / "raw"
 
@@ -65,13 +78,24 @@ for _d in SRC:
     _p = str(ROOT / _d)
     if _p not in sys.path:
         sys.path.insert(0, _p)
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))
+# src/ last, so `import paths` keeps working for anything that arrives here
+# without having bootstrapped, and so a name in src/ cannot shadow a real module.
+if str(ROOT / "src") not in sys.path:
+    sys.path.append(str(ROOT / "src"))
 
 
 def _selftest():
-    assert ROOT.is_dir() and (ROOT / "paths.py").exists()
+    assert ROOT.is_dir() and (ROOT / "src" / "paths.py").exists()
     assert DATA.name == "data" and DATA.parent == ROOT
+    # The bootstrap every module copies. If this file ever moves again, those
+    # `parents[1]` lines are what breaks, and they break SILENTLY under a shell
+    # that happens to export PYTHONPATH -- so assert the invariant here rather
+    # than trusting the next sweep to notice.
+    assert Path(__file__).resolve().parent == ROOT / "src", \
+        "paths.py must live in src/; every module's parents[1] bootstrap targets it"
+    for _m in (ROOT / "src" / "core" / "features.py",
+               ROOT / "src" / "ops" / "audit.py"):
+        assert _m.resolve().parents[1] == ROOT / "src", _m
     assert RAW == DATA / "raw"
     # every source dir must be importable, or a moved module cannot be found
     for d in SRC:

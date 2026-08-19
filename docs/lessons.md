@@ -1807,3 +1807,44 @@ measured against the corrected engine, and the pattern held in all four places i
 was tested: the levels moved a long way, the rankings barely moved, and the only
 claim that gained strength was the one about rank depth — which is the claim that
 says the edge is in *selection* rather than in any of these knobs.
+
+## L60 — The same value, copied and never re-checked: five instances in one day
+
+Not a strategy finding. A defect *class*, written down because it has now
+produced five separate outages in this project and every one of them looked
+healthy from the outside.
+
+The shape is always identical: **a value that was correct when it was written,
+copied or scoped somewhere, and never re-checked against the thing it refers
+to.** No bug is introduced at the moment of the change. The reference simply
+stops matching reality, and nothing asks it to prove otherwise.
+
+| where | the stale reference | how it presented |
+|---|---|---|
+| `impact_test.py` | `BASE` carried `hold=15` after the live value moved to 10 | a friction table for a bucket nobody runs |
+| `agent.py` job paths | `"ops/snapshot.py"` after the `src/` move | subprocess rc=2 into a log nobody reads |
+| 23 module bootstraps | `parents[1]` while `paths.py` sat at the root | **every selftest passed**, because the operator's shell exported `PYTHONPATH=.` |
+| `tg.py --listen` watch set | `Path(__file__).parent` after `tg.py` moved into `src/ops/` | watched 10 files of 31; edits to `selection.py` served stale logic |
+| both installed plists | absolute paths to the deleted root `tg.py` / `agent.py` | listener dead, scheduler never registered |
+
+**What does NOT catch it:** a status message. The third row is the important
+one — a check that passes because of the shell that invoked it is not a check,
+and it hid a broken bootstrap in all 23 places at once.
+
+**What does catch it:** a check that resolves the reference and asserts the
+target exists. `paths._selftest` now asserts `parents[1]` lands on `src/`;
+`agent._selftest` asserts every job path is on disk; `tg._selftest` asserts the
+six critical modules are in the watch set; `audit.py` now parses both installed
+plists with `plutil` — launchd's own parser, because Python's expat rejects the
+`--` inside their XML comments and launchd does not care — and asserts every
+repo path they name still exists.
+
+**A second, smaller lesson inside the same fix.** `/health` ticked
+"✅ Scheduler agent — last ran 4 min ago" four lines above its own
+"no launchd job registered -- nothing runs on a schedule". Both were true: the
+heartbeat proves the agent *ran*, not that anything will run it again, and
+`agent.py --once` typed by hand stamps the same file. Worse, `beat()` was called
+inside `once()`, and `_selftest` calls `once()` — so running the test suite made
+`/health` claim the scheduler was alive. **A liveness stamp that the test suite
+can write is not evidence of liveness.** `beat()` moved to `__main__`, and the
+tick now requires a registered job as well as a fresh stamp.

@@ -28,7 +28,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-    <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/tg.py</string>
+    <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/src/ops/tg.py</string>
     <string>--listen</string>
   </array>
   <key>EnvironmentVariables</key>
