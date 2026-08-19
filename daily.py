@@ -87,6 +87,14 @@ def main(day=None):
         except Exception as e:
             print(f"  findings record failed: {type(e).__name__}")
 
+    # The tick is the only thing that changes the record, so this is the one
+    # place it has to be re-exported. audit.py fails if the two disagree, so a
+    # hand-edit that skips this does not pass quietly.
+    try:
+        positions.export_record(conn)
+    except Exception as e:
+        print(f"  record export failed: {type(e).__name__}: {e}")
+
     if filled or closed:
         try:
             import tg

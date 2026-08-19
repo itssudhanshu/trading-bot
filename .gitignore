@@ -47,7 +47,14 @@ data/fundamentals/
 # be regenerated from anything. findings/strategies/simulations/walkforward
 # jsonl, the baselines and holidays.json are evidence, not runtime state.
 
-# Pre-migration copies of the order record. Kept on disk, never committed.
+# THE LIVE ORDER RECORD, and pre-migration copies of it. Both stay on disk;
+# neither is committed. Tracking the binary is what let a `git switch` replace
+# the live forward-trade record with another branch's copy -- silently, since a
+# checkout says nothing about a file it overwrites, and the diff read only
+# "Bin 12288 -> 20480 bytes". data/positions_record.sql is the tracked copy:
+# text, so a changed position is a readable diff, written by every daily.py
+# tick and checked against the live database by audit.py.
+data/positions.db
 data/positions.db.bak-*
 
 # Claude Code's per-machine permission grants. Tracking it made a local tool

@@ -30,6 +30,8 @@ import features
 
 from paths import ROOT      # one definition; see paths.py
 DB = ROOT / "data" / "positions.db"
+# The TEXT copy of the order record, and the one git tracks. See export_record.
+RECORD = ROOT / "data" / "positions_record.sql"
 
 # The exit rules are READ from portfolio, never restated. A second copy of
 # these constants would let the live bucket and the simulation that validates it
@@ -148,6 +150,37 @@ def db():
     _append_only(c)
     c.commit()
     return c
+
+
+def export_record(conn=None, path=None):
+    """Write the order record as SQL text. -> the path written.
+
+    THE LIVE DATABASE IS NO LONGER TRACKED BY GIT, and this file is what git
+    tracks instead. The binary was tracked, and a `git switch` then replaced it
+    with another branch's copy of the same path -- silently, because a checkout
+    says nothing about a file it overwrites. The record still has to be
+    versioned: forward paper trades are the only evidence this project has
+    (CLAUDE.md) and cannot be regenerated from anything. So the authoritative
+    copy is the untracked binary, and the tracked copy is text -- which also
+    means a changed position shows up as a readable diff instead of
+    "Bin 12288 -> 20480 bytes", the diff that hid the overwrite.
+
+    Restore with:
+
+        sqlite3 data/positions.db < data/positions_record.sql
+
+    ORDER MATTERS AND IS NOT OURS TO CHOOSE. iterdump() emits each table with
+    its rows and only then the indexes, views and triggers; a dump that put
+    pos_log_ins before the INSERTs would log every restored position a second
+    time and hand back a doubled audit trail that still looked like a clean
+    restore. That ordering is a CPython implementation detail, not a documented
+    guarantee, so _record_selftest asserts the round trip instead of trusting
+    it -- if a future version reorders the dump, the selftest fails rather than
+    the record quietly corrupting.
+    """
+    p = path or RECORD
+    p.write_text("\n".join((conn or db()).iterdump()) + "\n")
+    return p
 
 
 def _audit_triggers(cols):
@@ -519,6 +552,56 @@ def _bars_held_selftest():
     print("  bars_held ok (bars not calendar; never negative)")
 
 
+def _record_selftest():
+    """The text record must replay into an IDENTICAL database.
+
+    Two things it is really watching. The audit trail must not DOUBLE: that
+    happens the moment the dump emits the log triggers before the rows, and it
+    produces a corrupted trail that still looks like a successful restore. And
+    the append-only rules must survive, or a recovered record is append-only in
+    name only.
+    """
+    import tempfile
+    global DB
+    _odb = DB
+    with tempfile.TemporaryDirectory() as td:
+        DB = Path(td) / "live.db"
+        try:
+            c = db()
+            c.execute("INSERT INTO pos(symbol,cluster,status,entry_day,entry_px,"
+                      "qty,stop,target,bucket) VALUES('AAA','micro','open',"
+                      "'2026-08-17',100.0,20,90.0,120.0,'main')")
+            c.execute("UPDATE pos SET status='closed', exit_day='2026-08-20',"
+                      " exit_px=120.0, exit_reason='target', net=380.0 WHERE id=1")
+            c.commit()
+            want = list(c.execute("SELECT * FROM pos ORDER BY id"))
+            wlog = c.execute("SELECT count(*) FROM pos_log").fetchone()[0]
+            assert wlog == 2, f"insert+update should log twice, got {wlog}"
+            p = export_record(c, Path(td) / "rec.sql")
+            c.close()
+
+            r = sqlite3.connect(Path(td) / "replay.db")
+            r.executescript(p.read_text())
+            assert list(r.execute("SELECT * FROM pos ORDER BY id")) == want, \
+                "the record did not replay to the same positions"
+            got = r.execute("SELECT count(*) FROM pos_log").fetchone()[0]
+            assert got == wlog, (
+                f"the replayed audit trail has {got} entries, not {wlog} -- the "
+                f"log triggers fired during the restore and doubled it")
+            # and the rules survive the restore, or a recovered record is
+            # append-only in name only
+            try:
+                r.execute("DELETE FROM pos WHERE id=1")
+                raise AssertionError("a restored record allows deletes")
+            except sqlite3.IntegrityError:
+                pass
+            assert r.execute("SELECT count(*) FROM closed_orders").fetchone()[0] == 1
+            r.close()
+        finally:
+            DB = _odb
+    print("  record round trip ok")
+
+
 def _append_only_selftest():
     """The four database rules, asserted against the database, not the module.
 
@@ -584,6 +667,7 @@ def _append_only_selftest():
 def _selftest():
     _bars_held_selftest()
     _append_only_selftest()
+    _record_selftest()
     import tempfile, learning
     _orig_ledger = learning.LEDGER
     learning.LEDGER = __import__("pathlib").Path(tempfile.gettempdir()) / "pbook_selftest_ledger.jsonl"

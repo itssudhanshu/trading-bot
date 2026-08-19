@@ -275,6 +275,30 @@ def main():
     check("nothing is queued outside the one bucket",
           queued <= {positions.MAIN}, f"queued into {sorted(queued) or 'nothing'}")
 
+    # A STALE text record is worse than none: it reads as the forward evidence
+    # while missing whatever the last tick did. Checked by replaying it into a
+    # throwaway database and comparing rows, not by trusting its timestamp.
+    COLS = ("id,symbol,cluster,status,queued_on,entry_day,entry_px,qty,stop,"
+            "target,exit_day,exit_px,exit_reason,net,bucket,origin")
+    if positions.RECORD.exists():
+        import sqlite3 as _sq
+        import tempfile as _tf
+        conn.row_factory = None
+        with _tf.TemporaryDirectory() as _td:
+            _t = _sq.connect(Path(_td) / "replay.db")
+            _t.executescript(positions.RECORD.read_text())
+            _live = list(conn.execute(f"SELECT {COLS} FROM pos ORDER BY id"))
+            _back = list(_t.execute(f"SELECT {COLS} FROM pos ORDER BY id"))
+            _nlog = _t.execute("SELECT count(*) FROM pos_log").fetchone()[0]
+            _mlog = conn.execute("SELECT count(*) FROM pos_log").fetchone()[0]
+        check("the committed order record matches the live database",
+              _live == _back and _nlog == _mlog,
+              f"{len(_live)} live rows / {len(_back)} replayed, "
+              f"audit trail {_mlog} / {_nlog}")
+    else:
+        skip("the committed order record matches the live database",
+             f"{positions.RECORD.name} not written yet -- run daily.py")
+
     # The tighter-stop counterfactual must be exact -- computed on positions
     # that really existed -- and must refuse a level at or above the entry.
     sh = positions.shadow_stop(features.load_corpus(), conn, pct=5.0)
