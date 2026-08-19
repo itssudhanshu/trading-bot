@@ -180,6 +180,20 @@ def _review(r, pct, held):
     }.get(r["exit_reason"], f"{pct:+.1f}% in {d} — sold: {r['exit_reason']}")
 
 
+def _away(px, level):
+    """-> the % the price must MOVE to reach level. Negative means it must fall.
+
+    ONE definition, because the stop and the target had two. The target divided
+    by the price; the stop divided by ITSELF, which printed a stop below the
+    price as a POSITIVE distance. Both lines then said "+x% away" in the same
+    layout while meaning opposite directions -- YUKEN read "stop 810.00 (+8.9%
+    away)", which a person reads as "the price must rise 8.9% to be stopped
+    out". It must FALL 8.2%. The wrong base also overstated the cushion, by
+    2.7 points on HAPPYFORGE (+17.9% printed against a real -15.2%).
+    """
+    return (level / px - 1) * 100 if px and level else 0
+
+
 def _lag_note():
     """-> one line explaining the end-of-day lag, or '' when there is none.
 
@@ -421,8 +435,7 @@ def cmd_open_orders(_=None):
         held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
                                    days[-1])
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
-        to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
-        to_tgt = (r["target"] / px - 1) * 100 if px else 0
+        to_stop, to_tgt = _away(px, r["stop"]), _away(px, r["target"])
         out.append(f"{icon} *{r['symbol']}* "
                    f"({SIZE.get(r['cluster'], r['cluster'])})")
         out += _fields(
@@ -825,6 +838,16 @@ def _selftest():
     # all three commands route through them -- rendering a real command needs
     # the corpus and a live quote, and a check that needs the network is a
     # check that gets skipped.
+    # a stop sits BELOW the price, so reaching it is a fall -- and both
+    # distances must measure from the same place, or the two lines disagree
+    # about what "away" means while looking identical
+    assert _away(881.95, 810.0) < 0 < _away(881.95, 1080.0), \
+        "the stop must read as a fall and the target as a rise"
+    assert round(_away(881.95, 810.0), 1) == -8.2, "distance is measured from px"
+    assert _away(0, 810.0) == 0 and _away(100.0, None) == 0, "no divide by zero"
+    assert "_away(px" in src.split("def cmd_open_orders")[1].split("\ndef ")[0], \
+        "open_orders computes its own distance again; the two will drift apart"
+
     assert _fields(("filled", "n/a"), ("entry", None), ("qty", 51)) == \
         ["filled - n/a", "qty - 51"], "a blank field must be dropped, not printed"
     assert _fields() == []
