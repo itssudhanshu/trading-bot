@@ -16,8 +16,14 @@ from collections import defaultdict
 
 import analysis, entry, features, selection, simulate
 
-BASE = dict(stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5, refresh=5,
-            trigger="breakout")
+# READ from selection, never copied. This dict said hold=15 for the three
+# months after L52 moved the live hold to 10, so the published impact table
+# describes a book that had stopped existing. A hardcoded copy of a live
+# constant goes stale silently; a read cannot.
+BASE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
+            hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS,
+            refresh=5, trigger=selection.TRIGGER)
+assert BASE["hold"] == selection.HOLD_DAYS, "impact tested a hold the bucket does not run"
 CS = [0.0, 0.5, 1.0, 2.0, 3.0]
 _C = _D = None
 

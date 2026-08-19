@@ -46,11 +46,17 @@ There is no TDS on resident equity delivery.
 
 ## Historical baseline
 
-**+14.18% CAGR, 25.8% max drawdown, 231 trades** over 1696 sessions
-(2019-10-01 to 2026-08-17), with impact at c=1.0, at the adopted 10-day hold.
-It is a BACKTEST. It is not evidence the approach works forward.
+**+7.59% CAGR, 31.0% max drawdown, 195 trades** over 1698 sessions
+(2019-10-01 to 2026-08-19), with impact at c=1.0, at the adopted 10-day hold,
+**after the circuit-lock guard** (L58). It is a BACKTEST. It is not evidence the
+approach works forward.
 
-Per trade: +2.96% +/- 1.93 (std err 0.98, t 3.01, n=231).
+Per trade: +2.15% +/- 1.08 (std err 1.08, t 1.99, n=195).
+
+This replaced **+14.18% / 25.8% / 231** on the same corpus. The difference is
+not a rule change: it is 8.7% of fills that were taken on circuit-locked bars
+where no seller existed at any price. Drawdown got WORSE while return halved,
+which is how you can tell the removed fills were disproportionately winners.
 
 The 15-day hold this replaced gave +13.54% / 28.8% / 217 trades on the same
 corpus. The change was adopted on L51/L52: 10 days beats 15 on CAGR, drawdown,
@@ -85,8 +91,9 @@ contaminate the one evidence stream a search cannot reach (L47; PBO 0.929 in
 L41).
 
 **But the deeper cohorts buy ranks the score already marks as worse** --
--0.90% per rank step, +6.41% between the top cohort and the deepest across six
-disjoint cohorts (1,068 trades) -- and knowingly trading picks you believe are
+-1.18% per rank step, +6.63% between the top cohort and the deepest across six
+disjoint cohorts (1,015 trades, post-guard; -0.90% and +6.41% pre-guard, so the
+guard STRENGTHENED this) -- and knowingly trading picks you believe are
 worse in order to gather evidence faster is not a trade this book makes. So
 they were removed (L56). `overview.py` still carries the note "two positions
 opened by the retired deeper buckets"; the cohort machinery now survives only
@@ -164,7 +171,7 @@ rolling back if any of them fails.
 `origin` records which ranking produced a position: NULL for the score's own
 picks, `rank-cohort` for the two recovered from the retired deeper buckets. The
 bucket label is gone, but those two bought ranks the score marks as worse
-(-0.90%/step), so when they close they must not read as evidence for a
+(-1.18%/step), so when they close they must not read as evidence for a
 selection that did not make them. Nothing filters on it yet.
 
 The bucket now holds 4 of 5: HAPPYFORGE, GMMPFAUDLR (small), SAHYADRI, YUKEN
@@ -173,6 +180,13 @@ The bucket now holds 4 of 5: HAPPYFORGE, GMMPFAUDLR (small), SAHYADRI, YUKEN
 ## What has been tested and REJECTED
 
 Do not re-add these without evidence that addresses the stated reason.
+
+**Every CAGR in this table is a pre-guard level** (L58: 8.7% of fills were on
+circuit-locked bars). The baseline they were each compared against was +14.14%,
+not the +7.59% above. They are kept as RANKINGS and reasons -- which is what a
+rejection is -- and re-running one to quote its number is required before that
+number is used for anything. The four knobs that were re-run post-guard are in
+L59; all four kept their ordering.
 
 | idea | result | why rejected |
 |---|---|---|

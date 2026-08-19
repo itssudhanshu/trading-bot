@@ -85,13 +85,19 @@ def gates(s):
           f"{s['days']} sessions {s['span'][0]}..{s['span'][1]}, "
           f"{len(s['gaps'])} unexplained gaps")]
     g.append(("Ranking predicts return", "PASS",
-              "trend across 6 rank cohorts, 1068 trades: -0.90% per step "
-              "(std err 0.35, t -2.56); top vs deepest +6.41% +/- 1.89, t 3.39"))
+              "trend across 6 rank cohorts, 1015 trades: -1.18% per step "
+              "(std err 0.29, t -4.10); top vs deepest +6.63% +/- 1.79, t 3.71 "
+              "[batch 20260819-postlock; rank_test.py prints this]"))
     g.append(("Costs modelled realistically", "PASS",
               "brokerage, STT, exchange, SEBI, GST, stamp, DP charges, 20% STCG"))
+    # The c=1.0 figure is READ from the recorded baseline, not restated here.
+    # This line said +10.85% for months while the file said something else, and
+    # a hardcoded copy of a live number is what L59 is about.
+    _bl = json.loads((D / "baseline.json").read_text()) if (D / "baseline.json").exists() else {}
     g.append(("Market impact modelled", "PASS",
               "sqrt(participation) x volatility on both sides; baseline "
-              "+10.85% at c=1.0 (was +13.97% assuming free fills)"))
+              f"{_bl.get('cagr', float('nan')):+.2f}% at c=1.0 "
+              "(+11.90% assuming free fills)"))
     b = s["bucket"]
     # How long until forward trades can settle anything, at the bucket's own
     # turnover. Roughly 3 positions on 15-day holds is ~52 trades a year.
@@ -155,9 +161,19 @@ def render(s=None):
     L.append("")
     if s["candidates"]:
         L.append("STORED CANDIDATES (backtest survivors, not validated)")
-        for r in sorted(s["candidates"], key=lambda r: -r["cagr"])[:5]:
-            L.append(f"  {r['variant']:<26} CAGR {r['cagr']:>+6.2f}%  "
-                     f"DD {r['maxdd']:>5.1f}%  n={r['n']:>4}")
+        # ONE row per variant, the newest. strategies.jsonl is append-only, so
+        # an older row for the same variant is a different ENGINE, not a second
+        # candidate -- this list showed "impact c=0.0" five times, being the five
+        # times that test has been run. The batch is printed because the top of
+        # this list is whatever configuration was most optimistic, and after L58
+        # the pre-guard batches are all more optimistic than the engine allows.
+        newest = {}
+        for r in sorted(s["candidates"], key=lambda r: r["at"]):
+            newest[r["variant"]] = r
+        for r in sorted(newest.values(), key=lambda r: -r["cagr"])[:5]:
+            L.append(f"  {r['variant']:<22} CAGR {r['cagr']:>+6.2f}%  "
+                     f"DD {r['maxdd']:>5.1f}%  n={r['n']:>4}  "
+                     f"batch {r.get('batch', '?')}")
         L.append("")
     L.append(f"DIRECTION: {verdict}")
     for w in why:

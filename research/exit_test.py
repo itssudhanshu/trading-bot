@@ -39,16 +39,20 @@ import features
 import selection
 import simulate
 
-# The live bucket, exactly as it stands. Every variant is a delta from this.
-BASE = dict(stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5, refresh=5,
-            trigger="breakout")
+# The live bucket, exactly as it stands -- READ from selection so the comment
+# stays true. It said hold=15 while the bucket ran 10, which made every label
+# below name a baseline that was not being tested.
+BASE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
+            hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS,
+            refresh=5, trigger=selection.TRIGGER)
+_B = f"{BASE['stop_pct']:.0f}% / {BASE['target_pct']:.0f}% / {BASE['hold']}d"
 
 GOAL_HOLD = 7           # the operator's target: 6-8 sessions
 GOAL_STOP = 5.0         # the operator's target: 5% stop
 
 # (label, overrides) -- pre-registered, in the order they are argued for above.
 VARIANTS = [
-    ("baseline 10% / 20% / 15d", {}),
+    (f"baseline {_B}",           {}),
     ("stop 5% only",             dict(stop_pct=GOAL_STOP)),
     ("hold 7d only",             dict(hold=GOAL_HOLD)),
     ("GOAL 5% / 20% / 7d",       dict(stop_pct=GOAL_STOP, hold=GOAL_HOLD)),
@@ -71,7 +75,7 @@ VARIANTS = [
 # but WHEN winners actually pay -- a target reached on day 12 cannot be
 # collected by a bucket that leaves on day 8.
 HOLD_VARIANTS = [
-    ("baseline, hold 15d", {}),
+    (f"baseline, hold {BASE['hold']}d", {}),
     ("hold 5d",  dict(hold=5)),
     ("hold 6d",  dict(hold=6)),
     ("hold 7d",  dict(hold=7)),
@@ -119,13 +123,13 @@ LADDER_VARIANTS = [
 # so this asks what stop distance the bucket can actually carry, rather than
 # assuming 5% is available.
 ATR_VARIANTS = [
-    ("baseline 10% / 20% / 15d", {}),
+    (f"baseline {_B}",           {}),
     ("atr 1.5x, hold 7d",        dict(atr_stop=1.5, hold=GOAL_HOLD)),
     ("atr 2.0x, hold 7d",        dict(atr_stop=2.0, hold=GOAL_HOLD)),
     ("atr 2.5x, hold 7d",        dict(atr_stop=2.5, hold=GOAL_HOLD)),
     ("atr 3.0x, hold 7d",        dict(atr_stop=3.0, hold=GOAL_HOLD)),
-    ("atr 2.5x, hold 15d",       dict(atr_stop=2.5)),
-    ("atr 3.0x, hold 15d",       dict(atr_stop=3.0)),
+    (f"atr 2.5x, hold {BASE['hold']}d", dict(atr_stop=2.5)),
+    (f"atr 3.0x, hold {BASE['hold']}d", dict(atr_stop=3.0)),
 ]
 
 # ------------------------------------------------------------ --factorial
@@ -138,16 +142,18 @@ ATR_VARIANTS = [
 # 3 holds x 3 ladders. The corners are the two single changes and the control,
 # so any interaction shows up as the grid failing to be additive.
 FACTORIAL = [
-    (f"hold {h}d, {lname}", {**({} if h == 15 else {"hold": h}),
+    (f"hold {h}d, {lname}", {**({} if h == BASE["hold"] else {"hold": h}),
                              **({} if rungs is None else {"targets": rungs})})
-    for h in (8, 10, 15)
+    for h in sorted({8, BASE["hold"], 15})
     for lname, rungs in (("no ladder", None),
                          ("half @+10", [(10.0, 0.5)]),
                          ("third @+7/+14", [(7.0, 1 / 3), (14.0, 1 / 3)]))
 ]
 # The control must come first: main() reads res[0] as the baseline.
-FACTORIAL = ([x for x in FACTORIAL if x[0] == "hold 15d, no ladder"]
-             + [x for x in FACTORIAL if x[0] != "hold 15d, no ladder"])
+_CTL = f"hold {BASE['hold']}d, no ladder"
+FACTORIAL = ([x for x in FACTORIAL if x[0] == _CTL]
+             + [x for x in FACTORIAL if x[0] != _CTL])
+assert FACTORIAL[0][1] == {}, f"the control passes overrides: {FACTORIAL[0]}"
 
 _C = _D = None
 

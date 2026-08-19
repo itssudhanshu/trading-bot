@@ -124,7 +124,7 @@ def analyse(trades):
     return out
 
 
-def unconditioned_test(corpus, days, feature, n_dates=40, hold=15,
+def unconditioned_test(corpus, days, feature, n_dates=40, hold=None,
                        stop_pct=10.0, target_pct=20.0):
     """Measure a feature on trades selected WITHOUT it.
 
@@ -135,6 +135,11 @@ def unconditioned_test(corpus, days, feature, n_dates=40, hold=15,
     the feature separates outcomes anyway.
     """
     import random
+    import selection
+    # The bucket's own clock, not a copy of it: this read 15 for three months
+    # after L52 moved the live hold to 10, so a feature was being scored over a
+    # window the bucket does not hold for.
+    hold = selection.HOLD_DAYS if hold is None else hold
     rng = random.Random(11)
     rows = []
     for di in range(300, len(days) - hold - 1, max(1, (len(days) - 320) // n_dates)):

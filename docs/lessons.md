@@ -1626,3 +1626,126 @@ would have put the first number into the forward evidence that no decision
 produced. Under the guard VCL is no longer triggered and `allocate()` returns
 only a name already held, so the correct answer for 2026-08-20 is **no new
 pick**.
+
+## L59 — Re-measuring after the guard: the levels moved, the rankings did not
+
+L58 said the prediction to check was "the RANKINGS and the shapes are likely to
+survive, the levels are not". Every table in `CLAUDE.md` has now been re-run
+against the guard (batch `20260819-postlock`). The prediction held, with one
+exception that matters.
+
+### The knobs, re-measured
+
+`research/remeasure.py` runs the live bucket and each variant, and reports the
+per-trade edge with its error bar as well as the CAGR gap — because a CAGR gap
+on one path is arithmetic, not evidence.
+
+| variant | CAGR | maxDD | n | win | per trade | vs live | t |
+|---|---|---|---|---|---|---|---|
+| **live: 3/2, 10d, breakout** | **+7.59%** | 31.0% | 195 | 47% | +2.15% +/- 1.08% | — | — |
+| hold 15d (the old rule) | +5.32% | 34.8% | 192 | 45% | +1.71% +/- 1.17% | +0.44% +/- 1.59% | +0.28 |
+| mix 2 micro / 3 small | +9.93% | 31.4% | 206 | 50% | +2.52% +/- 1.04% | -0.36% +/- 1.50% | -0.24 |
+| no trigger | -2.20% | 39.5% | 235 | 48% | +0.17% +/- 1.10% | +1.99% +/- 1.54% | +1.29 |
+
+Not one of them resolves per trade. The 10-day hold is confirmed in DIRECTION
+(better CAGR *and* better drawdown than 15), which is all L52 ever claimed. The
+2/3 mix still leads, by 2.34 points where it led by 4.47 pre-guard and trailed by
+1.19 before that — a knob that gives a different answer every time anything else
+moves is a knob inside the noise. **Nothing was re-decided.**
+
+### The exception: the trigger's justification changed
+
+`selection.py` carried this comment for months:
+
+    TRIGGER = "breakout"    # see trigger_test: near-identical CAGR to no trigger
+                            # (+11.45 vs +12.53) but worst block -83.1% vs -120.5%.
+
+So the trigger was kept *despite* costing a point of CAGR, on the tail argument
+alone. Post-guard `trigger_test` reads:
+
+| trigger | CAGR | maxDD | n | worst block |
+|---|---|---|---|---|
+| **breakout** | **+7.59%** | 31.0% | 195 | -126.7% |
+| pullback | +2.67% | 22.6% | 201 | -99.0% |
+| vol+breakout | +2.61% | 16.5% | 141 | -45.8% |
+| not_overbought | +0.46% | 28.2% | 308 | -129.1% |
+| rsi_band | -1.83% | 34.7% | 360 | -150.7% |
+| none (control) | -2.20% | 39.5% | 235 | -163.4% |
+| volume | -3.52% | 46.7% | 210 | -129.3% |
+
+Breakout is now the only one of seven to clear the promotion bar, and it wins on
+worst block as well. The old and new numbers are not directly comparable — the
+hold moved too — but **the sign of the CAGR gap flipped**, so the live setting
+no longer rests on the tail. The lesson is not "the trigger got better". It is
+that a rule justified by a *secondary* criterion while losing on the primary one
+was a rule resting on a measurement error.
+
+### The claim that survives got stronger
+
+Rank depth against per-trade return, regressed over the trades themselves
+(1,015 trades, six disjoint cohorts):
+
+| | slope per cohort step | std err | t | top - deepest |
+|---|---|---|---|---|
+| pre-guard | -0.90% | 0.35% | -2.56 | +6.41% +/- 1.89% |
+| **post-guard** | **-1.18%** | **0.29%** | **-4.10** | **+6.63% +/- 1.79%** |
+
+Every one of the five deeper cohorts is now CAGR-negative, and none matches the
+top. Removing un-buyable fills made the score's edge easier to see, not harder,
+which is the outcome consistent with the edge being real: phantom fills were
+noise added to every cohort equally, and noise only ever flattens a slope.
+
+`rank_test.py` now prints this regression itself. It was previously computed
+ad hoc, which is why `CLAUDE.md` could carry the pre-guard figure for months
+after the engine changed underneath it.
+
+### Friction costs more than the old table showed
+
+| c | CAGR | maxDD | share of frictionless |
+|---|---|---|---|
+| 0.0 | +11.90% | 29.6% | the old, wrong assumption |
+| 0.5 | +8.63% | 30.0% | 72% |
+| **1.0** | **+7.59%** | **31.0%** | **64%** |
+| 2.0 | +5.12% | 32.0% | 43% |
+| 3.0 | +4.17% | 32.6% | 35% |
+
+The old table had c=1.0 giving up essentially nothing against c=0 (+13.57 vs
++13.97). It now gives up 36%, because the fills the guard removed were
+disproportionately the big up-day ones that paid for the friction. Median trade
+0.31%, p90 1.12%, worst single round trip **8.73%** — six trades (3.1%) pay over
+2% and account for 25% of all impact. Still profitable at every c tested, which
+remains the useful finding.
+
+### The defect underneath all of it: a copied constant
+
+Five places carried `hold=15` as a literal, months after L52 made the live hold
+10 — `impact_test.BASE`, `rank_test.BASE`, `trigger_test.BASE`,
+`exit_test.BASE`, `learning.unconditioned_test`, and `simulate.run`'s own
+default. So the published impact sensitivity and the rank-depth slope described
+a bucket that had stopped existing, and `exit_test.py` said "the live bucket,
+exactly as it stands" directly above a hold that was not the live one.
+
+`exit_test` had it worst: its factorial grid tested `{} if h == 15` — treating 15
+as "the baseline, pass nothing". With the default at 10 that row ran a 10-day
+hold under a `hold 15d` label *and* became a second control. Every one of these
+now READS `selection.HOLD_DAYS`, and the grid's control test reads it too, with
+an assert that the control passes no overrides.
+
+**A hardcoded copy of a live constant goes stale silently; a read cannot.** This
+is the same failure shape as L58 — code that was correct when written, and was
+never re-checked against the thing it was a copy of.
+
+### `--rebaseline` could not record an engine change
+
+`audit.py` compares the headline against `data/baseline.json` and refuses to
+absorb a change as drift. Correct — it caught this immediately:
+
+    [FAIL] the recorded baseline still reproduces
+           CAGR +7.59% vs +14.14%, n=195 vs 232, same 1698 sessions
+
+But `--rebaseline` only wrote in the branch where `config` (stop/target/hold)
+had changed. The guard changed neither — it changed *which fills the engine
+believes in* — so the failure landed in the same-sessions branch, which had no
+way to re-record. The audit would have failed forever until someone hand-edited
+the JSON, and a permanently-red check is a check nobody reads. The flag is the
+deliberate act; it does not need a blessed branch.

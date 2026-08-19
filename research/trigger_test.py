@@ -7,9 +7,10 @@ import paths  # noqa: F401  -- puts the source dirs on sys.path
 import multiprocessing as mp
 from collections import defaultdict
 
-import entry, features, simulate
+import entry, features, selection, simulate
 
-BASE = dict(stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5, refresh=5)
+BASE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
+            hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS, refresh=5)
 _C = _D = None
 
 

@@ -193,8 +193,13 @@ def load_occupancy():
 # ------------------------------------------------------------------ error bars
 # Mean return per trade in the historical baseline, and the spread around it.
 # The reference point for "how many trades before this means anything".
-BACKTEST_EDGE = 3.07
-TRADE_SD = 16.0
+#
+# 2.15 is the POST-GUARD edge (L58/L59, batch 20260819-postlock, n=195). It read
+# 3.07 while the engine still filled circuit-locked bars, and understating this
+# number flatters the project twice: a smaller edge needs MORE trades to detect,
+# so the honest wait is ~213 trades and ~2.8 years, not ~105 and ~1.5.
+BACKTEST_EDGE = 2.15
+TRADE_SD = 16.0     # measured 15.1 post-guard; kept at 16 as the conservative one
 
 
 def stats(trades):

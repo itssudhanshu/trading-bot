@@ -334,9 +334,6 @@ def main():
                   f"{now_b['config']}; CAGR {old['cagr']:+.2f}% -> "
                   f"{now_b['cagr']:+.2f}%. Re-record deliberately with "
                   f"`python3 audit.py --rebaseline` once the change is intended")
-            if "--rebaseline" in sys.argv:
-                bf.write_text(_j.dumps(now_b, indent=1))
-                print(f"         REBASELINED to {now_b}")
         elif old["sessions"] == now_b["sessions"]:
             check("the recorded baseline still reproduces",
                   abs(now_b["cagr"] - old["cagr"]) < 0.01 and now_b["n"] == old["n"],
@@ -348,6 +345,16 @@ def main():
             check("baseline drift is proportionate to new data", moved < 0.5 * grew + 0.5,
                   f"corpus grew {grew} session(s); CAGR {old['cagr']:+.2f}% -> "
                   f"{now_b['cagr']:+.2f}% (moved {moved:.2f})")
+        # --rebaseline applies to EVERY branch, not just a config change. The
+        # circuit-lock guard (L58) moved the headline from +14.14% to +7.59%
+        # with `config` untouched -- stop, target and hold did not change, the
+        # set of fills the engine believes in did. That landed in the
+        # same-sessions branch, which had no way to re-record, so the audit
+        # would have failed forever until someone hand-edited baseline.json.
+        # The flag IS the deliberate act; it does not need a blessed branch.
+        if "--rebaseline" in sys.argv:
+            bf.write_text(_j.dumps(now_b, indent=1))
+            print(f"         REBASELINED to {now_b}")
             bf.write_text(_j.dumps(now_b, indent=1))
 
     # ------------------------------------------------------------ SUMMARY

@@ -179,10 +179,18 @@ TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
 # mislabelled.
 MIN_POSITIONS = 0
 
-TRIGGER = "breakout"    # see trigger_test: near-identical CAGR to no trigger
-                        # (+11.45 vs +12.53) but worst block -83.1% vs -120.5%.
-                        # Ranked on worst block, which is the ranking that has
-                        # generalised here, the control is LAST of seven.
+TRIGGER = "breakout"    # trigger_test, re-run after the circuit-lock guard
+                        # (L58): +7.59% against -2.20% for no trigger, and the
+                        # only one of seven to clear the promotion bar. It now
+                        # wins on worst block too (-126.7% vs -163.4%).
+                        #
+                        # This comment used to read "near-identical CAGR to no
+                        # trigger (+11.45 vs +12.53)", i.e. the trigger was kept
+                        # DESPITE costing a point of CAGR, on worst block alone.
+                        # Those figures filled circuit-locked bars. Not directly
+                        # comparable -- they were measured at the 15-day hold as
+                        # well -- but the sign of the CAGR gap changed, so the
+                        # live setting no longer rests on the tail argument.
 
 
 def build(corpus, as_of, capital=CAPITAL, trigger=None):

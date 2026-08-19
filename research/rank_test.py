@@ -21,10 +21,14 @@ import statistics
 import sys
 from collections import defaultdict
 
-import entry, features, simulate
+import entry, features, selection, simulate
 
-BASE = dict(stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5, refresh=5,
-            trigger="breakout")
+# Read, never copied: this said hold=15 for the three months after L52 moved
+# the live hold to 10, so the rank-depth slope -- the one claim in this project
+# that clears its error bar -- was measured on a bucket that no longer existed.
+BASE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
+            hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS,
+            refresh=5, trigger=selection.TRIGGER)
 N = 6
 _C = _D = None
 
@@ -71,6 +75,19 @@ def main(n=N):
     b = statistics.fmean([x["cagr"] for x in res[half:]])
     print(f"  shallow cohorts {a:+.2f}% vs deep cohorts {b:+.2f}%  "
           f"-> rank {'PREDICTS' if a > b else 'does NOT predict'} return")
+
+    # The CAGR spread above is one path. This is the same question asked of the
+    # trades themselves, with an error bar -- the form the claim has to be in
+    # before CLAUDE.md is allowed to quote it.
+    import remeasure
+    xs = [x["offset"] for x in res for _ in x["_r"]["trades"]]
+    ys = [t["ret"] for x in res for t in x["_r"]["trades"]]
+    b, se, t = remeasure.slope(xs, ys)
+    print(f"  per-trade return vs cohort depth: {b:+.2f}% per step "
+          f"+/- {se:.2f}%  t={t:+.2f}  (n={len(ys)})  "
+          f"{'RESOLVED' if abs(t) > 2 else 'inside the noise'}")
+    d, dse, dt = remeasure.gap(res[0]["_r"], res[-1]["_r"])
+    print(f"  top cohort - deepest: {d:+.2f}% +/- {dse:.2f}%  t={dt:+.2f}")
 
     kept = sum(1 for x in res if simulate.keep(
         f"cohort {x['offset']}", x["_r"], {**BASE, "offset": x["offset"]},

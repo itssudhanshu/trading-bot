@@ -102,7 +102,8 @@ band.
 
 **But the t-statistics did not transfer.** Weighting rs up to 1.5, despite it
 having the highest t, produced the WORST book of five variants (+8.93% against
-+13.57%). rs is already captured by the 200-DMA gate and the breakout trigger,
++13.57%, both pre-guard figures -- the comparison was run at one setting, so the
+ranking is what carries). rs is already captured by the 200-DMA gate and the breakout trigger,
 so more of it is redundant while crowding out deliv, which is orthogonal.
 Univariate significance is not marginal portfolio value. Weights unchanged.
 
@@ -111,24 +112,39 @@ Univariate significance is not marginal portfolio value. Weights unchanged.
 A CAGR gap between two backtests is not evidence unless the per-trade edge
 behind it clears its own noise. Checked at current settings:
 
-These were measured at the 15-day hold. The hold is now 10 (L52); the verdicts
-below are about the OTHER knobs and none of them was re-decided by that change.
+**Re-measured after the circuit-lock guard** (`research/remeasure.py`, batch
+20260819-postlock, 10-day hold, c=1.0). The live bucket is the reference:
+**+7.59% / 31.0% DD / 195 trades / 47% win / +2.15% +/- 1.08% per trade.**
 
 | decision | CAGR gap | edge per trade | std err | t | verdict |
 |---|---|---|---|---|---|
-| adopted the breakout trigger | +2.91 | +0.05% | 2.22% | 0.02 | inside the noise |
-| chose 3 micro / 2 small | -4.47 | -0.57% | 1.51% | -0.37 | inside the noise |
-| raised deliv to 1.5 | +2.98 | +0.53% | 1.58% | 0.33 | inside the noise |
+| kept the breakout trigger | +9.79 | +1.99% | 1.54% | +1.29 | inside the noise |
+| chose 10-day hold over 15 | +2.27 | +0.44% | 1.59% | +0.28 | inside the noise |
+| chose 3 micro / 2 small | -2.34 | -0.36% | 1.50% | -0.24 | inside the noise |
+| raised deliv to 1.5 | not re-run | | | | pre-guard figure was +0.53% +/- 1.58% |
 
-**None of them clears it.** Per-trade returns have a standard deviation near
-16%, so with ~220 trades nothing under about 3 points per trade is resolvable.
-The CAGR gaps are real arithmetic on one path; they are not proof that one rule
-picks better trades than another.
+**Still none of them clears it, and the ordering barely moved** -- which is the
+useful result, because the guard removed 6.5 CAGR points, MORE than two of these
+gaps. Per-trade returns have a standard deviation near 16%, so at ~200 trades
+nothing under about 3 points per trade is resolvable. The CAGR gaps are real
+arithmetic on one path; they are not proof that one rule picks better trades.
 
-**The one claim that DOES survive is the important one.** Rank depth predicts
-return: regressing 1,068 trades across six disjoint cohorts gives -0.90% per
-cohort step (std err 0.35%, t = -2.56, CI [-1.59, -0.21]), and the top cohort
-beats the deepest by +6.41% +/- 1.89% per trade (t = 3.39). So the SCORE works;
+**One verdict did change, and it changed the live justification.** The trigger
+was previously kept DESPITE costing a point of CAGR (+11.45 breakout vs +12.53
+none), on worst-block alone. Post-guard `trigger_test` reads breakout +7.59%
+against none **-2.20%**, and breakout is the only one of seven to clear the
+promotion bar -- it now wins on worst block too (-126.7% vs -163.4%). The old
+and new figures are not directly comparable (different hold as well as the
+guard), but the SIGN of the CAGR gap flipped, so the setting no longer rests on
+the tail argument. Nothing about the live bucket changes; its reason improves.
+
+**The one claim that DOES survive is the important one, and the guard made it
+stronger.** Rank depth predicts return: regressing 1,015 trades across six
+disjoint cohorts gives **-1.18% per cohort step (std err 0.29%, t = -4.10)**,
+and the top cohort beats the deepest by **+6.63% +/- 1.79%** per trade
+(t = 3.71). Pre-guard the same regression read -0.90% +/- 0.35% (t = -2.56) on
+1,068 trades. Every one of the five deeper cohorts is now CAGR-negative and
+none matches the top. So the SCORE works;
 the knobs around it are noise. That is the right way round -- it means the edge
 lives in stock selection, not in parameter choices that a search would overfit.
 
@@ -137,11 +153,13 @@ and sequencing, which a per-trade mean cannot see. It means the RANKING of
 these variants is not established, and re-deciding them on a fresh backtest is
 not progress.
 
-**3/2 vs 2/3 flipped when the settings moved.** It was chosen when the book ran
-Rs 5L at 60% deployment with no impact model; at Rs 3L, 75% and c=1.0, the 2/3
-mix leads by 4.47 points instead of trailing by 1.19. Neither gap is
-significant. Left at 3/2 because re-choosing on a number that is inside the
-noise would just be churn.
+**3/2 vs 2/3 flipped when the settings moved, and the gap keeps shrinking.** It
+was chosen when the book ran Rs 5L at 60% deployment with no impact model; at
+Rs 3L, 75% and c=1.0 the 2/3 mix led by 4.47 points instead of trailing by 1.19,
+and post-guard it leads by 2.34 (+9.93% vs +7.59%). Three settings, three
+different answers, none of them significant -- which is what a knob inside the
+noise looks like. Left at 3/2, because re-choosing on a number that moves
+whenever anything else moves would just be churn.
 
 ## Score vs rank
 
@@ -168,7 +186,7 @@ count alongside any performance figure.
 trades can, and there are currently zero. `overview.py` encodes this: no number
 of positive simulations can produce a YES.
 
-## Every CAGR on this page predates the circuit-lock guard (L58)
+## The circuit-lock guard (L58), and what it cost
 
 `engine.gate()` has always rejected `high == low`, and nothing ever called
 `engine.gate()`. So every backtest quoted above filled circuit-locked bars:
@@ -179,9 +197,14 @@ place the same config gives **+7.59% / 31.0% DD / 195 trades** where it gave
 
 **About half the CAGR was phantom.** The per-trade gap does not clear its error
 bar (t = 0.54) and that is irrelevant: error bars decide which rule to prefer,
-not which fills the market could have given. Re-measure before quoting any
-absolute figure below; the RANKINGS and the shapes are likely to survive, the
-levels are not.
+not which fills the market could have given.
+
+**Everything on this page has now been re-measured against the guard** -- the
+error-bar table, the rank-depth slope and the impact sensitivity above, plus
+`trigger_test` and `rank_test` in full (batch 20260819-postlock). The prediction
+held: the rankings and shapes survived, the levels did not, and the one thing
+that moved was the trigger's justification. Any figure quoted without a
+post-guard batch tag is the old, phantom-filled one.
 
 ## Market impact
 
@@ -192,22 +215,26 @@ square-root form found repeatedly in execution data. `engine.IMPACT_C = 1.0`.
 does not have — so it must always be reported as a sensitivity, never as one
 number:
 
-| c | CAGR | share of frictionless result |
-|---|---|---|
-| 0.0 | +13.97% | the old, wrong assumption |
-| 0.5 | +11.60% | 83% |
-| **1.0** | **+13.57%** | the then-baseline at 75% deployment |
-| 2.0 | +7.40% | 53% |
-| 3.0 | +4.53% | 32% |
+| c | CAGR | maxDD | share of frictionless result |
+|---|---|---|---|
+| 0.0 | +11.90% | 29.6% | the old, wrong assumption |
+| 0.5 | +8.63% | 30.0% | 72% |
+| **1.0** | **+7.59%** | **31.0%** | **64% -- the live bucket** |
+| 2.0 | +5.12% | 32.0% | 43% |
+| 3.0 | +4.17% | 32.6% | 35% |
 
-**Measured at the 15-day hold, which is no longer the book's rule** (10 days
-since L52). The shape of the sensitivity is what matters here and that does not
-depend on the hold; the absolute figures are the old configuration's. Re-run
-`impact_test.py` before quoting any single number from this table.
+**Post-guard, at the live 10-day hold** (`impact_test.py`, whose `BASE` now
+READS `selection.HOLD_DAYS` instead of carrying a copy that said 15 for three
+months after L52 moved it). Friction costs more of the result than the old table
+showed: the old table had c=1.0 giving up almost nothing against c=0 (+13.57
+vs +13.97), where it now gives up 36%. The fills the guard removed were
+disproportionately the big up-day ones that paid for the friction.
 
 Profitable across the whole range, which is the useful finding. At c=1.0 the
-median trade pays 0.30% and p90 pays 1.02%; five trades (2.3%) pay over 2% and
-account for 22% of all impact.
+median trade pays 0.31% and p90 pays 1.12%; six trades (3.1%) pay over 2% and
+account for 25% of all impact, and the worst single round trip is 8.73%. That
+tail is a real risk to the live bucket, not a rounding item: it is one Rs 45,000
+order against a name whose ADV cannot absorb it.
 
 A participation cap (skip a name whose order exceeds x% of ADV) was tested at
 10/5/2/1% and **rejected**: results were non-monotonic (2% best, 1% and 5%

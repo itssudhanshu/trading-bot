@@ -57,7 +57,8 @@ STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
                     # trade in isolation would overstate the bill badly.
 
 
-def run(corpus, days, *, stop_pct=10.0, target_pct=20.0, hold=15, max_pos=5,
+def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
+        hold=selection.HOLD_DAYS, max_pos=5,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
         start_idx=300, trigger="none", offset=0, max_corr=None,
         impact_c=engine.IMPACT_C, sizing="equal", targets=None, stop_to=None,
