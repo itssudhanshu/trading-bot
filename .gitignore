@@ -49,3 +49,13 @@ data/fundamentals/
 
 # Pre-migration copies of the order record. Kept on disk, never committed.
 data/positions.db.bak-*
+
+# Claude Code's per-machine permission grants. Tracking it made a local tool
+# setting a repo change, and because the sandbox may not write this path a
+# branch switch could not check it out -- which is what blocked a fast-forward
+# for three attempts while the working tree sat on the wrong version of tg.py.
+.claude/settings.local.json
+
+# iCloud conflict copies ("DIGEST 2.md", "agent_state 2.json"). Nothing reads
+# them; they are stale snapshots that show up as untracked changes.
+* 2.*
