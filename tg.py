@@ -5,8 +5,12 @@ Stdlib only, consistent with the rest of the project -- the Bot API is two HTTP
 endpoints and does not justify a dependency.
 
 SECURITY. A Telegram bot is reachable by anyone who learns its handle, so every
-incoming message is checked against TELEGRAM_CHAT_ID and anything else is
-ignored. Without that, a stranger could query this system's state at will. The
+incoming message is checked against the TELEGRAM_CHAT_ID allowlist and anything
+else is ignored. Without that, a stranger could query this system's state at
+will. The list is comma-separated; the FIRST id is the owner and the only one
+proactive messages are pushed to, so adding a reader lets them ask without
+subscribing them to every fill. An empty list matches nobody, never everybody.
+The
 token is read from .env (gitignored) and never logged -- errors from the API are
 truncated because they can echo the request URL.
 
@@ -47,6 +51,32 @@ def env(name, default=""):
     return default
 
 
+def readers():
+    """-> the chat ids allowed to query this bot. FIRST is the owner.
+
+    TELEGRAM_CHAT_ID holds one id or a comma-separated list. Only the owner is
+    pushed to; the rest may ask and receive an answer, which is the whole
+    difference between "can read the data" and "gets woken up by it".
+
+    FAIL-CLOSED, and that is the property worth protecting: an unset or blank
+    TELEGRAM_CHAT_ID yields [], and poll_once then matches nobody. An empty
+    allowlist must never read as "allow anyone" -- the bot is reachable by
+    whoever learns its handle.
+    """
+    return [c.strip() for c in str(env("TELEGRAM_CHAT_ID")).split(",") if c.strip()]
+
+
+def owner():
+    """-> the one id proactive messages go to, or "" if none is configured.
+
+    Every outbound default reads THIS, not the raw env var. Three places used
+    the raw value, so the moment it held "111,222" each would have posted to a
+    chat id of "111,222" and every push would have failed at once.
+    """
+    ids = readers()
+    return ids[0] if ids else ""
+
+
 def _call(method, params, timeout=30):
     token = env("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -82,7 +112,7 @@ def send_document(path, caption="", chat_id=None):
         return {"ok": False, "error": "file not found"}
     b = uuid.uuid4().hex
     parts = []
-    for k, v in (("chat_id", str(chat_id or env("TELEGRAM_CHAT_ID"))),
+    for k, v in (("chat_id", str(chat_id or owner())),
                  ("caption", caption[:1000])):
         parts.append(f"--{b}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n"
                      .encode())
@@ -129,7 +159,7 @@ def send(text, chat_id=None):
                 f"the message. Wrap identifiers in backticks. "
                 f"near: ...{_outside[max(0, _i - 50):_i + 10]!r}")
     return _call("sendMessage", {
-        "chat_id": chat_id or env("TELEGRAM_CHAT_ID"),
+        "chat_id": chat_id or owner(),
         "text": text[:4000],
         "parse_mode": "Markdown",
         "disable_web_page_preview": "true",
@@ -752,8 +782,8 @@ def _offset(new=None):
 
 
 def poll_once(timeout=25):
-    """-> number of messages handled. Ignores anything not from the owner."""
-    owner = str(env("TELEGRAM_CHAT_ID"))
+    """-> number of messages handled. Ignores anything not on the allowlist."""
+    allowed = readers()
     r = _call("getUpdates", {"offset": _offset(), "timeout": timeout},
               timeout=timeout + 10)
     if not r.get("ok"):
@@ -763,8 +793,8 @@ def poll_once(timeout=25):
         _offset(upd["update_id"] + 1)
         msg = upd.get("message") or {}
         chat = str((msg.get("chat") or {}).get("id", ""))
-        if chat != owner:
-            continue                      # not the owner: ignore silently
+        if chat not in allowed:
+            continue                      # not on the allowlist: ignore silently
         raw = (msg.get("text") or "").strip()
         tok = raw.split()[0].lower() if raw.split() else ""
         # Telegram appends @botname when a command is chosen from the
@@ -784,7 +814,7 @@ def poll_once(timeout=25):
 
 def _selftest():
     import tempfile
-    global OFFSET, ROOT
+    global OFFSET, ROOT, _call
     o_off = OFFSET
     try:
         with tempfile.TemporaryDirectory() as td:
@@ -795,9 +825,49 @@ def _selftest():
     finally:
         OFFSET = o_off
 
+    # ------------------------------------------------------------------
+    # THE ALLOWLIST IS THE WHOLE SECURITY MODEL, so it is tested by driving
+    # poll_once itself rather than by grepping for the line that implements it.
+    # The previous version asserted the source contained `if chat != owner:`,
+    # which passes for any spelling of the check and fails for a correct
+    # rewrite -- it protected the text, not the behaviour.
+    o_root, o_off, o_call = ROOT, OFFSET, _call
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            ROOT, OFFSET = Path(td), Path(td) / "off.json"
+            (ROOT / ".env").write_text("TELEGRAM_CHAT_ID= 111 , 222 \n")
+            assert readers() == ["111", "222"], readers()
+            assert owner() == "111", "pushes must go to one id, not the list"
+
+            answered = []
+
+            def _fake(method, params, timeout=30):
+                if method == "getUpdates":
+                    return {"ok": True, "result": [
+                        {"update_id": i,
+                         "message": {"chat": {"id": int(c)}, "text": "/help"}}
+                        for i, c in enumerate(("111", "999", "222"), 1)]}
+                answered.append(str(params.get("chat_id")))
+                return {"ok": True}
+
+            _call = _fake
+            assert poll_once(timeout=0) == 2, "a stranger was served"
+            assert answered == ["111", "222"], answered
+            assert "999" not in answered, "the bot answered a chat it does not know"
+
+            # fail-closed: no configured id must match NOBODY. An empty
+            # allowlist reading as "allow anyone" would expose the whole
+            # bucket to whoever finds the bot's handle.
+            (ROOT / ".env").write_text("TELEGRAM_BOT_TOKEN=x\n")
+            OFFSET.unlink()
+            answered.clear()
+            assert readers() == [] and owner() == ""
+            assert poll_once(timeout=0) == 0 and not answered, \
+                "an unset TELEGRAM_CHAT_ID served everyone"
+    finally:
+        ROOT, OFFSET, _call = o_root, o_off, o_call
+
     src = Path(__file__).read_text()
-    # the owner check is the whole security model
-    assert 'if chat != owner:' in src, "bot would answer strangers"
     # No handler may EXECUTE anything or spend budget. Asserted precisely: a
     # pgrep PATTERN mentioning "generator.py" is read-only and must not trip
     # this, while subprocess.run([sys.executable, ...]) or judge.consult must.
