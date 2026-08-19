@@ -264,13 +264,27 @@ def _append_only(c):
             f"a return into the forward evidence that no decision produced.")
 
 
-def queue(rows, day, conn=None, which=MAIN):
+def queue(rows, day, conn=None, which=MAIN, limit=None):
     """Queue a bucket's picks for entry at the NEXT session's open.
 
     A symbol already pending or open is skipped, and `ux_pos_live` refuses it
     in the database besides. The check here is per bucket and could only ever
     see its own holdings; the index is global, which is what actually stops a
     second entry in a name the bucket is already running.
+
+    `limit` caps how many are QUEUED, and it has to be applied here rather than
+    by the caller slicing the list first. daily.py sliced: it took
+    allocate()[:room], so a name already in the bucket consumed the only free
+    position and was then skipped as a duplicate, queueing nothing. Observed
+    2026-08-19 -- allocate() returned [YUKEN, VCL], YUKEN was already open,
+    room was 1, and VCL was discarded unlooked-at. VCL would have completed the
+    3 micro / 2 small mix; instead the bucket sat at 4 of 5 with the cash idle,
+    and it would have repeated every session YUKEN stayed top of its cluster.
+
+    simulate.py has always done it in this order (it `continue`s past a held
+    name without spending room), so the backtested numbers are unaffected --
+    but the forward book, which is the only evidence this project has, was
+    running a rule the backtest never ran.
     """
     c = conn or db()
     held = {r[0] for r in c.execute(
@@ -279,6 +293,8 @@ def queue(rows, day, conn=None, which=MAIN):
     cfg = bucket_cfg(which)
     n = 0
     for r in rows:
+        if limit is not None and n >= limit:
+            break
         if r["symbol"] in held:
             continue
         # A bucket with its own stop re-derives stop and target from the
@@ -609,6 +625,40 @@ def _fill_source_selftest():
     print("  fill names its source ok")
 
 
+def _room_selftest():
+    """A held name must not consume the room meant for a new one.
+
+    This is the 2026-08-19 bug: room 1, allocate() = [held, fresh], and the
+    fresh pick was thrown away. Asserts the OUTCOME (the new name is queued),
+    not the mechanism, so it still holds if the limit moves elsewhere.
+    """
+    import tempfile
+    global DB
+    odb = DB
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            DB = Path(td) / "t.db"
+            c = db()
+            row = lambda s, clu: {"symbol": s, "cluster": clu, "qty": 10,
+                                  "stop": 90.0, "target": 120.0, "ref_close": 100.0}
+            assert queue([row("HELD", "micro")], "2026-08-18", c) == 1
+            c.execute("UPDATE pos SET status='open', entry_day='2026-08-18',"
+                      " entry_px=100.0 WHERE symbol='HELD'")
+            # room is 1, and the allocation leads with the name already open
+            n = queue([row("HELD", "micro"), row("FRESH", "micro")],
+                      "2026-08-19", c, limit=1)
+            got = {r[0] for r in c.execute(
+                "SELECT symbol FROM pos WHERE status='pending'")}
+            assert n == 1 and got == {"FRESH"}, \
+                f"the held name ate the free position: queued {n}, pending {got}"
+            # the limit must still bind once the duplicates are gone
+            assert queue([row("A", "micro"), row("B", "small")],
+                         "2026-08-19", c, limit=1) == 1, "limit did not bind"
+    finally:
+        DB = odb
+    print("  a held name does not consume the room ok")
+
+
 def _record_selftest():
     """The text record must replay into an IDENTICAL database.
 
@@ -724,6 +774,7 @@ def _append_only_selftest():
 def _selftest():
     _bars_held_selftest()
     _append_only_selftest()
+    _room_selftest()
     _record_selftest()
     _fill_source_selftest()
     import tempfile, learning

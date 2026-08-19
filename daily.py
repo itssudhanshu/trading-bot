@@ -61,7 +61,11 @@ def main(day=None):
 
     rows = selection.build(corpus, day, capital=s["equity"])
     room = selection.MAX_POSITIONS - (s["open"] + s["pending"])
-    queued = positions.queue(selection.allocate(rows)[:room], day, conn) if room > 0 else 0
+    # Pass the WHOLE allocation and let queue() apply the room, because it is
+    # the function that knows which names are already live. Slicing here first
+    # spent the room on duplicates -- see positions.queue.
+    queued = positions.queue(selection.allocate(rows), day, conn,
+                             limit=room) if room > 0 else 0
 
     print(f"{day}  equity Rs {s['equity']:,.0f}  realised Rs {s['realised']:+,.0f}")
     print(f"  filled {len(filled)}  closed {len(closed)}  queued {queued}")
