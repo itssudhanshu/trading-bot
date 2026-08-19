@@ -289,7 +289,7 @@ def step(corpus, day, conn=None):
         i = s.index_of(day) if s else None
         if i is None or str(day) <= (p["entry_day"] or ""):
             continue
-        held = len([d for d in s.days if p["entry_day"] < str(d) <= str(day)])
+        held = bars_held(s, p["entry_day"], day)
         px, why = None, None
         if s.low[i] <= p["stop"]:
             px, why = min(p["stop"], s.open[i]), "stop"      # gap-through fills worse
@@ -317,6 +317,21 @@ def step(corpus, day, conn=None):
     c.commit()
     c.row_factory = None
     return filled, closed
+
+
+def bars_held(series, entry_day, upto):
+    """-> trading bars strictly after `entry_day` through `upto`.
+
+    THE definition of "held", used by both the time exit in step() and any
+    display. A calendar subtraction is not the same number: it counts weekends
+    and holidays, so a position entered on a Friday reads 7 days old the next
+    Friday when the exit rule has only counted 5 bars. It also goes NEGATIVE
+    after a live morning fill, because entry_day is today while the corpus
+    still ends at yesterday's bhavcopy.
+    """
+    if not series or not entry_day:
+        return 0
+    return len([d for d in series.days if str(entry_day) < str(d) <= str(upto)])
 
 
 def shadow_stop(corpus, conn=None, pct=5.0, which=MAIN):
@@ -387,7 +402,24 @@ def summary(conn=None, which=MAIN):
             "equity": CAPITAL + realised, "rows": rows}
 
 
+def _bars_held_selftest():
+    class S:
+        days = ["2026-08-13", "2026-08-14", "2026-08-17", "2026-08-18"]  # Fri..Mon
+    s = S()
+    # entry day itself is not a held bar
+    assert bars_held(s, "2026-08-13", "2026-08-13") == 0
+    # bars are counted, not calendar days: Thu->Mon is 3 bars, 5 calendar days
+    assert bars_held(s, "2026-08-13", "2026-08-18") == 3, bars_held(s, "2026-08-13", "2026-08-18")
+    # a live morning fill sits AHEAD of the last corpus day; that is 0, never -1
+    assert bars_held(s, "2026-08-19", "2026-08-18") == 0, \
+        "a live fill must read 0, not a negative age"
+    assert bars_held(s, None, "2026-08-18") == 0
+    assert bars_held(None, "2026-08-13", "2026-08-18") == 0
+    print("  bars_held ok (bars not calendar; never negative)")
+
+
 def _selftest():
+    _bars_held_selftest()
     import tempfile, learning
     _orig_ledger = learning.LEDGER
     learning.LEDGER = __import__("pathlib").Path(tempfile.gettempdir()) / "pbook_selftest_ledger.jsonl"

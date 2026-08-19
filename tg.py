@@ -378,8 +378,8 @@ def cmd_open_orders(_=None):
         pct = (px / r["entry_px"] - 1) * 100
         tot_val += val
         tot_pl += pl
-        held = (days[-1] - __import__("datetime").date.fromisoformat(
-            str(r["entry_day"]))).days if r["entry_day"] else 0
+        held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
+                                   days[-1])
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop = (px / r["stop"] - 1) * 100 if r["stop"] else 0
         to_tgt = (r["target"] / px - 1) * 100 if px else 0
