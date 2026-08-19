@@ -376,6 +376,11 @@ def live(symbols):
     if not symbols:
         return {}
     if _PROVIDER:
+        # Set the source HERE too. It used to be assigned only in the chain
+        # loop below, so with a provider registered live.source kept whatever
+        # the previous chain call left there -- a stale name that now goes into
+        # the order record as the feed that set an entry price.
+        live.source = provider_name()
         try:
             return _PROVIDER(list(symbols)) or {}
         except Exception:
@@ -498,6 +503,10 @@ def _selftest():
     q = live(["A", "B"])
     assert q["A"]["ltp"] == 10.0 and len(q) == 2, q
     assert provider_name() == "<lambda>"
+    # the recorded source must be the provider, not whatever the chain last set
+    assert live.source == "<lambda>", (
+        f"live.source is {live.source!r}; a stale name would be written into "
+        f"the order record as the feed that set an entry price")
     set_provider(None)
     # EVERY source in the chain must declare whether it can fill an order, and
     # authoritative() must recognise every name live() can set. This is the

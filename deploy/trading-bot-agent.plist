@@ -9,22 +9,44 @@
   current day only. An agent that asks "is today's snapshot missing?" simply
   does it on the next wake.
 
-  Install (replaces trading-bot-daily / -weekly / -pipeline):
+  Install, or re-install after editing this file (load alone is a no-op when
+  the label is already registered, which reads as success and changes nothing):
     cp deploy/trading-bot-agent.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/trading-bot-agent.plist
+    launchctl unload ~/Library/LaunchAgents/trading-bot-agent.plist 2>/dev/null
+    launchctl load   ~/Library/LaunchAgents/trading-bot-agent.plist
+
+  NO SHELL, NO WorkingDirectory, AND THE INTERPRETER IS THE REAL PATH -- the
+  same three properties the listener plist has, and this job had none of them:
+
+    * /usr/local/bin/python3 is a SYMLINK a Python upgrade moves. When it
+      breaks, launchd exits EX_CONFIG (78) and writes an EMPTY log, so the
+      agent stops silently while the listener keeps answering Telegram and
+      nothing looks wrong. The versioned framework path is what is installed.
+    * `zsh -lc` runs the login profile first, so anything ~/.zshrc does on a
+      non-tty (a prompt tool, a version manager) can exit 78 before python is
+      reached. Nothing here needs the profile: both .env readers resolve
+      paths.ROOT / ".env" absolutely, never $PWD.
+    * WorkingDirectory into ~/Documents is TCC-protected and is itself an
+      EX_CONFIG source. agent.py does not need it: paths.ROOT is derived from
+      __file__, and run_task passes cwd=ROOT and sys.executable to every
+      subtask, so `python3 daily.py` resolves from the repo whatever the
+      parent's cwd is. Verified by running --status from cwd=/.
 
   Never passes --consult: holdout budget is spent by a person who means it.
 -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.sudhanshu.tradingbot.agent</string>
-  <key>WorkingDirectory</key>
-  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/zsh</string><string>-lc</string>
-    <string>/usr/local/bin/python3 agent.py --once --telegram</string>
+    <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+    <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/agent.py</string>
+    <string>--once</string>
+    <string>--telegram</string>
   </array>
+  <!-- Unbuffered, or a crash mid-run truncates the log that would explain it. -->
+  <key>EnvironmentVariables</key>
+  <dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
   <key>StartInterval</key><integer>3600</integer>
   <!--
     Plus a fixed tick just after the open. The hourly interval alone fires on

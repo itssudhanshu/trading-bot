@@ -345,10 +345,16 @@ def fill_live(day, conn=None):
         if not px:
             continue
         sp = bucket_cfg(p["bucket"])["stop_pct"]
+        # NAME the feed, do not just say "live". Every fill wrote the literal
+        # string 'live', so the order record could not answer "which source set
+        # this entry price?" -- and that is the one question the whole
+        # authoritative/display-only split exists to answer. Asked whether Yahoo
+        # was working, five filled positions had nothing to say.
+        src = f"live:{getattr(quotes.live, 'source', '?')}"
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
-                  " target=?, fill_source='live' WHERE id=?",
+                  " target=?, fill_source=? WHERE id=?",
                   (str(day), px, px * (1 - sp / 100),
-                   px * (1 + TARGET_PCT / 100), p["id"]))
+                   px * (1 + TARGET_PCT / 100), src, p["id"]))
         filled.append((p["symbol"], px))
     c.commit()
     return filled, ""
@@ -364,7 +370,11 @@ def reconcile(corpus, day, conn=None):
     c = conn or db()
     c.row_factory = sqlite3.Row
     rows = [dict(r) for r in c.execute(
-        "SELECT * FROM pos WHERE fill_source='live' AND entry_day=?",
+        # LIKE 'live%', not = 'live': the value carries the feed name now, and
+        # rows filled before that change still read exactly 'live'. An equality
+        # test would silently stop reconciling every new fill against the
+        # bhavcopy, which is the check that catches a drifting entry price.
+        "SELECT * FROM pos WHERE fill_source LIKE 'live%' AND entry_day=?",
         (str(day),)).fetchall()]
     c.row_factory = None
     out = []
@@ -552,6 +562,53 @@ def _bars_held_selftest():
     print("  bars_held ok (bars not calendar; never negative)")
 
 
+def _fill_source_selftest():
+    """A fill must NAME its feed, and reconcile must still find it.
+
+    The two halves pull against each other, which is the whole reason this
+    exists: the record has to say which source set an entry price, while
+    reconcile() -- the check that catches a fill price drifting from the
+    official open -- looks fills up BY that column. Widening the value without
+    widening the lookup would silently stop reconciling every new fill, and
+    nothing in the output would report it.
+    """
+    import quotes           # imported function-locally, same as fill_live does
+    import tempfile
+    global DB
+    _odb = DB
+    with tempfile.TemporaryDirectory() as td:
+        DB = Path(td) / "fill.db"
+        try:
+            c = db()
+            c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,bucket)"
+                      " VALUES('AAA','micro','pending','2026-08-17',10,?)", (MAIN,))
+            c.commit()
+            quotes.set_provider(
+                lambda syms: {s: {"ltp": 101.0, "open": 100.0} for s in syms})
+            try:
+                filled, why = fill_live("2026-08-18", c)
+            finally:
+                quotes.set_provider(None)
+            assert filled == [("AAA", 100.0)], (filled, why)
+            got = c.execute("SELECT fill_source FROM pos WHERE id=1").fetchone()[0]
+            assert got == "live:<lambda>", \
+                f"the record says {got!r} -- it must name the feed, not just 'live'"
+            # a row written before the feed name was added still reads 'live',
+            # and reconcile has to keep finding both forms
+            c.execute("INSERT INTO pos(symbol,cluster,status,entry_day,entry_px,"
+                      "qty,fill_source,bucket) VALUES('BBB','micro','open',"
+                      "'2026-08-18',50.0,10,'live',?)", (MAIN,))
+            c.commit()
+            n = c.execute("SELECT count(*) FROM pos WHERE fill_source LIKE 'live%'"
+                          " AND entry_day='2026-08-18'").fetchone()[0]
+            assert n == 2, f"reconcile would see {n} of 2 fills, not both"
+            c.close()
+        finally:
+            DB = _odb
+            quotes.set_provider(None)
+    print("  fill names its source ok")
+
+
 def _record_selftest():
     """The text record must replay into an IDENTICAL database.
 
@@ -668,6 +725,7 @@ def _selftest():
     _bars_held_selftest()
     _append_only_selftest()
     _record_selftest()
+    _fill_source_selftest()
     import tempfile, learning
     _orig_ledger = learning.LEDGER
     learning.LEDGER = __import__("pathlib").Path(tempfile.gettempdir()) / "pbook_selftest_ledger.jsonl"
