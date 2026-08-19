@@ -81,20 +81,28 @@ A book holding 1 stock is normal, not broken.
 ## Where the code lives (2026-08-19)
 
 The strategy is named **sprout**. Its RULES are the four files in
-`strategies/sprout/` -- `clusters.py` (size bands and the score),
+`src/strategies/sprout/` -- `clusters.py` (size bands and the score),
 `selection.py` (the bucket and the exit rules), `entry.py` (the breakout
 trigger), `learning.py` (the weights). Its OUTPUTS are `data/sprout/` --
 `weights.json`, `baseline.json`, `trade_features.jsonl`, `strategies.jsonl`,
 `simulations.jsonl`, `findings.jsonl`, `occupancy_baseline.json`.
 
-Everything else is shared and strategy-agnostic: price data (`core/features`),
-the fill-and-cost engine (`core/engine`), the backtest harness
-(`research/simulate`), the order book (`positions.db`), the Telegram bot, the
-audit.
+Everything else is shared and strategy-agnostic: price data
+(`src/core/features`), the fill-and-cost engine (`src/core/engine`), the
+backtest harness (`src/research/simulate`), the order book (`positions.db`), the
+Telegram bot, the audit.
+
+All source moved under `src/` on 2026-08-20, with the four entry points
+(`daily.py`, `tg.py`, `agent.py`, `overview.py`) and `paths.py` left at the root
+-- every launchd plist and every documented command invokes those by name, and
+`paths.py` derives `ROOT` from its own location. Shell scripts are in
+`scripts/`. The whole sweep is one command now:
+
+    python3 tests/run_selftests.py
 
 `paths.py` picks the active strategy and puts ONLY its directory on `sys.path`:
 
-    STRATEGY=other python3 ops/audit.py
+    STRATEGY=other python3 src/ops/audit.py
 
 Two strategies both define `selection`; if both were importable, `import
 selection` would resolve to whichever came first and every number after that
@@ -129,7 +137,7 @@ guard STRENGTHENED this) -- and knowingly trading picks you believe are
 worse in order to gather evidence faster is not a trade this book makes. So
 they were removed (L56). `overview.py` still carries the note "two positions
 opened by the retired deeper buckets"; the cohort machinery now survives only
-in `research/rank_test.py`, which slices cohorts to MEASURE that rank decay,
+in `src/research/rank_test.py`, which slices cohorts to MEASURE that rank decay,
 never to trade them.
 
 **The tighter-stop question is a counterfactual, not a bucket.**
@@ -194,7 +202,7 @@ already open since 2026-08-17 at 2,131.20, bought again on 2026-08-19 at
 2,280.00, 7% higher. The dedup in `queue()` could not see it: it only ever
 consulted rows that were in the file. That is why the rule is now an index.
 
-`ops/restore_orphans.py` recovered the three positions into the one bucket,
+`src/ops/restore_orphans.py` recovered the three positions into the one bucket,
 dropped the `third`/`fourth` labels and retired the duplicate as `void`. It
 copies prices from the old file rather than restating them, is idempotent, and
 asserts the mix, the position count and the deployment cap before committing --
@@ -447,7 +455,7 @@ Whether to progress to real money is the user's decision, not a technical one.
 
 launchd runs `agent.py --once` hourly. On a weekday after 18:00 it does
 `snapshot -> catchup -> pbook`. The Telegram listener runs via
-`run_listener.sh` and must be restarted after ANY code change.
+`scripts/run_listener.sh` and must be restarted after ANY code change.
 
 Retired work (the spec-search track: generator, pipeline, judge, holdout
 ledger) is archived in `data/retired/` and deleted from the tree. It never

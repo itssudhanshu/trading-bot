@@ -29,8 +29,8 @@ contain a hand-transcribed entry price.
 
 Idempotent: `ux_pos_live` makes a second run a no-op.
 
-    python3 ops/restore_orphans.py --dry-run     # show what would change
-    python3 ops/restore_orphans.py
+    python3 src/ops/restore_orphans.py --dry-run     # show what would change
+    python3 src/ops/restore_orphans.py
 """
 
 import sys

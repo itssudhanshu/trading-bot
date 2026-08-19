@@ -11,7 +11,7 @@ standard deviation near 16%, so at ~200 trades nothing under about 3 points per
 trade is resolvable. A verdict is only re-decided if the edge clears its own
 error bar -- which, on this project's record, it almost never does.
 
-    python3 research/remeasure.py
+    python3 src/research/remeasure.py
 """
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
@@ -23,7 +23,7 @@ import features, selection, simulate
 
 BATCH = "20260819-postlock"
 
-# The live bucket, exactly as strategies/sprout/selection.py runs it. Not simulate.run's
+# The live bucket, exactly as src/strategies/sprout/selection.py runs it. Not simulate.run's
 # defaults, which still carry the old 15-day hold.
 LIVE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
             hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS,

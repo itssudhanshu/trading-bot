@@ -75,9 +75,14 @@ def _unlock():
 
 # The complete set of things the agent may run. Anything not here is not the
 # agent's business -- the strategy search that used to live here is retired.
+# Paths go through paths.script() because these are SPAWNED, not imported: a
+# bad string here fails inside a subprocess whose rc lands in a log file, so the
+# agent goes on reporting healthy while nothing runs. _selftest asserts every
+# one of them exists on disk.
+_S = paths.script
 _JOBS = {
-    "snapshot": ["ops/snapshot.py"],
-    "catchup":  ["ops/snapshot.py", "--catchup"],
+    "snapshot": [_S("ops/snapshot.py")],
+    "catchup":  [_S("ops/snapshot.py"), "--catchup"],
     "pbook":    ["daily.py"],
     # Morning: fill pending orders at the day's actual open, rather than
     # leaving the bucket nine hours behind the market.
@@ -86,7 +91,7 @@ _JOBS = {
     # written the last time someone ran it by hand -- it was still claiming
     # "21 passed" after the suite had grown to 30. A self-check nobody runs is
     # not a self-check.
-    "audit":    ["ops/audit.py"],
+    "audit":    [_S("ops/audit.py")],
     # Evening, after the bucket has stepped and the audit has run: push the day's
     # ranking, the evidence so far, and any weight change that has EARNED
     # itself. It proposes and never applies -- see tg.cmd_review.
@@ -392,6 +397,15 @@ def notify(msg, title="trading-bot"):
 
 def _selftest():
     import tempfile
+    # Every job the agent may spawn must exist on disk. These run through
+    # subprocess with cwd=ROOT, so a stale path fails where nobody looks --
+    # moving ops/ under src/ broke snapshot, catchup and audit at once and
+    # nothing said so.
+    for _name, _argv in _JOBS.items():
+        # paths.ROOT, not ROOT: _selftest rebinds ROOT with a `global` further
+        # down, and reading it here would be a syntax error.
+        assert (paths.ROOT / _argv[0]).exists(), \
+            f"job {_name!r} spawns {_argv[0]}, which does not exist"
     global STATE, DIGEST, LOCK
     o = (STATE, DIGEST, LOCK)
     try:
@@ -465,8 +479,13 @@ def _selftest():
     # The agent runs only data collection and the bucket. Assert against the
     # COMMAND TABLE, not the source text -- a source scan for forbidden names
     # matches the list of forbidden names itself and can never pass.
-    allowed = {"ops/snapshot.py", "daily.py", "tg.py", "ops/audit.py",
-               "--catchup", "--fill-live", "--review"}
+    # Through paths.script(), the same way _JOBS builds them. Writing the
+    # resolved strings here instead would make this assertion a copy of the
+    # layout, and it would have to be hand-edited every time the layout moved --
+    # which is how it read before ops/ went under src/. The PROPERTY is "only
+    # these four scripts and these three flags", and that is what survives.
+    allowed = {_S("ops/snapshot.py"), _S("daily.py"), _S("tg.py"),
+               _S("ops/audit.py"), "--catchup", "--fill-live", "--review"}
     for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit"):
         for arg in _cmd_for(job)[1:]:
             assert arg in allowed, f"{job} runs unexpected {arg!r}"

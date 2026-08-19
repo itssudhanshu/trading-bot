@@ -1,7 +1,14 @@
-# Firebase deployment plan
+# Firebase deployment plan — NOT ADOPTED
 
-Goal: the book runs without this Mac being awake, at zero (or near-zero) cost,
-with every Telegram command answering exactly as it does today.
+**Decision, 2026-08-19: this stays on the Mac.** Kept for the measurements
+below, which are real and were not cheap to get; read it as a costed option that
+was declined, not as work in progress. The module names were updated when the
+code moved (`pbook.py` -> `positions.py`, `portfolio.py` -> `selection.py`,
+`pbook.db` -> `positions.db`); the numbers are untouched and pre-date the
+circuit-lock guard, which changed results but not sizes or timings.
+
+Goal was: the bucket runs without this Mac being awake, at zero (or near-zero)
+cost, with every Telegram command answering exactly as it does today.
 
 Measured on this repo, 2026-08-17, not assumed:
 
@@ -9,7 +16,7 @@ Measured on this repo, 2026-08-17, not assumed:
 |---|---|---|
 | dependencies | **stdlib only** — no pandas, no requests | image stays tiny; fits Artifact Registry's 0.5 GB free tier |
 | `features.load_corpus()` | **18.3 s, 2.5–2.8 GB RSS** | rules out every 1 GB free VM; forces a memory-sized serverless run |
-| `portfolio.build()` after load | **0.2 s** | the corpus load IS the entire cost. Nothing else matters |
+| `selection.build()` after load | **0.2 s** | the corpus load IS the entire cost. Nothing else matters |
 | runtime data | `data/raw` 450 MB (1,698 day-dirs) + `data/fundamentals/parsed` 9.7 MB | must live off-instance |
 | non-runtime data | `data/fundamentals/xbrl` 1.5 GB + `index` 116 MB | backfill-only. **Never uploaded.** Cuts 2.1 GB to 460 MB |
 | growth | ~270 KB/session ≈ 68 MB/year | 5 GB free storage lasts years |
@@ -71,12 +78,12 @@ Cloud Scheduler (1 job, weekdays 19:00 IST)
   fn: nightly            8 GiB, ~4 min          fn: telegram        512 MiB, ~1 s
   ─────────────          ↓ pull corpus.tar.gz   ────────────        ↑ pull state + ui.json
   snapshot → catchup     ↑ push corpus + state  webhook handler     ↓ Telegram sendMessage
-  → pbook_run            ↑ push ui.json
+  → daily.py             ↑ push ui.json
         │                        │                      │
         └────────────────────────┴──────────────────────┘
                     GCS bucket  gs://<proj>-book
                       corpus.tar.gz   (~130 MB gzipped)
-                      state.tar.gz    (~700 KB: pbook.db, agent_state, offsets, findings)
+                      state.tar.gz    (~700 KB: positions.db, agent_state, offsets, findings)
                       ui.json         (~200 KB: last day, last closes, rendered /clusters + /bucket)
 ```
 
@@ -93,7 +100,7 @@ taste.
 os.path.exists("/workspace/data") or os.symlink("/tmp/data", "/workspace/data")
 ```
 
-Nothing in `features.py`, `pbook.py`, `portfolio.py` or `clusters.py` is touched.
+Nothing in `features.py`, `positions.py`, `selection.py` or `clusters.py` is touched.
 
 ---
 
@@ -123,7 +130,7 @@ identical from your phone's side.
 ### 2. Precompute the two corpus-heavy commands
 
 Only `/clusters` and `/bucket` need the full ranking. `/wallet`, `/next_orders`
-and `/open_orders` need `pbook.db` plus the **last day's closes only**;
+and `/open_orders` need `positions.db` plus the **last day's closes only**;
 `/closed_orders`, `/findings` and `/help` need no corpus at all.
 
 If the webhook loaded the corpus it would take ~40 s and 3 GB to answer
@@ -224,7 +231,7 @@ budget alerts do not stop spend — but it is the notification that matters.
    start, `push()` at end. No new dependency; falls back to
    `google-cloud-storage` only if resumable uploads get fiddly.
 4. Nightly function: symlink `/tmp/data`, pull, `agent.once()`, write `ui.json`,
-   push. Deploy at 8 GiB. Run it once manually and diff its `pbook.db` against
+   push. Deploy at 8 GiB. Run it once manually and diff its `positions.db` against
    the local one — **the run is only correct if the book matches.**
 5. Selftests under Python 3.13.
 6. Webhook function: extract `handle_update`, add the secret-token check, serve
@@ -233,7 +240,7 @@ budget alerts do not stop spend — but it is the notification that matters.
 8. Cleanup policy on Artifact Registry, `maxInstances` on both functions,
    budget alert.
 9. Stop the Mac's launchd jobs — **only after** a full week of cloud runs whose
-   `pbook.db` matches what the Mac would have produced. Two writers to one book
+   `positions.db` matches what the Mac would have produced. Two writers to one bucket
    is the one failure mode here that corrupts state rather than just erroring.
 
 ---

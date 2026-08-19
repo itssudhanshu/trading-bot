@@ -50,7 +50,7 @@ repeatedly shipped bugs that looked like findings.
 any of them leaves the bot serving stale logic while looking healthy — this has
 caused several wrong answers already.
 
-    pkill -f "tg.py --listen"    # run_listener.sh restarts it automatically
+    pkill -f "tg.py --listen"    # scripts/run_listener.sh restarts it automatically
 
 Then verify the command actually works before reporting it as fixed.
 
@@ -137,7 +137,7 @@ captured by the 200-DMA gate and the breakout trigger, so more of it is redundan
 while crowding out deliv, which is orthogonal. Univariate significance is not
 marginal portfolio value. Weights unchanged.
 
-**Re-run post-guard** (`research/weight_test.py`, batch 20260819-postlock), and
+**Re-run post-guard** (`src/research/weight_test.py`, batch 20260819-postlock), and
 the conclusion holds while the evidence for it thins out:
 
 | weights | CAGR | maxDD | n | per trade | vs neutral | t |
@@ -169,7 +169,7 @@ and those gaps are under one standard error too.
 A CAGR gap between two backtests is not evidence unless the per-trade edge
 behind it clears its own noise. Checked at current settings:
 
-**Re-measured after the circuit-lock guard** (`research/remeasure.py`, batch
+**Re-measured after the circuit-lock guard** (`src/research/remeasure.py`, batch
 20260819-postlock, 10-day hold, c=1.0). The live bucket is the reference:
 **+7.59% / 31.0% DD / 195 trades / 47% win / +2.15% +/- 1.08% per trade.**
 
@@ -307,7 +307,7 @@ output without a glossary.
 ## One strategy per directory
 
 The live strategy is named **sprout** and its rules live in
-`strategies/sprout/` (`clusters.py`, `selection.py`, `entry.py`,
+`src/strategies/sprout/` (`clusters.py`, `selection.py`, `entry.py`,
 `learning.py`), its outputs in `data/sprout/` (weights, baseline, trade ledger,
 stored results). Everything else -- price data, the fill-and-cost engine, the
 backtest harness, the order book, the bot, the audit -- is shared and knows
@@ -316,7 +316,7 @@ nothing about any particular strategy.
 `paths.py` picks the active one, and puts **only** that directory on
 `sys.path`:
 
-    STRATEGY=other python3 ops/audit.py
+    STRATEGY=other python3 src/ops/audit.py
 
 That is the isolation, and it is deliberately the whole of it. A second
 strategy also defines `selection`; if both were importable, `import selection`
@@ -328,6 +328,24 @@ asserts no inactive strategy is reachable.
 `strategies.jsonl` and `trade_features.jsonl` are append-only; a mixed ledger
 cannot be un-mixed, and the recorded baseline is what the audit compares
 against.
+
+## Layout, and the one command that checks it
+
+Source is under `src/` (`core`, `bucket`, `research`, `ops`, `strategies`),
+shell in `scripts/`, and the four entry points plus `paths.py` stay at the ROOT
+because launchd and every documented command invoke them by name. Anything that
+SPAWNS a script rather than importing it must go through `paths.script()` --
+`agent.py` runs `python3 <path>` in a subprocess whose failure lands in a log
+nobody reads, so a stale string there leaves the scheduler reporting healthy
+while nothing runs. Its `_selftest` asserts every job path exists on disk.
+
+    python3 tests/run_selftests.py
+
+Runs every module's `--selftest` and then the audit. The module list is
+DISCOVERED from `paths.SRC`, not maintained by hand: the old sweep was a shell
+loop retyped from memory, and a module missing from it was a module nobody
+checked. Five modules have no selftest and are excluded BY NAME with a reason,
+so the exclusion has to be defended rather than happening silently.
 
 See `docs/glossary.md` for what every term here means in plain English, and
 `docs/performance-change.md` for what the circuit-lock guard did to the numbers.

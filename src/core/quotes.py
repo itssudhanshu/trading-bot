@@ -21,7 +21,7 @@ here is dated observations, never a standing claim:
                 (URLError: Tunnel connection failed: 403) -- which is the
                 sandbox, not the source, and says nothing about either
 
-Run `python3 core/quotes.py` to see what actually answers now. A previous
+Run `python3 src/core/quotes.py` to see what actually answers now. A previous
 version of this docstring concluded from the two 2026-08-17 measurements that
 `live()` "returns {} until a provider is registered", which was never true of
 the code and sent a reader looking for a provider to register.

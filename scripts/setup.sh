@@ -1,7 +1,7 @@
 #!/bin/sh
 # Bootstrap on a fresh machine. Idempotent -- safe to re-run.
 #
-#   git clone https://github.com/itssudhanshu/trading-bot.git && cd trading-bot && ./setup.sh
+#   git clone https://github.com/itssudhanshu/trading-bot.git && cd trading-bot && ./scripts/setup.sh
 #
 # No pip install: the system is stdlib-only by design. The only hard
 # requirements are Python >= 3.9 and outbound HTTPS to nsearchives.nseindia.com.

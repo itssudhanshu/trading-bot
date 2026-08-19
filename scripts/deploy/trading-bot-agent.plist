@@ -11,7 +11,7 @@
 
   Install, or re-install after editing this file (load alone is a no-op when
   the label is already registered, which reads as success and changes nothing):
-    cp deploy/trading-bot-agent.plist ~/Library/LaunchAgents/
+    cp scripts/deploy/trading-bot-agent.plist ~/Library/LaunchAgents/
     launchctl unload ~/Library/LaunchAgents/trading-bot-agent.plist 2>/dev/null
     launchctl load   ~/Library/LaunchAgents/trading-bot-agent.plist
 

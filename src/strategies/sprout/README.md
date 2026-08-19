@@ -52,7 +52,7 @@ per step down the rank list (t = −4.10). See `docs/performance-change.md`.
 
 Copy this directory, change the rules, and point `STRATEGY` at it:
 
-    STRATEGY=other python3 ops/audit.py
+    STRATEGY=other python3 src/ops/audit.py
 
 Only the active strategy is importable, and only its own `data/<name>/` is
 written. The first strategy cannot be affected by the second — not its weights,

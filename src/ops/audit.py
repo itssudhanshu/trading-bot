@@ -85,6 +85,26 @@ def main():
     fwd = [s.symbol for s in corpus.values() if s.days and s.days[-1] > date.today()]
     check("no bar dated in the future", not fwd, f"{len(fwd)} offenders")
 
+    # .env.example is a COPY of .env's key names, and this project's most
+    # frequent defect is a copy that was right when written and never re-checked.
+    # A key added to .env and not here means the next person to set the bot up
+    # gets a silent half-configuration. The reverse -- a value left in the
+    # example -- is a secret in git history, which cannot be undone by deleting
+    # it later.
+    def _keys(p):
+        return {ln.split("=", 1)[0].strip(): ln.split("=", 1)[1].strip()
+                for ln in p.read_text().splitlines()
+                if "=" in ln and not ln.lstrip().startswith("#")}
+    ex, envf = features.ROOT / ".env.example", features.ROOT / ".env"
+    if ex.exists():
+        exk = _keys(ex)
+        filled = [k for k, v in exk.items() if v]
+        missing = sorted(set(_keys(envf)) - set(exk)) if envf.exists() else []
+        check(".env.example lists every key and carries no values",
+              not filled and not missing,
+              f"{len(exk)} keys documented; {len(filled)} carry a value "
+              f"{filled}; {len(missing)} in .env but undocumented {missing}")
+
     # ---------------------------------------------------------- SELECTION
     section("SELECTION")
 

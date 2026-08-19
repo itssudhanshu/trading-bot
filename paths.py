@@ -12,7 +12,7 @@ Also puts the source directories on sys.path, so `import features` keeps
 working from anywhere. That preserves the project's convention that any module
 can be run directly for its selftest:
 
-    python3 strategies/sprout/clusters.py --selftest
+    python3 src/strategies/sprout/clusters.py --selftest
 """
 import os
 import sys
@@ -34,9 +34,9 @@ RAW = DATA / "raw"
 # after that would describe a book nobody chose. One active at a time, named
 # out loud, and the wrong one cannot be reached by accident.
 #
-#     STRATEGY=other python3 ops/audit.py
+#     STRATEGY=other python3 src/ops/audit.py
 STRATEGY = os.environ.get("STRATEGY", "sprout")
-STRATEGIES = ROOT / "strategies"
+STRATEGIES = ROOT / "src" / "strategies"
 SDIR = STRATEGIES / STRATEGY
 
 # Strategy-scoped data: weights, the recorded baseline, the trade ledger, the
@@ -47,7 +47,19 @@ SDATA = DATA / STRATEGY
 # Source directories, in import-resolution order. The strategy comes FIRST so
 # its rules win over anything shared, and root is last so a stray name there
 # cannot shadow a real module.
-SRC = (f"strategies/{STRATEGY}", "core", "bucket", "research", "ops")
+SRC = (f"src/strategies/{STRATEGY}", "src/core", "src/bucket", "src/research",
+       "src/ops")
+
+# Root-relative path to a source file, for the places that SPAWN a script rather
+# than import it -- agent.py runs `python3 <this> ` with cwd=ROOT. Those were
+# plain strings ("ops/snapshot.py") and the src/ move broke the scheduler
+# silently: subprocess reports rc=2 into a log nobody reads.
+def script(rel):
+    """-> "src/ops/snapshot.py" for script("ops/snapshot.py")."""
+    for d in SRC:
+        if rel.startswith(d.split("/", 1)[1] + "/"):
+            return f"src/{rel}"
+    return rel
 
 for _d in SRC:
     _p = str(ROOT / _d)
