@@ -14,7 +14,7 @@ import multiprocessing as mp
 import statistics
 from collections import defaultdict
 
-import analysis, entry, features, selection, simulate
+import analysis, engine, entry, features, selection, simulate
 
 # READ from selection, never copied. This dict said hold=15 for the three
 # months after L52 moved the live hold to 10, so the published impact table
@@ -24,7 +24,8 @@ BASE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
             hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS,
             refresh=5, trigger=selection.TRIGGER)
 assert BASE["hold"] == selection.HOLD_DAYS, "impact tested a hold the bucket does not run"
-CS = [0.0, 0.5, 1.0, 2.0, 3.0]
+CS = sorted({0.0, 0.5, engine.IMPACT_C, 2.0, 3.0})
+assert engine.IMPACT_C in CS, "the sensitivity does not cover the live constant"
 _C = _D = None
 
 
@@ -62,7 +63,13 @@ def main():
               f"{x['n']:>6}{x['imp_med']:>12.2f}%{x['worst']:>+9.1f}%   "
               f"{m.get('avg',0):+.2f}% / {s.get('avg',0):+.2f}%{tag}")
     base = res[0]["cagr"]
-    print(f"\n  worst observed round-trip impact: {max(x['imp_max'] for x in res):.2f}%")
+    # Named with its c. This printed a max across every row under a table whose
+    # live row is engine.IMPACT_C, so it read as the live bucket's worst fill
+    # when it was c=3.0's. A number without its condition is not a measurement.
+    w = max(res, key=lambda x: x["imp_max"])
+    live = next(x for x in res if x["c"] == engine.IMPACT_C)
+    print(f"\n  worst round trip at c={live['c']:.1f} (live): {live['imp_max']:.2f}%"
+          f"   -- worst anywhere in this table: {w['imp_max']:.2f}% at c={w['c']:.1f}")
     for x in res[1:]:
         print(f"  c={x['c']}: {x['cagr'] - base:+.2f} points vs the no-impact "
               f"assumption ({(x['cagr']/base*100 if base else 0):.0f}% of it survives)")
