@@ -29,12 +29,13 @@ import json
 import sys
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from paths import ROOT      # one definition; see paths.py
 API = "https://api.telegram.org/bot{token}/{method}"
 OFFSET = ROOT / "data" / "tg_offset.json"
+LISTENER_BEAT = ROOT / "data" / "listener_heartbeat.json"
 
 
 def env(name, default=""):
@@ -612,30 +613,104 @@ def cmd_findings(_=None):
 
 # ============================================================ SYSTEM
 def cmd_health(_=None):
-    """Is everything actually running?"""
+    """Is everything actually running?
+
+    EVERY tick and cross below is measured: a heartbeat that was written, a file
+    that exists, an expiry decoded out of the token itself. The quote fallback
+    chain is the one exception and is marked "·" rather than ticked, because
+    probing four sources every time someone types /health is what rate-limited
+    Yahoo (L57). A line that cannot fail must not wear a tick -- the old
+    "✅ data" was hardcoded and would have said ✅ with a week of sessions
+    missing, and the listener line asked pgrep and said ❌ about the process
+    answering the question.
+    """
     import json
-    import subprocess
     from datetime import datetime as _dt
-    out = [_title("HEALTH"), ""]
-    hb = ROOT / "data" / "agent_heartbeat.json"
-    if hb.exists():
-        at = _dt.fromisoformat(json.loads(hb.read_text())["at"])
-        mins = (_dt.now() - at).total_seconds() / 60
-        out.append(("✅" if mins < 90 else "❌") +
-                   f" agent — last ran {mins:.0f} min ago")
+    out = [_title("SwingAlpha Bot Health"), ""]
+
+    def _age(path):
+        """-> minutes since the stamp in `path`, or None if there is not one."""
+        if not path.exists():
+            return None
+        try:
+            return (_dt.now() - _dt.fromisoformat(
+                json.loads(path.read_text())["at"])).total_seconds() / 60
+        except Exception:
+            return None
+
+    m = _age(ROOT / "data" / "agent_heartbeat.json")
+    out.append("❌ Scheduler agent — never ran" if m is None else
+               ("✅" if m < 90 else "❌") +
+               f" Scheduler agent — last ran {m:.0f} min ago")
+
+    # Its own stamp, not pgrep -- see _beat.
+    m = _age(LISTENER_BEAT)
+    if m is None:
+        out.append("❌ Telegram listener — never polled")
+    elif m < 3:
+        pid = json.loads(LISTENER_BEAT.read_text()).get("pid")
+        out.append("✅ Telegram listener — polling"
+                   + (f" (pid {pid})" if pid else ""))
     else:
-        out.append("❌ agent — never ran")
-    try:
-        r = subprocess.run(["pgrep", "-f", "tg.py --listen"],
-                           capture_output=True, timeout=5)
-        out.append(("✅" if r.stdout.strip() else "❌") + " telegram listener")
-    except Exception:
-        out.append("· telegram listener — cannot tell")
+        out.append(f"❌ Telegram listener — stopped polling {m:.0f} min ago")
+
     raw = ROOT / "data" / "raw"
-    if raw.exists():
-        bh = sorted(p.name for p in raw.iterdir()
-                    if (p / "bhavcopy_delivery.csv").exists())
-        out.append(f"✅ data — {len(bh)} trading days, newest {bh[-1] if bh else '?'}")
+    days = (sorted(p.name for p in raw.iterdir()
+                   if (p / "bhavcopy_delivery.csv").exists())
+            if raw.exists() else [])
+    if not days:
+        out.append("❌ Market data — nothing downloaded")
+    else:
+        # Freshness is NOT "is there a newest file" -- there always is. It is
+        # whether a weekday that should have one is missing, which needs the
+        # holiday list and the 18:00 publication time. agent already does both.
+        try:
+            import agent as _a
+            behind = _a._gaps_outstanding()
+        except Exception:
+            behind = None
+        at = _dt.fromtimestamp((raw / days[-1] / "bhavcopy_delivery.csv")
+                               .stat().st_mtime)
+        out.append(("·" if behind is None else "❌" if behind else "✅") +
+                   f" Market data — newest {days[-1]}, fetched {at:%d %b %H:%M}"
+                   + ("  — A SESSION IS MISSING" if behind else ""))
+        # Deliberately a separate line from freshness. These answer different
+        # questions and one number was doing both: this is how much history the
+        # ranking can see, not whether today arrived.
+        out.append(f"✅ Data history — {len(days)} sessions, "
+                   f"{days[0]} to {days[-1]}")
+
+    try:
+        import quotes
+        tok = quotes.env_value("UPSTOX_ACCESS_TOKEN")
+        h = quotes.token_hours_left(tok) if tok else None
+        if not tok:
+            out.append("· Upstox — no token set; fills fall through the chain")
+        elif h is None:
+            out.append("❌ Upstox — token is not a JWT and will be refused")
+        elif h <= 0:
+            out.append(f"❌ Upstox — token expired {-h:.1f} h ago; log in again "
+                       f"for live fills")
+        else:
+            out.append(f"✅ Upstox — token good for another {h:.1f} h")
+        out.append("· Quote order — " +
+                   ", ".join(f.__name__.lstrip("_") for f in quotes.CHAIN) +
+                   " (listed, not probed)")
+    except Exception as e:
+        out.append(f"· Upstox — cannot tell ({type(e).__name__})")
+
+    try:
+        import positions
+        s = positions.summary()
+        # COUNTS, not money. summary()["equity"] is CAPITAL + realised: it
+        # never marks the open positions to market, so with nothing closed it
+        # returns the starting capital exactly. Printing that as "worth" reads
+        # to anyone as today's value of the bucket, which it is not.
+        # /open\_orders and /review are where money is quoted, off real quotes.
+        out.append(f"✅ Bucket — {s['open']} held, {s['pending']} buying at the "
+                   f"next open, {s['closed']} finished")
+    except Exception as e:
+        out.append(f"· Bucket — cannot tell ({type(e).__name__})")
     try:
         import agent
         due = agent.due()
@@ -808,6 +883,32 @@ def _offset(new=None):
     return json.loads(OFFSET.read_text())["offset"] if OFFSET.exists() else 0
 
 
+def _beat():
+    """Stamped before every poll, so /health need not ask pgrep about us.
+
+    `pgrep -f "tg.py --listen"` was the old probe and it was wrong in BOTH
+    directions.
+
+    It reported the listener DOWN while pid 76945 was serving the very /health
+    that printed the cross (data/telegram.log, 2026-08-19). A launchd-spawned
+    process cannot reliably enumerate processes, and cmd_health tested only
+    `r.stdout` and never `r.returncode` -- so "pgrep was not allowed to look"
+    and "nothing is running" were one single observation. Exactly the blind spot
+    _call had: the tool reported the failure and the caller discarded it.
+
+    It was also wrong the other way. A wedged poll keeps the process alive, so
+    pgrep answers yes about a listener that is answering nothing -- the failure
+    the note in _selftest already describes.
+
+    A stamp written by the loop cannot be wrong in either direction: nothing
+    else writes it, and it stops the moment the loop stops going round.
+    """
+    import os
+    LISTENER_BEAT.parent.mkdir(parents=True, exist_ok=True)
+    LISTENER_BEAT.write_text(json.dumps({"at": datetime.now().isoformat(),
+                                         "pid": os.getpid()}))
+
+
 def poll_once(timeout=25):
     """-> number of messages handled. Ignores anything not on the allowlist."""
     allowed = readers()
@@ -876,6 +977,40 @@ def _selftest():
     finally:
         globals()["_call_raw"], _call._last = o_raw, None
     print("  a failed send reaches the log ok (once per distinct reason)")
+
+    # ------------------------------------------------------------------
+    # /health MUST NOT REPORT A LIVE LISTENER AS DOWN. pgrep did, while this
+    # very process served the request. Both directions asserted, because the
+    # replacement is only an improvement if it also catches a wedged loop.
+    # ------------------------------------------------------------------
+    global LISTENER_BEAT
+    o_beat = LISTENER_BEAT
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            LISTENER_BEAT = Path(td) / "beat.json"
+            _beat()
+            assert "✅ Telegram listener" in cmd_health(), \
+                f"a listener that just polled read as down: {cmd_health()!r}"
+            stale = (datetime.now() - timedelta(minutes=30)).isoformat()
+            LISTENER_BEAT.write_text(json.dumps({"at": stale, "pid": 1}))
+            assert "❌ Telegram listener" in cmd_health(), \
+                "a listener that stopped polling 30 min ago read as healthy"
+            LISTENER_BEAT.unlink()
+            assert "❌ Telegram listener" in cmd_health(), \
+                "no heartbeat at all read as healthy"
+    finally:
+        LISTENER_BEAT = o_beat
+    # The message grew a lot on 2026-08-19. send() rejects unbalanced * or _
+    # and literal %% -- three past failures reached the phone, so assert the
+    # rendered text survives its own validator rather than finding out live.
+    o_raw2 = _call_raw
+    try:
+        globals()["_call_raw"] = lambda m, p, t=30: {"ok": True, "result": {}}
+        assert send(cmd_health(), chat_id="1").get("ok"), \
+            "cmd_health output was rejected by send()"
+    finally:
+        globals()["_call_raw"] = o_raw2
+    print("  /health reads the listener from its own stamp ok (both directions)")
 
     # ------------------------------------------------------------------
     # THE ALLOWLIST IS THE WHOLE SECURITY MODEL, so it is tested by driving
@@ -1018,6 +1153,7 @@ if __name__ == "__main__":
               f"{len(COMMANDS)} commands)", flush=True)
         while True:
             try:
+                _beat()
                 poll_once()
                 # Restart on our own source changing. A poller that keeps
                 # serving stale code answers the wrong thing and looks healthy
