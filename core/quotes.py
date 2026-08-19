@@ -7,14 +7,27 @@ two things that genuinely need the market to be open: filling an order at the
 morning's actual opening price, and showing a running position's profit while
 it is still running.
 
-NO FREE UNAUTHENTICATED SOURCE CURRENTLY WORKS. Measured 2026-08-17:
+`live()` walks CHAIN and returns the first source that answers. Registering a
+provider with set_provider() replaces the chain entirely; nothing needs to be
+registered for the built-ins to be tried.
 
-    www.nseindia.com/api/quote-equity        403  (its report endpoints are 200)
-    query1/query2.finance.yahoo.com          429
+WHICH SOURCE ANSWERS IS NOT KNOWABLE FROM READING THIS FILE. It depends on the
+token, the hour and whoever is rate-limiting today, so the only honest record
+here is dated observations, never a standing claim:
 
-So `live()` returns {} until a provider is registered. Everything downstream
-must treat an empty quote as "unknown", never as zero -- a position whose price
-cannot be fetched is not a position worth nothing.
+    2026-08-17  www.nseindia.com/api/quote-equity   403 (its reports are 200)
+    2026-08-17  query1/query2.finance.yahoo.com     429
+    2026-08-19  all four hosts unreachable from a sandboxed session
+                (URLError: Tunnel connection failed: 403) -- which is the
+                sandbox, not the source, and says nothing about either
+
+Run `python3 core/quotes.py` to see what actually answers now. A previous
+version of this docstring concluded from the two 2026-08-17 measurements that
+`live()` "returns {} until a provider is registered", which was never true of
+the code and sent a reader looking for a provider to register.
+
+Everything downstream must treat an empty quote as "unknown", never as zero --
+a position whose price cannot be fetched is not a position worth nothing.
 """
 
 import sys as _sys, pathlib as _pl
@@ -341,6 +354,23 @@ def _nse(symbols):
     return out
 
 
+# ONE list, because there were two. live() iterated its own tuple and
+# authoritative() looked up its own dict, so a fifth source added to the first
+# and forgotten in the second would answer quotes and then read as
+# non-authoritative -- positions.py declines the fill, logs "no authoritative
+# price", and a working feed looks like a missing one. Order matters: the
+# authoritative sources come first so a fill never lands on the scrape.
+CHAIN = (upstox, yahoo, _nse, google)
+
+
+# NSE's own API, so the fields are NAMED by the exchange (lastPrice, open,
+# intraDayHighLow) rather than inferred from where they sat on a page. That is
+# the whole difference from google, and it is why this one may fill an order.
+# Stated explicitly because it was fillable only by inheriting getattr()'s
+# default -- correct by accident is not the same as correct.
+_nse.authoritative = True
+
+
 def live(symbols):
     """-> {symbol: quote}. Empty when no source is available. Never raises."""
     if not symbols:
@@ -350,7 +380,7 @@ def live(symbols):
             return _PROVIDER(list(symbols)) or {}
         except Exception:
             return {}
-    for fn in (upstox, yahoo, _nse, google):
+    for fn in CHAIN:
         try:
             q = fn(list(symbols))
         except Exception:
@@ -368,8 +398,8 @@ def authoritative():
     Google's field positions are inferred, so it shows a running P&L but must
     never set an entry price.
     """
-    fn = _PROVIDER or {"upstox": upstox, "yahoo": yahoo, "_nse": _nse,
-                       "google": google}.get(getattr(live, "source", None))
+    fn = _PROVIDER or {f.__name__: f for f in CHAIN}.get(
+        getattr(live, "source", None))
     return bool(fn) and getattr(fn, "authoritative", True)
 
 
@@ -469,6 +499,18 @@ def _selftest():
     assert q["A"]["ltp"] == 10.0 and len(q) == 2, q
     assert provider_name() == "<lambda>"
     set_provider(None)
+    # EVERY source in the chain must declare whether it can fill an order, and
+    # authoritative() must recognise every name live() can set. This is the
+    # drift that would make a new working feed decline fills silently.
+    for _fn in CHAIN:
+        assert isinstance(getattr(_fn, "authoritative", None), bool), \
+            f"{_fn.__name__} does not say whether it may fill an order"
+        live.source = _fn.__name__
+        assert authoritative() is _fn.authoritative, \
+            f"authoritative() does not recognise {_fn.__name__}"
+    live.source = None
+    assert CHAIN[0].authoritative and not CHAIN[-1].authoritative, \
+        "the chain must try an authoritative source before a display-only one"
     assert getattr(upstox, "authoritative") is True
     assert getattr(google, "authoritative") is False, "google must never fill"
     print("quotes selftest ok")
