@@ -539,15 +539,17 @@ def shadow_stop(corpus, conn=None, pct=5.0, which=MAIN):
 
 
 def summary(conn=None, which=MAIN):
-    """-> one portfolio's state. `which=None` adds every portfolio together.
+    """-> one bucket's state. `which=None` adds every bucket together.
 
     Defaults to `main` because that is the record: overview.py, STATE.md and
-    the audit all describe one portfolio, and quietly folding the three
-    research portfolios into those numbers would overstate the forward
-    evidence fourfold.
+    the audit all describe the one bucket. There is now only one, so `None` and
+    `main` agree -- it stays because the three retired research buckets (L56)
+    left rows behind, and folding those into the forward evidence would
+    overstate it fourfold.
 
-    The parameter is `which`, not `portfolio`, because this module imports a
-    module of that name and a parameter would shadow it.
+    The parameter is `which` rather than the name of the thing it selects,
+    because a parameter named after a module shadows that module inside the
+    function. It was `portfolio` when the rules module was called that.
     """
     c = conn or db()
     c.row_factory = sqlite3.Row

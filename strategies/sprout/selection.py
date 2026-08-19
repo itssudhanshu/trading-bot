@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Paper portfolio: Rs 3,00,000 across two size clusters.
+"""The sprout bucket: Rs 3,00,000 across two size clusters.
 
 RULES (fixed here, measured not guessed)
   universe   20 per cluster: micro / small, by median turnover. The universe
@@ -34,7 +34,6 @@ position per Rs 10,000 risked -- five concurrent, fully invested.
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401  -- puts the source dirs on sys.path
-import json
 import sys
 from datetime import date
 
@@ -440,7 +439,7 @@ def _selftest():
             pre = allocate(fake)[:room]
             seen = {r["cluster"] for r in pre}
             assert len(seen) == min(room, n_clusters), (room, [r["cluster"] for r in pre])
-    print("portfolio selftest ok")
+    print("selection selftest ok")
 
 
 if __name__ == "__main__":
@@ -452,7 +451,7 @@ if __name__ == "__main__":
         as_of = days[-1]
         rows = build(c, as_of)
         picked = allocate(rows)
-        print(f"PAPER PORTFOLIO  Rs {CAPITAL:,}   selection as of {as_of}")
+        print(f"THE BUCKET  Rs {CAPITAL:,}   selection as of {as_of}")
         print(f"entry: next session open | stop {STOP_PCT}% | target {TARGET_PCT}% "
               f"| exit {HOLD_DAYS}d | no trail\n")
         print(f"  {'sym':<13}{'clu':<7}{'ref':>9}{'entry':>8}{'stop':>9}{'target':>9}"
@@ -465,5 +464,8 @@ if __name__ == "__main__":
         rsk = sum(r["risk"] for r in picked)
         print(f"\n  deployed Rs {inv:,} of {CAPITAL:,} ({inv/CAPITAL*100:.0f}%)"
               f"   total at risk Rs {rsk:,} ({rsk/CAPITAL*100:.1f}%)")
-        json.dump(picked, open("data/paper_portfolio.json", "w"), indent=1, default=str)
-        print(f"  written to data/paper_portfolio.json")
+        # No file is written. This dumped picked to a RELATIVE
+        # data/paper_portfolio.json that nothing ever read -- and a relative
+        # path creates a stray data/ directory when run from anywhere else,
+        # which is the failure paths.py exists to remove. The picks that matter
+        # are queued into positions.db by daily.py.

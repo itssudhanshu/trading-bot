@@ -14,8 +14,9 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from paths import ROOT      # one definition; see paths.py
-D = ROOT / "data"
+from paths import DATA as D, SDATA   # one definition; see paths.py
+# D is SHARED data (holidays, the live order book). SDATA is one strategy's own
+# outputs. The baseline below is the strategy's headline, not the repo's.
 
 
 def _jsonl(p):
@@ -93,7 +94,7 @@ def gates(s):
     # The c=1.0 figure is READ from the recorded baseline, not restated here.
     # This line said +10.85% for months while the file said something else, and
     # a hardcoded copy of a live number is what L59 is about.
-    _bl = json.loads((D / "baseline.json").read_text()) if (D / "baseline.json").exists() else {}
+    _bl = json.loads((SDATA / "baseline.json").read_text()) if (SDATA / "baseline.json").exists() else {}
     g.append(("Market impact modelled", "PASS",
               "sqrt(participation) x volatility on both sides; baseline "
               f"{_bl.get('cagr', float('nan')):+.2f}% at c=1.0 "
@@ -186,7 +187,7 @@ def render(s=None):
 def _selftest():
     s = state()
     assert s["days"] > 0 and s["capital"] > 0
-    assert sum(s["mix"].values()) > 0, "a portfolio must hold stocks"
+    assert sum(s["mix"].values()) > 0, "the bucket must hold stocks"
     g = gates(s)
     assert g and all(len(x) == 3 for x in g), g
     v, why = direction(s)

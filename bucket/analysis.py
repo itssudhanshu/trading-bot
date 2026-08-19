@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
 
 # ------------------------------------------------------------------ findings
-FINDINGS = paths.DATA / "findings.jsonl"
+FINDINGS = paths.SDATA / "findings.jsonl"   # one strategy's findings
 
 
 def record(label, trades, extra=None):
@@ -163,7 +163,7 @@ def load_findings(limit=None):
     return rows[-limit:] if limit else rows
 
 
-OCC_BASELINE = paths.DATA / "occupancy_baseline.json"
+OCC_BASELINE = paths.SDATA / "occupancy_baseline.json"
 
 
 def save_occupancy(dist, mean, config):

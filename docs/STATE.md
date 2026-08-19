@@ -3,7 +3,8 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-16 — approach finalised, repo reduced to the single track.
+Last updated: 2026-08-19 — every knob re-measured against the circuit-lock
+guard (L58/L59), and the strategy moved into `strategies/sprout/`.
 
 ---
 
@@ -14,15 +15,15 @@ Last updated: 2026-08-16 — approach finalised, repo reduced to the single trac
          (clusters.TRADEABLE_PCT), split that into micro and small
       -> rank WITHIN each cluster, take the top 20 of each
       -> bucket = 3 micro + 2 small = 5 stocks
-      -> rank within cluster, keep the top 20 of each
-      -> bucket = 3 micro + 2 small = 5 stocks
       -> entry: breakout trigger, filled at the NEXT session open
       -> exit: -10% stop / +20% target / 10 trading days
       -> analyse per stock and per bucket -> record findings -> Telegram
 
 **Vocabulary.** A *cluster* is a size band (micro, small). A *bucket* is the
-5-stock portfolio. Never swap these — the confusion already caused one wrong
-build. Do not say "slot"; say stock or position.
+five stocks held and their combined P&L. Never swap these — the confusion
+already caused one wrong build. Do not say "slot"; say stock or position. Never
+"portfolio", "book" or "holdings" (rules.md R1). Plain-English definitions of
+every term in this file are in `glossary.md`.
 
 ## Money
 
@@ -53,7 +54,10 @@ approach works forward.
 
 Per trade: +2.15% +/- 1.08 (std err 1.08, t 1.99, n=195).
 
-This replaced **+14.18% / 25.8% / 231** on the same corpus. The difference is
+This replaced **+14.14% / 25.8% / 232** on the same corpus -- the figure the
+audit itself printed when the guard broke the recorded baseline. (+14.18% /
+n=143 appears in L51/L52 and is a DIFFERENT measurement, taken at the capital
+and cost settings of the time; it is not this baseline's predecessor.) The difference is
 not a rule change: it is 8.7% of fills that were taken on circuit-locked bars
 where no seller existed at any price. Drawdown got WORSE while return halved,
 which is how you can tell the removed fills were disproportionately winners.
@@ -73,6 +77,34 @@ Occupancy: the book holds 2.83 stocks on average. Distribution:
   5 stocks:  12.8% of sessions
 
 A book holding 1 stock is normal, not broken.
+
+## Where the code lives (2026-08-19)
+
+The strategy is named **sprout**. Its RULES are the four files in
+`strategies/sprout/` -- `clusters.py` (size bands and the score),
+`selection.py` (the bucket and the exit rules), `entry.py` (the breakout
+trigger), `learning.py` (the weights). Its OUTPUTS are `data/sprout/` --
+`weights.json`, `baseline.json`, `trade_features.jsonl`, `strategies.jsonl`,
+`simulations.jsonl`, `findings.jsonl`, `occupancy_baseline.json`.
+
+Everything else is shared and strategy-agnostic: price data (`core/features`),
+the fill-and-cost engine (`core/engine`), the backtest harness
+(`research/simulate`), the order book (`positions.db`), the Telegram bot, the
+audit.
+
+`paths.py` picks the active strategy and puts ONLY its directory on `sys.path`:
+
+    STRATEGY=other python3 ops/audit.py
+
+Two strategies both define `selection`; if both were importable, `import
+selection` would resolve to whichever came first and every number after that
+would describe a bucket nobody chose. `paths._selftest()` asserts that no
+inactive strategy is reachable. No import statement anywhere changed when the
+files moved -- that is what `paths.py` was built for.
+
+**The order book is deliberately NOT strategy-scoped.** `positions.db` is real
+money and one bucket. If a second strategy ever trades forward, that is a
+decision to take deliberately, with the `origin` column, not by a folder move.
 
 ## The live bucket — one, `main`
 
@@ -181,18 +213,25 @@ The bucket now holds 4 of 5: HAPPYFORGE, GMMPFAUDLR (small), SAHYADRI, YUKEN
 
 Do not re-add these without evidence that addresses the stated reason.
 
-**Every CAGR in this table is a pre-guard level** (L58: 8.7% of fills were on
-circuit-locked bars). The baseline they were each compared against was +14.14%,
-not the +7.59% above. They are kept as RANKINGS and reasons -- which is what a
-rejection is -- and re-running one to quote its number is required before that
-number is used for anything. The four knobs that were re-run post-guard are in
-L59; all four kept their ordering.
+**Every CAGR in this table is a pre-guard level and none of them may be
+quoted.** (L58: 8.7% of fills were on circuit-locked bars.) Each was compared
+against a baseline of +14.14%, not the +7.59% above -- so a row reading "+8.99%"
+meant *5 points worse than live* when it was written, and read against today's
+live number it would say the opposite. Subtracting the difference does not fix
+that: the guard did not remove a constant, it removed the big up-day fills, and
+it removed a different share of them from every variant.
+
+What survives is the **ranking and the reason**, which is what a rejection
+actually is. Re-run a row before using its number for anything. The four knobs
+that WERE re-run post-guard are in L59, and all four kept their ordering --
+which is the evidence that the rankings here are probably still good, and no
+evidence at all about the levels.
 
 | idea | result | why rejected |
 |---|---|---|
 | correlation cap on holdings | +8.99% at 0.7, +7.87% at 0.3 | monotonically worse, and drawdown rose too |
 | position floor (min 2/3/4) | +11.45 / +12.86 / +10.71% | all worse than no floor; non-monotonic = noise |
-| no trigger, always hold 5 | +8.88%, DD 31.4% | 2 pts less return, 7 more drawdown |
+| no trigger, always hold 5 | **-2.20% post-guard** (was +8.88%, DD 31.4%) | the one row here that HAS been re-run (L59): it now loses money outright, against +7.59% live, and loses on worst block too. Pre-guard it trailed by 2 points; the gap is 9.8 |
 | scan every 1-3 sessions | -1.21% to +11.12% | drawdown tripled at daily scanning |
 | unequal sizing (invvol / conviction) | 0.435 / 0.431 CAGR-DD | equal weight wins risk-adjusted |
 | constant total exposure | impossible | needs Rs 225k in one name; risk rule caps at Rs 60k |

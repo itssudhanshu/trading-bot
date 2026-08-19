@@ -54,6 +54,37 @@ caused several wrong answers already.
 
 Then verify the command actually works before reporting it as fixed.
 
+## Always be improving the strategy — but improving means new evidence
+
+Standing instruction from the operator: keep trying to make the strategy
+better. What that must NOT collapse into is re-running the knobs, because that
+has now been measured and the answer is in: every one of hold length, the 3/2
+mix, the score weights and the trigger scores |t| < 1.3, and two of five weight
+variants "beat" the live one at t < 0.5. Another pass over the same dials
+produces a different winner each time and no knowledge. That is not improvement,
+it is a random number generator with a changelog.
+
+So an improvement has to be one of these:
+
+1. **A new input.** Something the score cannot currently see. Fundamentals were
+   the last one tried and came back flat on 1,049 trades -- which is a real
+   result, and it cost nothing to keep the data.
+2. **A new rule shape**, not a new value for an existing rule. "Exit on a
+   volatility change" is a hypothesis; "exit after 11 days instead of 10" is a
+   dial.
+3. **Forward paper trades.** The count is zero. Every backtest above is one
+   path through history, and 200 trades cannot separate rules whose per-trade
+   returns differ by less than about 3%. This is the only thing that makes the
+   error bars shrink, and it is the improvement with the best expected value by
+   a wide margin.
+4. **Removing something that was never evidence.** The circuit-lock guard is
+   the model: it made every number worse and the project better.
+
+State the hypothesis and the endpoint BEFORE running it (`research/` files do
+this in their docstrings), report the error bar with the result, and adopt
+nothing that does not clear it. A candidate that wins by less than its standard
+error is a finding about this price history, not about the market.
+
 ## Discipline that must not be relaxed
 
 - **Criteria may be tightened, never loosened.** Tightening a test that let
@@ -273,5 +304,32 @@ in anything a person reads. Its first rule is that a term already in use is not
 re-invented, and its second is that a non-trader must be able to read any
 output without a glossary.
 
+## One strategy per directory
+
+The live strategy is named **sprout** and its rules live in
+`strategies/sprout/` (`clusters.py`, `selection.py`, `entry.py`,
+`learning.py`), its outputs in `data/sprout/` (weights, baseline, trade ledger,
+stored results). Everything else -- price data, the fill-and-cost engine, the
+backtest harness, the order book, the bot, the audit -- is shared and knows
+nothing about any particular strategy.
+
+`paths.py` picks the active one, and puts **only** that directory on
+`sys.path`:
+
+    STRATEGY=other python3 ops/audit.py
+
+That is the isolation, and it is deliberately the whole of it. A second
+strategy also defines `selection`; if both were importable, `import selection`
+would resolve to whichever came first and every result after it would describe
+a bucket nobody chose. One active at a time, named out loud. `paths._selftest()`
+asserts no inactive strategy is reachable.
+
+**A second strategy must never write into the first one's `data/<name>/`.**
+`strategies.jsonl` and `trade_features.jsonl` are append-only; a mixed ledger
+cannot be un-mixed, and the recorded baseline is what the audit compares
+against.
+
+See `docs/glossary.md` for what every term here means in plain English, and
+`docs/performance-change.md` for what the circuit-lock guard did to the numbers.
 See `docs/STATE.md` for current status and `docs/lessons.md` for the evidence behind each
 rule above. Retired work (the spec-search track) is archived in `data/retired/`.

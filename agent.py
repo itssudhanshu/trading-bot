@@ -243,27 +243,28 @@ def attention():
     except Exception:
         pass
 
-    # The four portfolios read one ranked list, and the deepest reaches micro
-    # rank 12. If fewer than that survive the 200-day-average gate, the
-    # surveillance flags and the sizing cap, the deepest portfolio has nothing
-    # to buy and quietly stops contributing trades -- which looks identical to
-    # "nothing triggered today". Measured across 94 sessions since 2020 the
-    # count has never fallen below 13 against a need of 12, so this should stay
-    # silent; if it starts firing, that margin is gone.
+    # Can the bucket still fill its mix? If fewer names survive the
+    # 200-day-average gate, the surveillance flags and the sizing cap than the
+    # mix needs, the bucket quietly under-fills -- and that looks identical to
+    # "nothing triggered today", which is normal. The threshold is read from
+    # TAKE_PER_CLUSTER, so it follows the mix instead of restating it.
+    #
+    # This used to need micro rank 12, because the retired deeper buckets read
+    # the same list four levels down (L56). One bucket needs 3 micro / 2 small,
+    # so the margin is now large and this should stay silent. If it ever fires,
+    # the gate has emptied a whole cluster.
     try:
         import clusters as _c
         import features as _f
-        import positions as _pb
         import selection as _p
         _corpus = _f.load_corpus()
         _day = max(d for s in _corpus.values() for d in s.days)
         _rows = _p.build(_corpus, _day)
-        for _cl, _k in _p.TAKE_PER_CLUSTER.items():
+        for _cl, _need in _p.TAKE_PER_CLUSTER.items():
             _have = len([r for r in _rows if r["cluster"] == _cl])
-            _need = _k
             if _have < _need:
-                out.append(f"only {_have} {_cl} candidates for {_need} portfolio "
-                           f"places -- the deepest portfolios will find nothing "
+                out.append(f"only {_have} {_cl} stocks passed the filters, but the "
+                           f"bucket needs {_need} -- it will hold fewer than 5 "
                            f"(raise clusters.PER_CLUSTER, currently "
                            f"{_c.PER_CLUSTER})")
     except Exception:

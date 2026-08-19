@@ -29,9 +29,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from paths import ROOT      # one definition; see paths.py
-LEDGER = ROOT / "data" / "trade_features.jsonl"
-WEIGHTS = ROOT / "data" / "selection_weights.json"
+# Strategy-scoped: these are one strategy's weights and one strategy's trade
+# ledger. paths.SDATA moves with STRATEGY, so a second strategy cannot learn
+# from the first one's trades or overwrite its weights.
+LEDGER = paths.SDATA / "trade_features.jsonl"
+WEIGHTS = paths.SDATA / "weights.json"
 
 def entry_features(s, i):
     """Snapshot of what was true at ENTRY. Stored with the position, never

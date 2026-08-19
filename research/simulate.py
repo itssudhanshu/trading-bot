@@ -272,7 +272,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
             "maxdd": maxdd * 100, "trades": closed}
 
 
-RESULTS = paths.DATA / "simulations.jsonl"
+RESULTS = paths.SDATA / "simulations.jsonl"
 
 
 def store(name, r, batch=None, track="cluster"):
@@ -341,7 +341,7 @@ def report(name, r):
     store(name, r, batch=BATCH)
 
 
-WF_RESULTS = paths.DATA / "walkforward.jsonl"
+WF_RESULTS = paths.SDATA / "walkforward.jsonl"
 
 
 def store_wf(res):
@@ -512,7 +512,7 @@ def _selftest():
     # A partial is a real order: it must pay its own way, not ride for free.
     assert all(t["cost_pct"] > 0 for t in parts), "partial sell paid no costs"
     print("simulate selftest ok (scale-out verified; rest shared with "
-          "portfolio/clusters)")
+          "selection/clusters)")
 
 
 if __name__ == "__main__":
@@ -543,7 +543,7 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------- keep/promote
-STRATS = paths.DATA / "strategies.jsonl"
+STRATS = paths.SDATA / "strategies.jsonl"
 
 # A configuration is worth paper-trading only if it survives all four. Positive
 # CAGR alone is what a search returns by construction -- out of N variants the

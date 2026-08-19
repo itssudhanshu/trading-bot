@@ -30,6 +30,9 @@ data/audit.log
 data/DIGEST.md
 data/agent_state.json
 data/agent_heartbeat.json
+# Same thing for the listener. Rewritten every ~60s, so tracking it puts a
+# one-line diff in every unrelated commit. /health reads the file on disk.
+data/listener_heartbeat.json
 data/agent.lock
 data/tg_offset.json
 

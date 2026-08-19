@@ -288,7 +288,7 @@ def _px_now(corpus, sym, day):
 
 # ============================================================ MONEY
 def cmd_wallet(_=None):
-    """Cash, holdings, profit."""
+    """Cash, stocks held, profit."""
     import analysis, features, positions, selection
     s = positions.summary()
     corpus = features.load_corpus()
@@ -332,7 +332,7 @@ def cmd_wallet(_=None):
 
 # ============================================================ THE PIPELINE
 def cmd_clusters(_=None):
-    """The ranking, deep enough to show which portfolio buys which stock."""
+    """The ranking, deep enough to show which stocks the bucket buys."""
     import clusters, features, positions, selection
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
@@ -372,7 +372,7 @@ def cmd_clusters(_=None):
 
 
 def cmd_bucket(_=None):
-    """The stocks one portfolio chose this session, and why."""
+    """The stocks the bucket chose this session, and why."""
     import clusters, features, selection, positions
     corpus = features.load_corpus()
     days = sorted({d for s in corpus.values() for d in s.days})
@@ -835,7 +835,7 @@ def notify(title, lines):
 def cmd_help(_=None):
     return ("*COMMANDS*\n\n"
             "*Money*\n"
-            "/wallet — cash, holdings, profit\n\n"
+            "/wallet — cash, stocks held, profit\n\n"
             "*The pipeline*, in order\n"
             "/clusters — the ranking, and who buys what\n"
             "/bucket — the stocks chosen this session, and why\n"
@@ -844,7 +844,7 @@ def cmd_help(_=None):
             "/closed\\_orders — finished trades and their profit or loss\n\n"
             "*Evidence*\n"
             "/findings — what has been recorded\n"
-            "/review — the daily read: portfolio, evidence, suggestions\n"
+            "/review — the daily read: the bucket, evidence, suggestions\n"
 
             "*System*\n"
             "/health — is everything running\n\n"

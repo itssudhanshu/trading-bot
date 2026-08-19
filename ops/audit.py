@@ -193,6 +193,26 @@ def main():
         filled, _ = positions.step(corpus, as_of, conn)
         check("an order cannot fill on its own signal day", not filled,
               f"queued and stepped on {as_of}; filled {len(filled)}")
+
+        # A HELD name must not consume the room meant for a new pick. daily.py
+        # used to slice allocate()[:room], so a candidate already in the bucket
+        # spent the only free position and was then skipped as a duplicate --
+        # queueing nothing, every session, while the cash sat idle. simulate.py
+        # has always `continue`d past a held name without spending room, so the
+        # forward book was running a rule the backtest never ran.
+        # sym is already pending from the queue() above. Room for one: the
+        # SECOND row must be the one that takes it.
+        other = next((x["symbol"] for x in rows if x["symbol"] != sym), "ZZZTEST")
+        n = positions.queue([{"symbol": sym, "cluster": "small", "qty": 10,
+                              "stop": 1.0, "target": 999.0},
+                             {"symbol": other, "cluster": "micro", "qty": 10,
+                              "stop": 1.0, "target": 999.0}],
+                            as_of, conn, limit=1)
+        queued = {r[0] for r in conn.execute(
+            "SELECT symbol FROM pos WHERE status='pending'")}
+        check("a held name does not consume the room for a new pick",
+              n == 1 and other in queued,
+              f"{sym} held, room 1 -> queued {n} ({other} in: {other in queued})")
     finally:
         positions.DB, learning.LEDGER = orig_db, orig_led
         shutil.rmtree(tmp, ignore_errors=True)
@@ -313,7 +333,7 @@ def main():
     # the baseline. Same corpus and a different number is a break; a bigger
     # corpus and a small change is just Monday happening.
     import json as _j
-    bf = features.ROOT / "data" / "baseline.json"
+    bf = paths.SDATA / "baseline.json"   # this strategy's headline, not the repo's
     now_b = {"sessions": len(days), "cagr": round(r["cagr"], 2),
              "n": len(t), "maxdd": round(r["maxdd"], 1),
              "config": f"{selection.STOP_PCT:g}/{selection.TARGET_PCT:g}/"

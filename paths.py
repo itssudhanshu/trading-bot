@@ -12,8 +12,9 @@ Also puts the source directories on sys.path, so `import features` keeps
 working from anywhere. That preserves the project's convention that any module
 can be run directly for its selftest:
 
-    python3 core/clusters.py --selftest
+    python3 strategies/sprout/clusters.py --selftest
 """
+import os
 import sys
 from pathlib import Path
 
@@ -21,9 +22,32 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 RAW = DATA / "raw"
 
-# Source directories, in import-resolution order. Root last so a stray name
-# there cannot shadow a real module.
-SRC = ("core", "bucket", "research", "ops")
+# --- which strategy is live ------------------------------------------------
+# A strategy is a directory under strategies/ holding the RULES: what to rank,
+# what to buy, when to sell. Everything else -- price data, the fill and cost
+# engine, the backtest harness, the order book, the bot -- is shared and knows
+# nothing about any particular strategy.
+#
+# Only the ACTIVE strategy goes on sys.path. That is the isolation: a second
+# strategy also defines `selection`, and if both were importable, `import
+# selection` would resolve to whichever directory came first and every result
+# after that would describe a book nobody chose. One active at a time, named
+# out loud, and the wrong one cannot be reached by accident.
+#
+#     STRATEGY=other python3 ops/audit.py
+STRATEGY = os.environ.get("STRATEGY", "sprout")
+STRATEGIES = ROOT / "strategies"
+SDIR = STRATEGIES / STRATEGY
+
+# Strategy-scoped data: weights, the recorded baseline, the trade ledger, the
+# stored results. These are OUTPUTS of one strategy and a second one must not
+# append to them -- a mixed strategies.jsonl cannot be un-mixed afterwards.
+SDATA = DATA / STRATEGY
+
+# Source directories, in import-resolution order. The strategy comes FIRST so
+# its rules win over anything shared, and root is last so a stray name there
+# cannot shadow a real module.
+SRC = (f"strategies/{STRATEGY}", "core", "bucket", "research", "ops")
 
 for _d in SRC:
     _p = str(ROOT / _d)
@@ -40,7 +64,18 @@ def _selftest():
     # every source dir must be importable, or a moved module cannot be found
     for d in SRC:
         assert str(ROOT / d) in sys.path, d
-    print("paths selftest ok")
+    # The active strategy must exist and must be the ONLY one importable. A
+    # typo in STRATEGY would otherwise fall through to whatever is on sys.path
+    # next and run the shared modules against no rules at all.
+    assert SDIR.is_dir(), f"no such strategy: {SDIR}"
+    assert (SDIR / "selection.py").exists(), f"{STRATEGY} defines no selection.py"
+    others = [p for p in STRATEGIES.iterdir()
+              if p.is_dir() and p.name != STRATEGY and not p.name.startswith(("_", "."))]
+    for p in others:
+        assert str(p) not in sys.path, f"{p.name} is importable while {STRATEGY} is live"
+    assert SDATA.parent == DATA, SDATA
+    assert SDATA.name == STRATEGY, "strategy data is not scoped to the strategy"
+    print(f"paths selftest ok (strategy: {STRATEGY}, {len(others)} inactive)")
 
 
 if __name__ == "__main__":
