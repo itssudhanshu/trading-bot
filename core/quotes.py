@@ -151,6 +151,7 @@ def upstox(symbols):
     flow to mint a fresh one. Until then this returns {} after expiry and the
     fill falls through to Yahoo, which is why the chain is ordered that way.
     """
+    upstox.last_error = None
     tok = env_value("UPSTOX_ACCESS_TOKEN")
     if not tok:
         upstox.last_error = "no UPSTOX_ACCESS_TOKEN in .env"
@@ -167,6 +168,8 @@ def upstox(symbols):
     keymap = instrument_keys(symbols)
     keys = ",".join(keymap[s] for s in symbols if s in keymap)
     if not keys:
+        upstox.last_error = (f"no instrument key for {','.join(symbols)} "
+                             f"(new listing? try instrument_keys(refresh=True))")
         return {}
     # A User-Agent is REQUIRED. Without one urllib sends "Python-urllib/3.x"
     # and Cloudflare answers 403 error 1010 "browser_signature_banned" before
@@ -179,7 +182,15 @@ def upstox(symbols):
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             data = json.loads(r.read()).get("data", {})
-    except Exception:
+    except Exception as e:
+        # RECORD why, same as yahoo(). A bare `except: return {}` made a
+        # blocked egress, a 401 and a 429 all read as "no data" -- and since
+        # why_no_quote() then had nothing from upstox, the morning log blamed
+        # whatever yahoo said, i.e. the token. That is the L57 trap again: four
+        # distinct Upstox failures that all presented identically.
+        code = getattr(e, "code", None)
+        upstox.last_error = (f"HTTP {code}" if code
+                             else f"{type(e).__name__}: {getattr(e, 'reason', e)}")
         return {}
     # Responses come back keyed by "NSE_EQ:SYMBOL", so map back by ISIN too.
     back = {v: k for k, v in keymap.items()}
@@ -424,6 +435,24 @@ def _upstox_selftest():
     assert token_hours_left(_jwt(-3600)) < 0, "an expired token must read negative"
     assert token_hours_left("not-a-jwt") is None
     assert token_hours_left("") is None
+    # A silent {} is the bug L57 kept re-learning: every upstox() failure must
+    # leave a REASON behind, or the morning log blames the token by default.
+    import urllib.request as _u
+    _real = _u.urlopen
+    try:
+        upstox.last_error = None
+        _u.urlopen = lambda *a, **k: (_ for _ in ()).throw(OSError("egress blocked"))
+        assert upstox(["HAPPYFORGE"]) == {}, "a failed fetch must yield {}"
+        assert upstox.last_error and "OSError" in upstox.last_error, (
+            f"a network failure recorded no reason: {upstox.last_error!r}")
+        assert "egress blocked" in upstox.last_error, upstox.last_error
+    finally:
+        _u.urlopen = _real
+    # and the reason must not outlive the call that caused it
+    assert token_hours_left(_jwt(-3600)) < 0
+    upstox(["HAPPYFORGE"])
+    assert "OSError" not in (upstox.last_error or ""), \
+        "a stale error survived into the next call"
     print(f"  upstox instrument keys ok ({len(m)} cached)")
 
 
