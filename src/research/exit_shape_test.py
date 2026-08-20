@@ -203,5 +203,65 @@ def main():
     return 0
 
 
+def _selftest():
+    """The arithmetic every verdict rests on, checked without a backtest.
+
+    This module could have been excluded from the sweep by name, the way
+    impact_test and trigger_test are -- it runs three full backtests and has no
+    business doing that in a selftest. But the exclusion list is for modules
+    with nothing to assert offline, and this one has the most load-bearing
+    arithmetic in the project: if _diff computes t wrongly, every verdict it
+    prints is wrong in a way that looks completely normal.
+    """
+    # --- _stats ------------------------------------------------------------
+    s = _stats([{"ret": 1.0}, {"ret": 3.0}])
+    assert s["n"] == 2 and abs(s["mean"] - 2.0) < 1e-9, s
+    assert _stats([{"ret": 1.0}])["n"] == 1, "a single trade must not claim an sd"
+    assert _stats([])["n"] == 0
+
+    # --- _diff: two independent samples, hand-computable --------------------
+    # a: n=100 mean 0 sd 10 -> se^2 = 1;  b: n=100 mean 2 sd 10 -> se^2 = 1
+    # edge = 2, se = sqrt(2) = 1.4142, t = 1.4142
+    import math
+    a = {"n": 100, "mean": 0.0, "sd": 10.0}
+    b = {"n": 100, "mean": 2.0, "sd": 10.0}
+    edge, se, t = _diff(a, b)
+    assert abs(edge - 2.0) < 1e-9, edge
+    assert abs(se - math.sqrt(2)) < 1e-9, se
+    assert abs(t - math.sqrt(2)) < 1e-9, t
+
+    # Direction: _diff(a, b) is b MINUS a. Getting this backwards would flip
+    # every verdict's sign while leaving |t| identical, so it is asserted
+    # rather than assumed.
+    edge_r, _, t_r = _diff(b, a)
+    assert edge_r < 0 < edge and t_r < 0 < t, (edge, edge_r)
+
+    # A bigger sample must NARROW the error bar, not widen it.
+    _, se_small, _ = _diff({"n": 25, "mean": 0.0, "sd": 10.0}, b)
+    assert se_small > se, (se_small, se)
+
+    # Too few trades must return NaN, never a confident zero.
+    e2, s2, t2 = _diff({"n": 1, "mean": 0.0, "sd": 0.0}, b)
+    assert e2 != e2 and t2 != t2, "a one-trade arm produced a real t"
+
+    # --- the bar ------------------------------------------------------------
+    assert BAR >= 2.0, "the bar may be tightened, never relaxed below |t| > 2"
+    assert _verdict(BAR) == "RESOLVED"
+    assert _verdict(-BAR) == "RESOLVED", "the bar is two-sided"
+    assert _verdict(BAR - 0.01) == "inside the noise"
+    assert _verdict(0.22) == "inside the noise", "the measured H4 t must not pass"
+    assert _verdict(float("nan")) == "not enough trades"
+
+    # --- the control arms are named, and the long-flat one is not optional --
+    # Dropping it is what would turn H4 back into a false finding.
+    assert "STRUCT_MAX_HOLD" in open(__file__).read(), \
+        "the long-flat control arm is gone; a structural win could then be " \
+        "nothing more than holding longer"
+    print("exit_shape_test selftest ok (H4 verdict: inside the noise, t=0.22)")
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    if "--selftest" in sys.argv:
+        _selftest()
+    else:
+        sys.exit(main())
