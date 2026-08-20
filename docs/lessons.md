@@ -1808,10 +1808,10 @@ was tested: the levels moved a long way, the rankings barely moved, and the only
 claim that gained strength was the one about rank depth — which is the claim that
 says the edge is in *selection* rather than in any of these knobs.
 
-## L60 — The same value, copied and never re-checked: five instances in one day
+## L60 — The same value, copied and never re-checked: six instances
 
 Not a strategy finding. A defect *class*, written down because it has now
-produced five separate outages in this project and every one of them looked
+produced six separate outages in this project and every one of them looked
 healthy from the outside.
 
 The shape is always identical: **a value that was correct when it was written,
@@ -1826,10 +1826,16 @@ stops matching reality, and nothing asks it to prove otherwise.
 | 23 module bootstraps | `parents[1]` while `paths.py` sat at the root | **every selftest passed**, because the operator's shell exported `PYTHONPATH=.` |
 | `tg.py --listen` watch set | `Path(__file__).parent` after `tg.py` moved into `src/ops/` | watched 10 files of 31; edits to `selection.py` served stale logic |
 | both installed plists | absolute paths to the deleted root `tg.py` / `agent.py` | listener dead, scheduler never registered |
+| `scripts/*.sh` | `cd "$(dirname "$0")"` lands in `scripts/`, where the source no longer is | `setup.sh` looped over an EMPTY `*.py` glob and printed no failures |
 
 **What does NOT catch it:** a status message. The third row is the important
 one — a check that passes because of the shell that invoked it is not a check,
-and it hid a broken bootstrap in all 23 places at once.
+and it hid a broken bootstrap in all 23 places at once. The sixth row is the
+same shape one turn worse: `setup.sh`'s selftest loop did not report a failure
+because it ran no tests at all. **A loop over an empty glob is indistinguishable
+from a loop in which everything passed**, and this is the fresh-machine
+bootstrap — the first person to trust it is the person with nothing else to
+compare against.
 
 **What does catch it:** a check that resolves the reference and asserts the
 target exists. `paths._selftest` now asserts `parents[1]` lands on `src/`;
@@ -1838,6 +1844,23 @@ six critical modules are in the watch set; `audit.py` now parses both installed
 plists with `plutil` — launchd's own parser, because Python's expat rejects the
 `--` inside their XML comments and launchd does not care — and asserts every
 repo path they name still exists.
+
+`audit.py` also resolves every path inside `scripts/*.sh` **from the directory
+that script cd's to**, which is the only way the sixth row is visible: the paths
+were correct, and correct relative to a root the script never stood in. It found
+three stale paths in `setup.sh` on the run that introduced it.
+
+**A seventh was found by inspection rather than by an outage, and is listed
+apart from the six for that reason.** `instrument_keys()` refetched the Upstox
+master only when a requested symbol was MISSING, so a symbol that keeps its name
+over a new ISIN — amalgamation, re-listing — kept its old key forever. A stale
+key resolves to nothing, and an empty quote presents as "no token", which is the
+error this project has already chased twice. It is bounded at
+`MAX_AGE_DAYS = 30` now, and a refetch that fails keeps the cached keys rather
+than dropping to nothing. **No instance of this was ever observed.** It is
+written down because the shape is the class — not because it cost anything, and
+the difference between a measured outage and a shape spotted while reading is
+exactly the distinction this file exists to hold.
 
 **A second, smaller lesson inside the same fix.** `/health` ticked
 "✅ Scheduler agent — last ran 4 min ago" four lines above its own

@@ -70,6 +70,7 @@ def provider_name():
 #           DISPLAY ONLY -- never fills an order.
 
 INSTRUMENTS = paths.DATA / "upstox_instruments.json"
+MAX_AGE_DAYS = 30       # a cached instrument key is a claim about a listing
 
 
 def token_hours_left(tok):
@@ -128,17 +129,28 @@ def instrument_keys(symbols=None, refresh=False):
 
     Cached on disk because the master is 82k rows and changes only when
     listings do. Refetched when a symbol is missing, which is what a new
-    listing looks like.
+    listing looks like -- and when the cache is older than MAX_AGE_DAYS, which
+    is what a symbol KEEPING its name over a new ISIN looks like. Only the
+    first was a trigger, so an amalgamation or re-listing left the old key
+    cached forever, and a stale key resolves to nothing: an empty quote, which
+    presents as "no token". Same defect class as L60 -- a value correct when
+    written and never re-checked against what it refers to.
+
+    A refetch that fails leaves the cached map in place, so an offline morning
+    degrades to the old keys rather than to nothing.
     """
     import gzip
     import json as _j
+    import time as _t
     m = {}
     if INSTRUMENTS.exists() and not refresh:
         try:
             m = _j.loads(INSTRUMENTS.read_text())
         except Exception:
             m = {}
-    if m and symbols and not set(symbols) - set(m):
+    fresh = (INSTRUMENTS.exists()
+             and _t.time() - INSTRUMENTS.stat().st_mtime < MAX_AGE_DAYS * 86400)
+    if m and fresh and symbols and not set(symbols) - set(m):
         return m
     try:
         req = urllib.request.Request(
@@ -498,7 +510,38 @@ def _upstox_selftest():
     upstox(["HAPPYFORGE"])
     assert "OSError" not in (upstox.last_error or ""), \
         "a stale error survived into the next call"
-    print(f"  upstox instrument keys ok ({len(m)} cached)")
+    # An aged-out cache must be REFETCHED even when every symbol is present,
+    # and a refetch that fails must keep the old keys rather than return {}.
+    # Without the age bound a changed ISIN stayed cached forever and the quote
+    # came back empty, which reads as "no token".
+    import os as _os, time as _t2
+    st = INSTRUMENTS.stat()
+    tried = []
+    _u2 = _u.urlopen
+
+    def _boom(*a, **k):
+        tried.append(1)
+        raise OSError("egress blocked")
+    try:
+        _os.utime(INSTRUMENTS, (st.st_atime, _t2.time() - (MAX_AGE_DAYS + 1) * 86400))
+        _u.urlopen = _boom
+        aged = instrument_keys(["HAPPYFORGE"])
+        assert tried, ("a cache older than MAX_AGE_DAYS was served without a "
+                       "refetch; a changed ISIN would never be picked up")
+        assert aged.get("HAPPYFORGE") == k, \
+            "a failed refetch must keep the cached keys, not drop them"
+    finally:
+        _u.urlopen = _u2
+        _os.utime(INSTRUMENTS, (st.st_atime, st.st_mtime))
+    # and a fresh cache must NOT refetch -- 82k rows on every quote is not free
+    tried.clear()
+    try:
+        _u.urlopen = _boom
+        assert instrument_keys(["HAPPYFORGE"]).get("HAPPYFORGE") == k
+        assert not tried, "a fresh cache refetched anyway"
+    finally:
+        _u.urlopen = _u2
+    print(f"  upstox instrument keys ok ({len(m)} cached, age-bounded)")
 
 
 def _selftest():

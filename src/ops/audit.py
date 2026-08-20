@@ -364,6 +364,48 @@ def main():
         check("every installed launchd job points at a file that exists",
               not stale, f"{len(plists)} installed" if not stale else " | ".join(stale))
 
+    # The shell scripts, which are the same defect as the plists above and were
+    # the one place nothing looked. Every path inside a script is relative to
+    # wherever it cd's to, and `cd "$(dirname "$0")"` lands in scripts/ -- so
+    # `python3 src/ops/tg.py` resolved from the repo root before the src/ move
+    # and has resolved to nothing since. Neither script complained: run_listener
+    # is the by-hand fallback launchd makes unnecessary, and setup.sh's
+    # `for f in *.py` iterated an EMPTY glob and printed no failures at all.
+    # A loop over nothing is not a passing test, and that is the whole reason
+    # this check resolves the path rather than trusting the script to say so.
+    # EVERY local here is _sh_-prefixed, and that is not style. main() is one
+    # long function: `t` is the trade list from the simulation 150 lines up and
+    # `len(t)` is the headline trade count 100 lines down, so a plain `for t in`
+    # here reported n=22 -- the length of the string "tests/run_selftests.py" --
+    # against a baseline of 195, with the CAGR still matching to the penny. The
+    # plist check above carries the same warning about `r`. The baseline check
+    # caught it; nothing else would have.
+    import re as _re
+    stale_sh, n_sh = [], 0
+    for _sh_p in sorted((paths.ROOT / "scripts").rglob("*.sh")):
+        _sh_text = _sh_p.read_text()
+        _sh_cd = _re.search(r'^\s*cd\s+"\$\(dirname\s+"\$0"\)([^"]*)"', _sh_text, _re.M)
+        _sh_cwd = ((_sh_p.parent / _sh_cd.group(1).lstrip("/")).resolve() if _sh_cd
+                   else _sh_p.parent)
+        # Two shapes, and both are needed. A bare `$PY backfill.py` carries no
+        # slash to recognise it by, and a bare `tg.py` inside a COMMENT would be
+        # a false alarm if every bare name were checked -- so: things a shell
+        # actually runs, plus things written as paths.
+        _sh_toks = set(_re.findall(
+            r"(?:\$PY|python3?)\s+(?:-\S+\s+)*([\w./-]+\.py)", _sh_text))
+        _sh_toks |= set(_re.findall(r"[\w.-]*/[\w./-]+\.(?:py|sh)\b", _sh_text))
+        for _sh_t in sorted(_sh_toks):
+            if "*" in _sh_t:
+                continue
+            n_sh += 1
+            if not (_sh_cwd / _sh_t).exists():
+                stale_sh.append(
+                    f"{_sh_p.name}: {_sh_t} (cd lands in {_sh_cwd.name}/)")
+    check("every script a shell script runs exists where it cd's to",
+          not stale_sh,
+          f"{n_sh} paths in {len(list((paths.ROOT / 'scripts').rglob('*.sh')))} scripts"
+          if not stale_sh else " | ".join(stale_sh))
+
     # -------------------------------------------------------------- BUCKET
     section("THE BUCKET")
     import positions
