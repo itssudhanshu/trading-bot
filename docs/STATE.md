@@ -470,16 +470,20 @@ Whether to progress to real money is the user's decision, not a technical one.
 ## Daily operation
 
 launchd runs `src/ops/agent.py --once` hourly. On a weekday after 18:00 it does
-`snapshot -> catchup -> pbook`. The Telegram listener runs via
-`scripts/run_listener.sh` and must be restarted after ANY code change.
+`snapshot -> catchup -> pbook`. The Telegram listener runs under launchd as
+`com.sudhanshu.tradingbot.telegram` (KeepAlive) and must be restarted after ANY
+code change:
 
-**Both installed plists are stale right now, and this is the one open item.**
-They carry absolute paths to the deleted root `tg.py` and `agent.py`, so the
-listener is down and no scheduled job is registered; the agent plist is also
-installed under its repo filename rather than its Label, which is why
-`launchctl list` finds nothing even when the file is present. The reinstall
-command is in README under Scheduling, and `audit.py` FAILS until it is run --
-the one failing check of 35, and it is failing about a real thing.
+    launchctl kickstart -k gui/$(id -u)/com.sudhanshu.tradingbot.telegram
+
+`scripts/run_listener.sh` is the by-hand fallback only.
+
+**Both plists were reinstalled and the stale-path item is closed.** They named
+the deleted root `tg.py` and `agent.py` after the `src/` move, and the agent one
+was installed under its repo filename rather than its Label, so `launchctl list`
+found nothing even with the file present. Both now resolve, both are registered,
+and `audit.py` passes 35 of 35 -- it was the one failing check, and it was
+failing about a real thing.
 
 Retired work (the spec-search track: generator, pipeline, judge, holdout
 ledger) is archived in `data/retired/` and deleted from the tree. It never
