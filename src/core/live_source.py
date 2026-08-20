@@ -21,7 +21,7 @@ here is dated observations, never a standing claim:
                 (URLError: Tunnel connection failed: 403) -- which is the
                 sandbox, not the source, and says nothing about either
 
-Run `python3 src/core/quotes.py` to see what actually answers now. A previous
+Run `python3 src/core/live_source.py` to see what actually answers now. A previous
 version of this docstring concluded from the two 2026-08-17 measurements that
 `live()` "returns {} until a provider is registered", which was never true of
 the code and sent a reader looking for a provider to register.
@@ -474,7 +474,13 @@ def _upstox_selftest():
     # leave a REASON behind, or the morning log blames the token by default.
     import urllib.request as _u
     _real = _u.urlopen
+    _had_tok = os.environ.get("UPSTOX_ACCESS_TOKEN")
     try:
+        # Pin a VALID token for this block. Real tokens die daily at 03:30 IST,
+        # so on any ordinary day upstox() returned at the expiry gate and this
+        # check -- the one asserting a network failure leaves a reason behind --
+        # never reached the patched urlopen at all.
+        os.environ["UPSTOX_ACCESS_TOKEN"] = _jwt(3600)
         upstox.last_error = None
         _u.urlopen = lambda *a, **k: (_ for _ in ()).throw(OSError("egress blocked"))
         assert upstox(["HAPPYFORGE"]) == {}, "a failed fetch must yield {}"
@@ -483,6 +489,10 @@ def _upstox_selftest():
         assert "egress blocked" in upstox.last_error, upstox.last_error
     finally:
         _u.urlopen = _real
+        if _had_tok is None:
+            os.environ.pop("UPSTOX_ACCESS_TOKEN", None)
+        else:
+            os.environ["UPSTOX_ACCESS_TOKEN"] = _had_tok
     # and the reason must not outlive the call that caused it
     assert token_hours_left(_jwt(-3600)) < 0
     upstox(["HAPPYFORGE"])
@@ -522,7 +532,7 @@ def _selftest():
         "the chain must try an authoritative source before a display-only one"
     assert getattr(upstox, "authoritative") is True
     assert getattr(google, "authoritative") is False, "google must never fill"
-    print("quotes selftest ok")
+    print("live_source selftest ok")
 
 
 if __name__ == "__main__":

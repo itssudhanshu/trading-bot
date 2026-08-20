@@ -15,7 +15,7 @@ python3 tests/run_selftests.py
 ```
 src/paths.py                           ROOT, DATA and which strategy is live
 src/strategies/sprout/                 THE STRATEGY: clusters selection entry learning
-src/core/                              universe features engine quotes fundamentals
+src/core/                              universe features engine live_source fundamentals
 src/bucket/                            positions analysis -- the bucket and its evidence
 src/research/                          simulate and the *_test.py experiments
 src/ops/                               agent daily tg overview + snapshot backfill audit

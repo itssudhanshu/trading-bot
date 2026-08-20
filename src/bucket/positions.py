@@ -336,7 +336,7 @@ def fill_live(day, conn=None):
 
     -> (filled, skipped_reason). Fills nothing if quotes are unavailable.
     """
-    import quotes
+    import live_source
     c = conn or db()
     c.row_factory = sqlite3.Row
     pend = [dict(r) for r in
@@ -349,19 +349,19 @@ def fill_live(day, conn=None):
     due = [p for p in pend if not p["queued_on"] or str(day) > str(p["queued_on"])]
     if not due:
         return [], "orders were queued today; they enter at the NEXT open"
-    q = quotes.live([p["symbol"] for p in due])
+    q = live_source.live([p["symbol"] for p in due])
     if not q:
-        return [], f"no live quote source ({quotes.why_no_quote()})"
+        return [], f"no live quote source ({live_source.why_no_quote()})"
     # A fill sets the entry price, the stop and the target for the life of the
     # trade. It may only come from a source whose fields are documented, never
     # from one whose meaning was inferred from where it sat on a web page.
-    if not quotes.authoritative():
+    if not live_source.authoritative():
         # Say why the AUTHORITATIVE source produced nothing, not just which
         # fallback answered. "google is display-only" is true and useless: it
         # does not distinguish "the market has not opened" from "Yahoo is
         # rate-limiting us", and those need different responses.
-        return [], (f"no authoritative price ({quotes.why_no_quote()}); "
-                    f"'{getattr(quotes.live, 'source', '?')}' is display-only "
+        return [], (f"no authoritative price ({live_source.why_no_quote()}); "
+                    f"'{getattr(live_source.live, 'source', '?')}' is display-only "
                     f"and may not set an entry price")
     filled = []
     for p in due:
@@ -374,7 +374,7 @@ def fill_live(day, conn=None):
         # this entry price?" -- and that is the one question the whole
         # authoritative/display-only split exists to answer. Asked whether Yahoo
         # was working, five filled positions had nothing to say.
-        src = f"live:{getattr(quotes.live, 'source', '?')}"
+        src = f"live:{getattr(live_source.live, 'source', '?')}"
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, fill_source=? WHERE id=?",
                   (str(day), px, px * (1 - sp / 100),
@@ -598,7 +598,7 @@ def _fill_source_selftest():
     widening the lookup would silently stop reconciling every new fill, and
     nothing in the output would report it.
     """
-    import quotes           # imported function-locally, same as fill_live does
+    import live_source           # imported function-locally, same as fill_live does
     import tempfile
     global DB
     _odb = DB
@@ -609,12 +609,12 @@ def _fill_source_selftest():
             c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,bucket)"
                       " VALUES('AAA','micro','pending','2026-08-17',10,?)", (MAIN,))
             c.commit()
-            quotes.set_provider(
+            live_source.set_provider(
                 lambda syms: {s: {"ltp": 101.0, "open": 100.0} for s in syms})
             try:
                 filled, why = fill_live("2026-08-18", c)
             finally:
-                quotes.set_provider(None)
+                live_source.set_provider(None)
             assert filled == [("AAA", 100.0)], (filled, why)
             got = c.execute("SELECT fill_source FROM pos WHERE id=1").fetchone()[0]
             assert got == "live:<lambda>", \
@@ -631,7 +631,7 @@ def _fill_source_selftest():
             c.close()
         finally:
             DB = _odb
-            quotes.set_provider(None)
+            live_source.set_provider(None)
     print("  fill names its source ok")
 
 

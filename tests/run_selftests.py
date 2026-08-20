@@ -37,7 +37,7 @@ NO_SELFTEST = {
     "trigger_test.py": "no --selftest branch; runs seven triggers (~4 min)",
     "weight_test.py": None,          # has one
     "snapshot.py": "fetches from NSE; nothing to assert offline",
-    "quotes.py": "probes live quote providers",
+    "live_source.py": None,          # has one; network-free (cached master)
     "restore_orphans.py": "one-shot recovery script, already run",
     "patch_helper.py": None,         # has one
 }

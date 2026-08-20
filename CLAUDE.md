@@ -357,8 +357,12 @@ exists on disk, and it caught exactly that the day the files moved.
 Runs every module's `--selftest` and then the audit. The module list is
 DISCOVERED from `paths.SRC`, not maintained by hand: the old sweep was a shell
 loop retyped from memory, and a module missing from it was a module nobody
-checked. Five modules have no selftest and are excluded BY NAME with a reason,
-so the exclusion has to be defended rather than happening silently.
+checked. Four modules have no selftest and are excluded BY NAME with a reason,
+so the exclusion has to be defended rather than happening silently. `live_source.py`
+was a fifth until its exclusion ("probes live quote providers") turned out to be
+untrue -- its selftest registers its own providers and reads a cached instrument
+master -- and the exclusion had been hiding a selftest that failed on any day the
+Upstox token was expired, which is most of them.
 
 See `docs/glossary.md` for what every term here means in plain English, and
 `docs/performance-change.md` for what the circuit-lock guard did to the numbers.

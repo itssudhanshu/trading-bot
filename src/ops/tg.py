@@ -325,8 +325,8 @@ def cmd_wallet(_=None):
     s = positions.summary()
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
-    import quotes
-    q = quotes.live([r["symbol"] for r in s["rows"]
+    import live_source
+    q = live_source.live([r["symbol"] for r in s["rows"]
                      if r["status"] in ("open", "pending")])
     invested = unreal = spent = 0.0
     for r in s["rows"]:
@@ -559,10 +559,10 @@ def cmd_open_orders(_=None):
         if note:
             out += ["", note]
         return "\n".join(out)
-    import quotes
+    import live_source
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
-    q = quotes.live([r["symbol"] for r in live])
+    q = live_source.live([r["symbol"] for r in live])
     src = ("live" if q else f"last close {days[-1]}")
     out = [_title("OPEN ORDERS", f"{len(live)} live"),
            f"_Prices: {src}._", ""]
@@ -808,9 +808,9 @@ def cmd_health(_=None):
                    f"{days[0]} to {days[-1]}")
 
     try:
-        import quotes
-        tok = quotes.env_value("UPSTOX_ACCESS_TOKEN")
-        h = quotes.token_hours_left(tok) if tok else None
+        import live_source
+        tok = live_source.env_value("UPSTOX_ACCESS_TOKEN")
+        h = live_source.token_hours_left(tok) if tok else None
         if not tok:
             out.append("· Upstox — no token set; fills fall through the chain")
         elif h is None:
@@ -821,7 +821,7 @@ def cmd_health(_=None):
         else:
             out.append(f"✅ Upstox — token good for another {h:.1f} h")
         out.append("· Quote order — " +
-                   ", ".join(f.__name__.lstrip("_") for f in quotes.CHAIN) +
+                   ", ".join(f.__name__.lstrip("_") for f in live_source.CHAIN) +
                    " (listed, not probed)")
     except Exception as e:
         out.append(f"· Upstox — cannot tell ({type(e).__name__})")

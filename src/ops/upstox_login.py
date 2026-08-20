@@ -31,7 +31,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-import quotes
+import live_source
 
 from paths import ROOT      # one definition; see paths.py
 ENV = ROOT / ".env"
@@ -56,8 +56,8 @@ def _write_env(key, value):
 
 
 def login_url():
-    key = quotes.env_value("UPSTOX_API_KEY")
-    uri = quotes.env_value("UPSTOX_REDIRECT_URI")
+    key = live_source.env_value("UPSTOX_API_KEY")
+    uri = live_source.env_value("UPSTOX_REDIRECT_URI")
     missing = [n for n, v in (("UPSTOX_API_KEY", key),
                               ("UPSTOX_REDIRECT_URI", uri)) if not v]
     if missing:
@@ -68,9 +68,9 @@ def login_url():
 
 
 def exchange(code):
-    key = quotes.env_value("UPSTOX_API_KEY")
-    sec = quotes.env_value("UPSTOX_API_SECRET")
-    uri = quotes.env_value("UPSTOX_REDIRECT_URI")
+    key = live_source.env_value("UPSTOX_API_KEY")
+    sec = live_source.env_value("UPSTOX_API_SECRET")
+    uri = live_source.env_value("UPSTOX_REDIRECT_URI")
     if not (key and sec and uri):
         sys.exit("UPSTOX_API_KEY, UPSTOX_API_SECRET and UPSTOX_REDIRECT_URI "
                  "must all be set in .env")
@@ -78,7 +78,7 @@ def exchange(code):
         "code": code, "client_id": key, "client_secret": sec,
         "redirect_uri": uri, "grant_type": "authorization_code"}).encode()
     req = urllib.request.Request(TOKEN, data=body, headers={
-        "accept": "application/json", "User-Agent": quotes.UA,
+        "accept": "application/json", "User-Agent": live_source.UA,
         "Content-Type": "application/x-www-form-urlencoded"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
@@ -103,7 +103,7 @@ def main():
         n = exchange(sys.argv[1].strip())
         print(f"UPSTOX_ACCESS_TOKEN written to .env ({n} chars). "
               f"Expires around 03:30 IST; re-run before the next open.")
-        q = quotes.upstox(["HAPPYFORGE"])
+        q = live_source.upstox(["HAPPYFORGE"])
         print("live quote check:", "OK" if q else "still returning nothing")
         return
     print("1. Open this in a browser and log in:\n")

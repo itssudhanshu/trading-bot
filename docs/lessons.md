@@ -1500,7 +1500,7 @@ Any of these alone produced "no data" and would have been blamed on the token:
    nothing after it passed every "is it configured?" check.
 4. **Tokens expire daily ~03:30 IST** -- the first one supplied was six days
    stale. Upstox answers 401 "Invalid token", which reads as a paste error.
-   `quotes.token_hours_left()` now decodes the JWT `exp` and says so.
+   `live_source.token_hours_left()` now decodes the JWT `exp` and says so.
 
 ### Standing conclusion
 
