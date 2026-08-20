@@ -30,10 +30,10 @@ CREATE TRIGGER pos_no_delete BEFORE DELETE ON pos BEGIN
 CREATE TRIGGER pos_log_no_delete BEFORE DELETE ON pos_log BEGIN
       SELECT RAISE(ABORT, 'pos_log is the audit trail and is append-only');
     END;
-CREATE VIEW next_orders   AS SELECT * FROM pos WHERE status='pending';
 CREATE VIEW open_orders   AS SELECT * FROM pos WHERE status='open';
 CREATE VIEW closed_orders AS SELECT * FROM pos WHERE status='closed';
 CREATE UNIQUE INDEX ux_pos_live ON pos(symbol) WHERE status IN ('pending','open');
+CREATE VIEW pending_orders AS SELECT * FROM pos WHERE status='pending';
 CREATE TRIGGER pos_log_ins AFTER INSERT ON pos BEGIN
       INSERT INTO pos_log(pos_id, action, row)
       VALUES(new.id, 'insert', json_object('id', new.id, 'symbol', new.symbol, 'cluster', new.cluster, 'status', new.status, 'queued_on', new.queued_on, 'entry_day', new.entry_day, 'entry_px', new.entry_px, 'qty', new.qty, 'stop', new.stop, 'target', new.target, 'exit_day', new.exit_day, 'exit_px', new.exit_px, 'exit_reason', new.exit_reason, 'net', new.net, 'features', new.features, 'fill_source', new.fill_source, 'bucket', new.bucket, 'origin', new.origin));
