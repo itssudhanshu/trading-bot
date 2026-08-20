@@ -351,7 +351,7 @@ def fill_live(day, conn=None):
         return [], "orders were queued today; they enter at the NEXT open"
     q = live_source.live([p["symbol"] for p in due])
     if not q:
-        return [], f"no live quote source ({live_source.why_no_quote()})"
+        return [], f"no live price source ({live_source.why_no_quote()})"
     # A fill sets the entry price, the stop and the target for the life of the
     # trade. It may only come from a source whose fields are documented, never
     # from one whose meaning was inferred from where it sat on a web page.
@@ -360,9 +360,13 @@ def fill_live(day, conn=None):
         # fallback answered. "google is display-only" is true and useless: it
         # does not distinguish "the market has not opened" from "Yahoo is
         # rate-limiting us", and those need different responses.
-        return [], (f"no authoritative price ({live_source.why_no_quote()}); "
-                    f"'{getattr(live_source.live, 'source', '?')}' is display-only "
-                    f"and may not set an entry price")
+        # "authoritative" is this file's word, not a reader's (rules.md R2).
+        # This line lands in data/agent_fill.log, which is a log a person
+        # reads every morning the fill is postponed.
+        return [], (f"no price we can buy at ({live_source.why_no_quote()}); "
+                    f"'{getattr(live_source.live, 'source', '?')}' is "
+                    f"display-only — fine for showing a profit, not for "
+                    f"setting a buy price")
     filled = []
     for p in due:
         px = (q.get(p["symbol"]) or {}).get("open")

@@ -101,6 +101,20 @@ _JOBS = {
 }
 _JOB_NAMES = tuple(_JOBS)
 
+# What each job DOES, in words someone who does not trade can read (rules.md
+# R2). /health prints these names to a person, and "pbook" tells that person
+# nothing -- R3 says fix the word rather than append a translation to it.
+# It lives here, beside _JOBS, because the job names come from there; a second
+# copy in tg.py is how one of the two goes stale (L60).
+PLAIN = {
+    "snapshot": "download today's prices",
+    "catchup":  "fill gaps in earlier prices",
+    "pbook":    "step the bucket -- stops, targets, day count",
+    "fill":     "buy today's orders at the open",
+    "audit":    "run the self-check",
+    "review":   "write tonight's findings",
+}
+
 
 def _cmd_for(job):
     import sys as _s
@@ -530,6 +544,11 @@ def _selftest():
             assert arg in allowed, f"{job} runs unexpected {arg!r}"
     assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill",
                               "review", "audit"}, _JOB_NAMES
+    # A job with no plain name reaches /health as its internal name. Assert the
+    # SET matches, so adding a job without naming it fails here rather than
+    # printing "pbook" at someone.
+    assert set(PLAIN) == set(_JOB_NAMES), \
+        f"no plain name for {sorted(set(_JOB_NAMES) - set(PLAIN))}"
     # The fill must not be attempted before the open has printed, and must
     # still be due later in the day if it was. Against an EMPTY state file --
     # reading the live one made this pass or fail depending on whether today's

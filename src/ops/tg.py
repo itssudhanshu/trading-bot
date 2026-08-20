@@ -721,10 +721,10 @@ def cmd_health(_=None):
     """Is everything actually running?
 
     EVERY tick and cross below is measured: a heartbeat that was written, a file
-    that exists, an expiry decoded out of the token itself. The quote fallback
-    chain is the one exception and is marked "·" rather than ticked, because
-    probing four sources every time someone types /health is what rate-limited
-    Yahoo (L57). A line that cannot fail must not wear a tick -- the old
+    that exists, an expiry decoded out of the token itself. The live-price
+    fallback chain is the one exception and is marked "·" rather than ticked,
+    because probing four sources every time someone types /health is what
+    rate-limited Yahoo (L57). A line that cannot fail must not wear a tick -- the old
     "✅ data" was hardcoded and would have said ✅ with a week of sessions
     missing, and the listener line asked pgrep and said ❌ about the process
     answering the question.
@@ -762,7 +762,7 @@ def cmd_health(_=None):
         out.append(f"❌ Scheduler agent — ran {m:.0f} min ago, but no scheduled "
                    f"job is registered, so nothing will run it again")
     elif jobs is None:
-        # "·" and not a tick, the same as the quote chain: this cannot be
+        # "·" and not a tick, the same as the live-price chain: this cannot be
         # checked without launchctl, and a claim nobody could verify is worse
         # than an admission. Off a Mac, every run lands here.
         out.append(f"· Scheduler agent — ran {m:.0f} min ago; whether it is "
@@ -820,9 +820,13 @@ def cmd_health(_=None):
                        f"for live fills")
         else:
             out.append(f"✅ Upstox — token good for another {h:.1f} h")
-        out.append("· Quote order — " +
-                   ", ".join(f.__name__.lstrip("_") for f in live_source.CHAIN) +
-                   " (listed, not probed)")
+        # NOT "quote order". "quote" is the word the live_source rename
+        # removed, and "order" in this bot means an instruction to buy -- two
+        # meanings of one word on a screen that also lists pending orders is
+        # exactly the collision rules.md R1 names.
+        out.append("· Live prices — tries " +
+                   ", then ".join(f.__name__.lstrip("_") for f in live_source.CHAIN) +
+                   " (not checked just now)")
     except Exception as e:
         out.append(f"· Upstox — cannot tell ({type(e).__name__})")
 
@@ -842,8 +846,18 @@ def cmd_health(_=None):
         import agent
         due = agent.due()
         att = agent.attention()
-        out += ["", f"*Due now*  {', '.join(due) if due else 'nothing'}",
-                f"*Attention*  " + ("; ".join(att) if att else "nothing")]
+        # agent.PLAIN, not the raw job names: "pbook" means nothing to a
+        # person and R3 says fix the word rather than gloss it. Empty is the
+        # good state for both, so both say so in a word rather than leaving a
+        # bare "nothing" the reader has to interpret.
+        # One per LINE, not comma-joined. "step the bucket -- stops, targets,
+        # day count" contains its own commas, so a comma-joined list of six ran
+        # together into one sentence with no way to see where a job ended.
+        out += ["", "*Jobs waiting to run*"]
+        out += ([f"· {agent.PLAIN.get(d, d)}" for d in due] if due
+                else ["none — everything scheduled has run"])
+        out += ["", "*Problems*"]
+        out += ([f"· {a}" for a in att] if att else ["none"])
     except Exception as e:
         out.append(f"· agent state unavailable ({type(e).__name__})")
     return "\n".join(out)

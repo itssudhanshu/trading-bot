@@ -30,7 +30,7 @@ def fill_live_main():
         print(f"{today}: nothing filled — {why}")
         # Exit non-zero when the fill was POSTPONED rather than completed, so
         # the agent does not tick it off and skip the rest of the day. "No
-        # authoritative quote yet" at 09:20 becomes a fill at 10:20; recorded
+        # price we can buy at" at 09:20 becomes a fill at 10:20; recorded
         # as success it becomes no fill at all.
         return 0 if why == "nothing pending" else 1
     for sym, px in filled:
