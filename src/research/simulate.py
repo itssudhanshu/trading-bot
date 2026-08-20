@@ -62,7 +62,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
         start_idx=300, trigger="none", offset=0, max_corr=None,
         impact_c=engine.IMPACT_C, sizing="equal", targets=None, stop_to=None,
-        atr_stop=None):
+        atr_stop=None, time_exit=None):
     """`targets` = [(pct, fraction), ...]: a ladder of PARTIAL exits, each
     selling `fraction` of the original quantity at entry*(1 + pct/100).
     `stop_to` = (trigger_pct, new_stop_pct): once price touches
@@ -76,6 +76,12 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
     A partial sell is a real order and pays its own brokerage, STT and DP
     charge -- laddering out of a Rs 45,000 position is not free, and that cost
     is a real part of what the test measures.
+
+    `time_exit` = f(series, i, position, held, hold) -> False | True | reason.
+    Replaces the flat `held >= hold` time exit with a rule that can read the
+    chart -- trellis uses it to hold past day 10 while the up-structure is
+    intact. Default None is the flat comparison, byte for byte, which is what
+    keeps sprout's baseline reproducing at 7.59 / 195 with this hook present.
 
     `atr_stop` = k places the stop k x ATR(14) below the fill instead of a flat
     `stop_pct`. A fixed percentage asks a 6%-daily-vol microcap and a 2%-vol
@@ -159,8 +165,22 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                 if px is None:
                     if s.high[i] >= p["tgt"]:
                         px, why = max(p["tgt"], s.open[i]), "target"
-                    elif held >= hold:
-                        px, why = s.close[i], "time"
+                    else:
+                        # The time exit. `time_exit` replaces the flat day
+                        # count with a rule that can read the chart; when it is
+                        # None -- always, for sprout -- this is exactly the
+                        # `held >= hold` comparison it replaced.
+                        #
+                        # Returning a STRING names the exit in the mix instead
+                        # of folding it into "time". That matters for the same
+                        # reason "stop-moved" is labelled separately above: an
+                        # exit you cannot tell apart from another one is an exit
+                        # you cannot learn anything from.
+                        _te = (time_exit(s, i, p, held, hold) if time_exit
+                               else held >= hold)
+                        if _te:
+                            px = s.close[i]
+                            why = _te if isinstance(_te, str) else "time"
             if px is None:
                 still.append(p); continue
             # And you do not exit at the printed price either.
