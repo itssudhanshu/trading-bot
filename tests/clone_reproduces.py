@@ -15,19 +15,29 @@ tolerance here would be a place for a real difference to hide.
     STRATEGY=thicket python3 tests/clone_reproduces.py
     STRATEGY=trellis python3 tests/clone_reproduces.py
 
-Run with STRATEGY unset it checks sprout against its own baseline, which is what
-audit.py already does -- harmless, and it means the command is never wrong.
+Run with STRATEGY unset it says so and exits clean: sprout is not a clone of
+itself, and audit.py already owns the question of whether sprout has moved.
 
-WHY THIS IS NOT audit.py
-------------------------
-audit.py compares the ACTIVE strategy against ITS OWN recorded baseline
-(paths.SDATA/"baseline.json"). A clone has no recorded baseline yet, and
-recording one before it has been shown to match would record the drift as
-correct. This compares against SPROUT's baseline specifically, which is the only
-number a clone is allowed to be born with.
+WHY IT COMPARES AGAINST A LIVE RUN, NOT A STORED NUMBER
+-------------------------------------------------------
+It used to compare the clone against data/sprout/baseline.json. That broke the
+first time it mattered: the daily agent fetched a new session mid-afternoon, the
+corpus grew from 1698 to 1699, and the check would have failed on a number that
+has nothing to do with whether the fork is clean.
+
+A stored baseline answers "does this match what sprout did on the corpus as it
+stood in July". The question worth asking is "does this match what sprout does
+RIGHT NOW, on the same bars". So sprout is re-run in a child process with
+STRATEGY=sprout and the two are compared directly. Slower -- two full backtests
+-- and it cannot drift, which for the gate that licenses every downstream number
+is the right trade.
+
+The recorded baseline is still printed, as information. audit.py owns the
+question of whether sprout has moved against it.
 """
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,42 +48,70 @@ import paths  # noqa: E402
 SPROUT_BASELINE = ROOT / "data" / "sprout" / "baseline.json"
 
 
-def main():
-    if not SPROUT_BASELINE.exists():
-        print("no sprout baseline recorded; nothing to reproduce")
-        return 1
-    want = json.loads(SPROUT_BASELINE.read_text())
+MEASURE = """
+import sys; sys.path.insert(0, "src")
+import paths, features, selection, simulate, json
+c = features.load_corpus()
+d = sorted({x for s in c.values() for x in s.days})
+r = simulate.run(c, d, stop_pct=selection.STOP_PCT,
+                 target_pct=selection.TARGET_PCT, hold=selection.HOLD_DAYS,
+                 max_pos=selection.MAX_POSITIONS, trigger=selection.TRIGGER,
+                 refresh=5)
+print("RESULT" + json.dumps({"sessions": len(d), "cagr": round(r["cagr"], 2),
+      "n": len(r["trades"]), "maxdd": round(r["maxdd"], 1)}))
+"""
 
-    import features
+
+def measure(strategy):
+    """-> the headline for `strategy`, measured in a child process.
+
+    A child, because paths binds the active strategy at import: one process
+    cannot hold two strategies' rules, which is the isolation working as
+    designed. PYTHONPATH is stripped for the same reason the sweep strips it.
+    """
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env["STRATEGY"] = strategy
+    r = subprocess.run([sys.executable, "-c", MEASURE], cwd=ROOT, env=env,
+                       capture_output=True, text=True, timeout=1800)
+    for line in r.stdout.splitlines():
+        if line.startswith("RESULT"):
+            return json.loads(line[6:])
+    raise RuntimeError(f"{strategy} produced no result:\n{r.stderr[-800:]}")
+
+
+def main():
     import selection
-    import simulate
 
     print(f"strategy: {paths.STRATEGY}")
     print(f"rules:    {Path(selection.__file__).parent.relative_to(ROOT)}")
     print(f"data:     {paths.SDATA.relative_to(ROOT)}\n")
 
-    corpus = features.load_corpus()
-    days = sorted({d for s in corpus.values() for d in s.days})
+    if paths.STRATEGY == "sprout":
+        print("STRATEGY is sprout; there is no clone to check.")
+        print("run:  STRATEGY=thicket python3 tests/clone_reproduces.py")
+        return 0
 
-    # Read the live constants; never copy them. impact_test.py carried a copy
-    # that said hold=15 for three months after the live value moved to 10.
-    r = simulate.run(corpus, days,
-                     stop_pct=selection.STOP_PCT,
-                     target_pct=selection.TARGET_PCT,
-                     hold=selection.HOLD_DAYS,
-                     max_pos=selection.MAX_POSITIONS,
-                     trigger=selection.TRIGGER,
-                     refresh=5)
-    got = {"sessions": len(days), "cagr": round(r["cagr"], 2),
-           "n": len(r["trades"]), "maxdd": round(r["maxdd"], 1)}
+    print("measuring sprout and the clone on the SAME corpus "
+          "(two backtests, a few minutes)...\n")
+    want = measure("sprout")
+    got = measure(paths.STRATEGY)
 
-    print(f"{'':12} {'recorded':>10} {'this clone':>12}")
+    print(f"{'':12} {'sprout now':>12} {'this clone':>12}")
     bad = []
     for k in ("sessions", "cagr", "n", "maxdd"):
-        ok = got[k] == want.get(k)
+        ok = got[k] == want[k]
         bad += [] if ok else [k]
-        print(f"  {k:<10} {str(want.get(k)):>10} {str(got[k]):>12}  "
+        print(f"  {k:<10} {str(want[k]):>12} {str(got[k]):>12}  "
               f"{'ok' if ok else '<-- DIFFERS'}")
+
+    if SPROUT_BASELINE.exists():
+        rec = json.loads(SPROUT_BASELINE.read_text())
+        drift = [k for k in ("sessions", "cagr", "n", "maxdd")
+                 if rec.get(k) != want[k]]
+        print(f"\n  recorded baseline: {rec.get('cagr')} / n={rec.get('n')} / "
+              f"{rec.get('sessions')} sessions"
+              + (f"   (sprout has since moved on: {', '.join(drift)} -- "
+                 f"audit.py's question, not this one)" if drift else "   (unchanged)"))
 
     if bad:
         print(f"\nFAIL: {paths.STRATEGY} does not reproduce sprout on {', '.join(bad)}.")
