@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Size clusters and stock selection: micro and small, 20 candidates each.
+"""thicket: sprout's selection, plus what the company told the exchange.
+
+A clone of sprout, and identical to it until ANN_FEATURES is switched on. That
+default is the whole design: a rule that is live before it is measured has
+already changed the answer, and tests/clone_reproduces.py asserts that with the
+knob off this file still produces +7.59% / 31.0% / 195.
+
+Size clusters and stock selection: micro and small, 20 candidates each.
 
 SELECTION IS AS-OF A DATE. Every input is computed from bars up to and including
 that date only. Picking today's best performers and testing them on their own
@@ -85,6 +92,24 @@ def _pct_rank(vals):
     return {k: (i + 1) / n * 100 for i, (k, _) in enumerate(order)}
 
 
+def _pct_rank_neutral(vals):
+    """-> {key: percentile}. A key whose value is None ranks NEUTRAL (50).
+
+    This is the difference between "we have no news about this company" and
+    "the news is bad", and getting it wrong would be invisible. Ranking a
+    missing value last would make silence indistinguishable from bad news --
+    and because microcaps announce far less often than small caps, that would
+    quietly reinstall a SIZE proxy inside a score that already has one, where
+    it would look like an announcement finding.
+
+    fundamentals.py treats absent filings the same way and for the same reason:
+    15% of the universe has never filed anything.
+    """
+    present = {k: v for k, v in vals.items() if v is not None}
+    ranked = _pct_rank(present) if present else {}
+    return {k: ranked.get(k, 50.0) for k in vals}
+
+
 # Overridable so a caller can test a weight set WITHOUT saving it. These were
 # function-locals inside score(), which made them look injectable while every
 # call silently re-read the file: four different weight configurations returned
@@ -108,6 +133,39 @@ RS_SKIP = 0
 # The effect is strongest in small, illiquid names, which is this entire
 # universe. MAX_SCREEN drops that fraction of the cluster before scoring.
 MAX_SCREEN = None
+
+# --- thicket's new input, OFF by default -----------------------------------
+# NSE corporate announcements as a score input, the one thing sprout's score
+# cannot see. Empty means this file behaves exactly as sprout does; a test
+# switches it on by name:
+#
+#     clusters.ANN_FEATURES = ("ann_burst",)
+#
+# Never set here. A weight moves off zero only after a result clears the
+# promotion bar (|t| >= 2.6, spec 6.2), and setting it in the file would make
+# every measurement taken before that describe a bucket nobody chose.
+ANN_FEATURES = ()
+
+ANN_ALL = ("ann_burst", "ann_tone", "ann_flag")
+
+_ANN_CACHE = {}
+
+
+def _ann_at(sym, as_of):
+    """-> announcement features for `sym` visible on `as_of`, or {}.
+
+    Timelines are cached per symbol: scoring walks ~1,600 candidates per
+    session across 1,698 sessions, and re-reading a JSONL file per candidate
+    per session would dominate the run by orders of magnitude.
+    """
+    rows = _ANN_CACHE.get(sym)
+    if rows is None:
+        import announcements
+        rows = _ANN_CACHE[sym] = announcements.timeline(sym)
+    if not rows:
+        return {}
+    import announcements
+    return announcements.features_asof(rows, as_of.isoformat())
 
 
 def _weights():
@@ -150,6 +208,13 @@ def score(corpus, symbols, as_of, with_ranks=False):
             "near_high": -((hi125 - s.close[i]) / hi125 * 100) if hi125 else 0.0,
             "trend": 1.0 if s.close[i] > sma200 else 0.0,
         }
+        # Announcement features, only when a test asked for them. None means
+        # "no data", which _pct_rank_neutral scores mid-rank -- NOT zero, which
+        # would rank a silent company last. See _pct_rank_neutral.
+        if ANN_FEATURES:
+            got = _ann_at(sym, as_of)
+            for f in ANN_FEATURES:
+                raw[sym][f] = got.get(f)
     if not raw:
         return {}
     if MAX_SCREEN:
@@ -167,8 +232,14 @@ def score(corpus, symbols, as_of, with_ranks=False):
         raw = {k: v for k, v in raw.items() if k not in drop}
         if not raw:
             return {}
+    # The one list of scored features, built once and used for ranking, for the
+    # weighted sum and for the detail. With ANN_FEATURES empty this is exactly
+    # sprout's tuple, which is what lets the clone reproduce to the digit.
+    scored = ("rs", "deliv", "liq", "near_high") + tuple(ANN_FEATURES)
     ranks = {f: _pct_rank({k: v[f] for k, v in raw.items()})
              for f in ("rs", "deliv", "liq", "near_high")}
+    for f in ANN_FEATURES:
+        ranks[f] = _pct_rank_neutral({k: v.get(f) for k, v in raw.items()})
     # Weights are learned, not fixed. learning.propose() moves them on measured
     # information; a feature that stops predicting loses influence rather than
     # staying in the score because it was in the original design.
@@ -180,7 +251,7 @@ def score(corpus, symbols, as_of, with_ranks=False):
         if v["trend"] == 0.0:
             continue
         tot = wsum = 0.0
-        for f in ("rs", "deliv", "liq", "near_high"):
+        for f in scored:
             w = float(W.get(f, 1.0))
             r = ranks[f][sym]
             if f in INVERTED:
@@ -188,8 +259,7 @@ def score(corpus, symbols, as_of, with_ranks=False):
             tot += r * w
             wsum += w
         out[sym] = tot / (wsum or 1.0)
-        detail[sym] = {f: round(ranks[f][sym], 1)
-                       for f in ("rs", "deliv", "liq", "near_high")}
+        detail[sym] = {f: round(ranks[f][sym], 1) for f in scored}
     return (out, detail) if with_ranks else out
 
 
