@@ -55,18 +55,25 @@ UA = "trading-bot-newswatch/1.0 (personal research; contact via repo owner)"
 
 # Published RSS/Atom feeds. Market sections only -- general news would swamp the
 # archive with items no equity signal could ever use.
+#
+# The two moneycontrol feeds were here and are GONE, not commented out: on the
+# first live run they returned HTTP 200 with items dated 848 and 849 days old.
+# They are abandoned URLs that still serve, which is the worst failure mode --
+# the job reports "15 items" and looks healthy while archiving 2024. Removed on
+# evidence; re-add either one only with a run showing same-day items.
+# business-standard is absent for a different reason: its robots.txt disallows
+# us, and the run correctly skips it.
 FEEDS = {
-    "moneycontrol_markets":
-        "https://www.moneycontrol.com/rss/marketreports.xml",
-    "moneycontrol_business":
-        "https://www.moneycontrol.com/rss/business.xml",
     "et_markets":
         "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
-    "bs_markets":
-        "https://www.business-standard.com/rss/markets-106.rss",
     "livemint_markets":
         "https://www.livemint.com/rss/markets",
 }
+
+# A feed whose newest item is older than this is treated as dead and its items
+# are NOT stored. Feeds die silently and keep returning 200; without this the
+# archive fills with old articles that look like today's capture.
+MAX_FEED_AGE_DAYS = 7
 
 _robots_cache = {}
 
@@ -96,6 +103,28 @@ def robots_ok(url, ua=UA):
         return rp.can_fetch(ua, url)
     except Exception:
         return True
+
+
+def _age_days(published, now=None):
+    """-> age of a feed item in days, or None if the date is unparseable.
+
+    None means "cannot judge", never "fresh". A feed whose dates we cannot read
+    is allowed through, because an unparseable date is not evidence of death --
+    but it is also not evidence of life, and it is logged as such.
+    """
+    if not published:
+        return None
+    from email.utils import parsedate_to_datetime
+    now = now or datetime.now(timezone.utc)
+    for parse in (parsedate_to_datetime, datetime.fromisoformat):
+        try:
+            d = parse(published)
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            return (now - d).days
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _text(el, *names):
@@ -168,6 +197,19 @@ def capture(feeds=None, log=print, fetcher=None):
                 log(f"  skip {name}: HTTP {status}")
                 continue
             items = parse_feed(body, source=name)
+
+            # Is this feed alive? Judge on its NEWEST item: a live feed always
+            # has something recent, a dead one has nothing recent at all.
+            ages = [a for a in (_age_days(i["published"], now) for i in items)
+                    if a is not None]
+            if ages and min(ages) > MAX_FEED_AGE_DAYS:
+                log(f"  skip {name}: STALE -- newest item is {min(ages)} days "
+                    f"old, feed looks abandoned")
+                continue
+            if items and not ages:
+                log(f"  {name}: no parseable dates; storing but cannot verify "
+                    f"the feed is alive")
+
             new = [i for i in items if i["link"] not in seen]
             for i in new:
                 seen.add(i["link"])
@@ -237,6 +279,29 @@ def _selftest():
                 offenders.append(str(p.relative_to(ROOT)))
     assert not offenders, \
         f"a backtest imports the forward news archive, which has no history: {offenders}"
+
+    # --- the staleness guard ------------------------------------------------
+    # Both moneycontrol feeds returned HTTP 200 with items 848 days old. A guard
+    # that only checked the status code would have called that a healthy run.
+    now = datetime(2026, 8, 20, tzinfo=timezone.utc)
+    assert _age_days("Tue, 23 Apr 2024 15:46:31 +0530", now) > 800
+    assert _age_days("Wed, 19 Aug 2026 09:00:00 +0530", now) <= 1
+    assert _age_days("2026-08-19T09:00:00+00:00", now) <= 1, "ISO dates too"
+    assert _age_days("") is None and _age_days("not a date") is None, \
+        "unparseable must be None -- cannot judge, not fresh"
+
+    stale = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+      <item><title>Old news</title><link>https://example.com/old</link>
+            <pubDate>Tue, 23 Apr 2024 15:46:31 +0530</pubDate></item>
+    </channel></rss>"""
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            NEWS = _pl.Path(td)
+            n = capture({"dead": "https://example.com/f"}, log=lambda *_: None,
+                        fetcher=lambda url, timeout=30: (200, stale))
+            assert n == 0, "a feed 800+ days stale was archived as fresh"
+    finally:
+        NEWS = real
 
     # robots handling must not explode on a malformed URL
     assert robots_ok("not-a-url") in (True, False)
