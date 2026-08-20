@@ -1964,6 +1964,65 @@ mattered: the daily agent fetched a session mid-afternoon, the corpus went 1698
 fork was clean. It now re-runs sprout in a child process and compares
 like-for-like. Two backtests instead of one, and it cannot drift.
 
+### H1–H3: announcements, and the number that shows why the bar goes first
+
+Measured on **3,833 randomly sampled trades** — sampled at random, never from
+the bucket, because measuring a feature on its own selections is what made
+`deliv` look backwards and cost 26 CAGR points.
+
+| feature | spread | std err | t | verdict |
+|---|---|---|---|---|
+| ann_burst | −0.06% | 0.32% | −0.18 | inside the noise |
+| **ann_tone** | **+1.80%** | **0.82%** | **+2.20** | **inside the noise** |
+| ann_flag | −0.90% | 0.68% | −1.32 | inside the noise |
+
+**`ann_tone` is the whole lesson.** At t = +2.20 it clears this project's usual
+|t| > 2 bar. The bar for this work is **2.6** — the usual one tightened by
+Bonferroni across five pre-registered tests — and that number was written into
+the spec and into two test modules on 2026-08-20, *before the backfill had
+finished downloading* and long before any return was computed.
+
+Set the bar after seeing +2.20 and announcements are thicket's first finding.
+Set it before and they are not. Same data, same arithmetic, opposite
+conclusion; the only difference is which was written first. That is the
+argument for pre-registration demonstrated on this project's own data instead of
+asserted. **The criterion does not now get relaxed** — "it nearly passed" is the
+exact circumstance the rule exists for.
+
+`ann_burst` is flat everywhere. How *often* a company files carries nothing, and
+3,833 trades is enough to say so with some confidence.
+
+### A hypothesis, explicitly not a finding
+
+Decomposing `ann_tone` **after** seeing its result — so this is post-hoc and
+gets no protection from the pre-registered bar:
+
+| group | n | mean return | vs neutral | t |
+|---|---|---|---|---|
+| neutral (reference) | 3,217 | −0.20% | — | — |
+| positive tone | 255 | +1.57% | **+1.77%** | **+2.76** |
+| negative tone | 361 | −0.23% | −0.03% | −0.05 |
+
+The entire H2 spread is the **positive** side. Dividend, bonus, buyback, split,
+open offer precede outperformance; insolvency, default, resignation and auditor
+changes carry *nothing* — those names appear to be priced for it already, or the
+damage is already visible in the price features the score reads.
+
+The +2.76 is above 2.6 and **must not be treated as passing.** Splitting a
+two-sided test into halves and keeping the better half is a way to manufacture
+significance, not to find it: the subgroup was chosen after the answer was
+known, so it needs a stiffer penalty than the pre-registered bar, not the same
+one.
+
+What it is instead is a sharp, cheap, falsifiable hypothesis for the future:
+*positive corporate actions predict; bad news does not.* And it cannot be
+confirmed on this corpus — any re-test would use the same price history that
+generated it. **The only thing that can settle it is forward paper trades, of
+which this project has still closed zero.** Which is where CLAUDE.md said the
+highest expected value was before any of this work started.
+
+---
+
 ## L62 — Bucket size measured for the first time: monotone, and still inside the noise
 
 Five seats had never been compared to anything. `simulations.jsonl` held six
