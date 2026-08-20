@@ -84,6 +84,24 @@ def main():
         rows.append((r.returncode == 0, str(rel), tail))
         print(f"  {'ok  ' if r.returncode == 0 else 'FAIL'} {str(rel):<40}{tail}")
 
+    # sprout must not move while a second strategy is built. This check lives
+    # in tests/ rather than src/, so the discovery above cannot see it and it
+    # has to be named here by hand -- the one hand-maintained entry in an
+    # otherwise discovered sweep. It earns the exception by being the operator's
+    # one rule for the thicket and trellis work, and the _selftest below asserts
+    # the file still exists so the wiring cannot rot the way a shell loop did.
+    iso = paths.ROOT / "tests" / "sprout_untouched.py"
+    if iso.exists():
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        r = subprocess.run([sys.executable, str(iso)], capture_output=True,
+                           text=True, cwd=paths.ROOT, env=env, timeout=300)
+        tail = (r.stdout.strip().splitlines() or [""])[-1][:70]
+        if r.returncode != 0:
+            tail = "sprout MOVED -- " + tail
+        rows.append((r.returncode == 0, "tests/sprout_untouched.py", tail))
+        print(f"  {'ok  ' if r.returncode == 0 else 'FAIL'} "
+              f"{'tests/sprout_untouched.py':<40}{tail}")
+
     bad = [r for r in rows if not r[0]]
     print(f"\n  {len(rows) - len(bad)} passed, {len(bad)} failed, "
           f"{len(skipped)} have no selftest")
@@ -103,6 +121,10 @@ def _selftest():
                  "agent.py", "overview.py", "paths.py"):
         assert must in t, f"discovery missed {must}: {sorted(t)}"
     assert len(t) == len(set(t)), "a module is swept twice"
+    # The isolation check is named by hand in main() rather than discovered, so
+    # a rename would silently drop it and the sweep would still say "passed".
+    assert (paths.ROOT / "tests" / "sprout_untouched.py").exists(), \
+        "the sprout isolation check is wired into main() but no longer exists"
     # Every excluded name must actually be a module we found, or the exclusion
     # is stale and is quietly protecting nothing.
     for name, why in NO_SELFTEST.items():
