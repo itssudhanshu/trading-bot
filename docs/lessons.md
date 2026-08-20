@@ -1872,6 +1872,98 @@ inside `once()`, and `_selftest` calls `once()` — so running the test suite ma
 can write is not evidence of liveness.** `beat()` moved to `__main__`, and the
 tick now requires a registered job as well as a fresh stamp.
 
+
+---
+
+## L61 — A second strategy, and the control arm that stopped a false finding
+
+Two new strategies were built as behavioural clones of sprout: **thicket**
+(NSE corporate announcements as a score input) and **trellis** (chart patterns
+as an exit shape and a trigger). Both are born identical to sprout, with every
+new rule shipped off by default, and both reproduce sprout to the digit with
+the knobs off — 7.59 / 31.0 / 195, exactly, on the same corpus.
+
+**The operator set one condition: sprout must not be impacted.** That was
+written into a design document first, which makes it an intention, not a rule.
+It is now `tests/sprout_untouched.py` in the selftest sweep: sprout's four rule
+files, its learned weights and its recorded headline are hashed against a
+committed manifest; no file may be added to `sprout/` either; no module under
+`strategies/` or `research/` may import the live order book; and a non-sprout
+`STRATEGY` must resolve `paths.SDATA` outside `data/sprout`. The behavioural
+half is left to `audit.py`, which already re-runs the backtest — that is the
+check that catches a *shared* module edited so sprout buys something different,
+which leaves every hash intact and every import clean.
+
+### The finding: H4, and why it is a negative
+
+The live exit is flat: −10% / +20% / 10 days, no trailing. 10-vs-15 days
+measured at t = 0.28, inside the noise, and every later pass over that dial
+produced a different winner. So the hypothesis was that the answer is not a
+number at all — hold past day 10 while the up-structure is intact.
+
+| arm | CAGR | maxDD | n | per trade | vs flat | t |
+|---|---|---|---|---|---|---|
+| flat (control) | +7.59% | 31.0% | 195 | +2.15% | — | — |
+| flat, 30 days | +12.96% | 31.3% | 185 | +3.57% | +1.42% | 0.85 |
+| **structural** | **+8.96%** | **32.5%** | **193** | **+2.49%** | **+0.34%** | **0.22** |
+
+**Read alone, the structural exit looks like a win.** CAGR +8.96 against +7.59,
+the exit mix shifting 83 time exits into 68 structural ones, target hits rising
+43 → 55 as winners run instead of being cut on day 10. That is the number
+somebody adopts.
+
+**The long-flat arm says otherwise, and it is the whole lesson.** Holding 30
+days flat — no structure, no chart reading, a dial already known to be inside
+the noise — gained **+1.42% per trade where the structural rule gained +0.34%.**
+Four times as much, from the dumber rule. The structural exit is not finding
+structure; it is a worse way of holding longer, and holding longer is not
+established either.
+
+That arm existed because "a structural win could be nothing more than holding
+longer" was foreseeable *before* the run, and was written into the
+pre-registration. Without it this would have been trellis's first finding.
+**A control that only rules out doing nothing is not enough. The arm that
+matters is the stupid version of your own idea.**
+
+Also failing: the worst half-year block got worse (−139.7% vs −126.7%, both
+2022-H1), and per size group both sit inside the noise (micro t +0.06, small
+t +0.31). Bar was |t| ≥ 2.6, fixed before the run — the usual |t| > 2 tightened
+across five pre-registered tests, because testing five things at the usual bar
+means roughly one wins by luck, which is what "two of five weight variants beat
+live at t < 0.5" already looked like.
+
+### The 60% that would have made everything work
+
+NSE stamps every corporate announcement to the second, and **60% of them arrive
+after the 15:30 close** — measured, 1,292 of 2,168 rows in one week. Dated by
+calendar day, the obvious way, 60% of the signal becomes information nobody had
+when the trade was placed. It raises no error and looks entirely normal; it
+simply returns a good number built on knowledge that did not exist yet. This is
+the circuit-lock shape again (L58) in a new place.
+
+So visibility is the spine of `announcements.py`, not a detail: visible to
+session *i* only if timestamped strictly before *i*'s close, else it rolls to
+*i+1*, weekends and holidays too. The selftest asserts the 22:56 case by name.
+On the real one-month validation slice, **65% of rows rolled forward** — the
+rule doing work on real data, not just on fixtures. 1,019,495 announcements
+across 360 weeks, 99.96% parsed, 2,640 symbols.
+
+### Two smaller ones, both the same shape
+
+**A feed can return HTTP 200 and be dead.** The first `newswatch` run archived
+19 items from two Moneycontrol feeds dated *848 and 849 days old*. Both returned
+200. Nothing errored, and the run reported "15 items, 15 new" while ingesting
+April 2024. A status code is not evidence the source is alive, exactly as it was
+not evidence the bhavcopy was the requested day. The fix judges a feed on its
+newest item, which generalises to the next feed that dies.
+
+**A gate that compares against a stored number drifts.** `clone_reproduces.py`
+compared clones against `data/sprout/baseline.json` and broke the first time it
+mattered: the daily agent fetched a session mid-afternoon, the corpus went 1698
+→ 1699, and the gate would have failed on something unrelated to whether the
+fork was clean. It now re-runs sprout in a child process and compares
+like-for-like. Two backtests instead of one, and it cannot drift.
+
 ## L62 — Bucket size measured for the first time: monotone, and still inside the noise
 
 Five seats had never been compared to anything. `simulations.jsonl` held six
