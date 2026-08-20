@@ -68,7 +68,7 @@ _FORMATS = ("%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M", "%d-%b-%Y")
 # The categories where NSE has DEMANDED an explanation, rather than the company
 # volunteering one. An exchange-flagged anomaly is a different kind of event
 # from a press release and is scored separately (`ann_flag`).
-FLAG_CATEGORIES = ("Price movement", "News Verification")
+FLAG_CATEGORIES = ("Price movement", "Spurt in Volume", "News Verification")
 
 
 def _dt(s):
@@ -386,8 +386,17 @@ def _selftest():
                            "desc": "Price movement", "attchmntText": "?"}], sessions)
     assert features_asof(flagged, "2019-11-07")["ann_flag"] == 1.0
 
-    # Tone is 0 while no table is frozen -- absence is ignorance, not bad news.
-    if not TONE_TABLE.exists():
+    # Tone reads the frozen table. The most recent visible row on 11-08 is the
+    # 22:56 Resignation, which the table signs -1; the older Acquisition is
+    # deliberately unsigned. Asserting only the no-table case (as this did) meant
+    # the check quietly stopped testing anything the day a table was frozen.
+    tone_of = load_tone()
+    if tone_of:
+        assert f["ann_tone"] == float(tone_of.get("Resignation", 0)), \
+            f"tone did not read the frozen table: {f['ann_tone']}"
+        assert tone_of.get("Acquisition", 0) == 0, \
+            "Acquisition must stay unsigned; acquirer returns are disputed"
+    else:
         assert f["ann_tone"] == 0.0, "scored a tone with no frozen table"
 
     print("announcements selftest ok (visibility rule: 22:56 -> next session)")
