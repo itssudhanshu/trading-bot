@@ -218,7 +218,12 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                 medvol = statistics.median(vols) if vols else None
                 _, myvol = _liq(s, i)
                 mult = selection.size_mult(sizing, taken_n, myvol, medvol)
-                qty, _ = selection.position_size(equity, e, stop_pct, mult=mult)
+                # max_pos, not the module constant: the seat count divides the
+                # deployment cap, and passing it here is what keeps every bucket
+                # size deploying the same 75% instead of the bigger ones running
+                # more money. Without it max_pos=12 was 180% deployed.
+                qty, _ = selection.position_size(equity, e, stop_pct, mult=mult,
+                                                 max_pos=max_pos)
                 if qty < 1:
                     continue
                 # You do not fill at the printed open. Pay impact on the way in;

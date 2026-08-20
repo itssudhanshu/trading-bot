@@ -1871,3 +1871,100 @@ inside `once()`, and `_selftest` calls `once()` — so running the test suite ma
 `/health` claim the scheduler was alive. **A liveness stamp that the test suite
 can write is not evidence of liveness.** `beat()` moved to `__main__`, and the
 tick now requires a registered job as well as a fresh stamp.
+
+## L62 — Bucket size measured for the first time: monotone, and still inside the noise
+
+Five seats had never been compared to anything. `simulations.jsonl` held six
+runs and not one recorded `max_pos`, so the number was an assumption nobody had
+examined rather than a decision anybody had made. Measured at 3 / 5 / 8 / 12
+seats with the per-cluster cutoff scaled to the live 3:2 ratio, so the arms
+differ in SIZE and not in mix (`src/research/bucket_size_test.py`, batch
+20260820-bucketsize, hold 10d, c=1.0).
+
+| seats | mix | CAGR | maxDD | occ | n | per trade | vs live | t |
+|---|---|---|---|---|---|---|---|---|
+| 3 | 2/1 | +10.08% | 27.4% | 1.36 | 132 | +3.00% +/- 1.43% | +0.85% | +0.48 |
+| **5 (live)** | **3/2** | **+7.59%** | **31.0%** | **3.10** | **195** | **+2.15% +/- 1.08%** | -- | -- |
+| 8 | 5/3 | +5.59% | 19.7% | 4.47 | 318 | +1.54% +/- 0.81% | -0.61% | -0.46 |
+| 12 | 7/5 | +3.83% | 20.2% | 6.03 | 462 | +1.08% +/- 0.65% | -1.07% | -0.85 |
+
+**Nothing clears the bar. Largest |t| is 0.85, so every arm is inside the
+noise and the live 5 stands.** The bar was fixed in the module docstring before
+the first run: |t| > 2, monotone, both clusters improving, maxDD not worsening
+by more than 3 points.
+
+**The shape is the tempting part, and it is still a shape.** Per-trade return
+decays monotonically as seats are added -- 3.00 > 2.15 > 1.54 > 1.08 -- which is
+exactly what was PREDICTED in writing before the run, and it agrees with the one
+result here that is resolved: rank depth at -1.18% per cohort step (t = -4.10,
+n = 1,015). Each added seat is filled from further down a ranking that decays.
+Two independent measurements pointing the same way is worth more than one, and
+it is still not |t| > 2. This project has been burned by exactly this shape
+before: `deliv 2.0` was monotone above 1.5 and was not adopted either.
+
+**The monotonicity is not clean everywhere, and reporting only the total would
+hide that.** Micro decays monotonically (+2.40 / +2.35 / +1.20 / +0.88) and the
+2019-2021 block does too (+8.03 / +5.36 / +4.15 / +3.63). Small does NOT: it
+reads +4.14 / +1.87 / +2.10 / +1.41, so the LIVE five seats is small's
+second-worst arm. 2022-2023 is negative at every seat count.
+
+**What the bar could not see, stated because the honest move is to leave it for
+a pre-registered test rather than re-decide now.** Drawdown improves sharply
+with more seats: 31.0% at five against 19.7% at eight, eleven points. Condition
+(d) only forbade maxDD WORSENING; there was no adoption path for maxDD
+improving, so the bar cannot adopt on it and must not be given a new clause
+after seeing the number -- criteria may be tightened, never loosened. Note also
+that maxDD is one number off one path with no error bar, so an eleven-point gap
+is not resolvable either. If concentration-vs-drawdown is worth testing, it
+needs its own hypothesis and its own bar, written first.
+
+**One confound, left in deliberately.** The 3-seat arm deploys ~60% where the
+others deploy ~75%, because the 2% per-trade risk rule binds before the
+deployment cap once the slice grows. That is the risk invariant working, and
+CLAUDE.md forbids searching risk invariants, so it was not relaxed to tidy the
+comparison. The 3-seat row answers "3 seats AND less money deployed".
+
+### The bug that would have inverted this result
+
+`selection.position_size` capped a name at `capital * DEPLOY_PCT / MAX_POSITIONS`
+reading the MODULE constant, while `simulate.run` accepted `max_pos` as an
+argument. So `max_pos=12` produced twelve slices each sized for a five-seat
+book: **180% of equity deployed**, and nothing in the buy loop checks cash. The
+larger arms would have won by running more money and it would have read as a
+finding about concentration. `position_size` now takes `max_pos`; the default is
+the live constant and the live path is provably unchanged (identical qty across
+seven prices; audit CAGR moved 0.00 with the corpus one session larger).
+`selection._selftest` now asserts total deployment stays within DEPLOY_PCT at
+1, 3, 5, 8, 12 and 20 seats, and that the slice shrinks as seats are added.
+
+`simulate.py`'s own demo had been printing a 120%-deployed "8 positions" row for
+as long as that demo has existed.
+
+## L63 — A selftest written from the same assumption as the code proves only that the assumption is self-consistent
+
+The first bucket-size run reported **n=0 on all four arms** and printed
+"nothing clears the bar; no arm reached |t| > 2". That is indistinguishable from
+a real null result, and it was nothing of the kind: `_pct()` guessed the trade
+record's keys as `pct`/`entry`/`exit`, and the real ones are `ret`/`clu`/`day`.
+No return parsed, every arm empty, and the promotion logic dutifully concluded
+that nothing was significant.
+
+**The selftest passed.** It fed `_pct()` dictionaries shaped the way the guess
+assumed -- `{"pct": 4.2}`, `{"entry": 100.0, "exit": 110.0}` -- so it confirmed
+the code matched its author's belief and said nothing about the producer. A test
+whose fixtures are invented by the same person, in the same sitting, from the
+same misreading, cannot fail.
+
+This is L60's family: a reference correct in the author's head, never re-checked
+against the thing it refers to. The difference is that L60's instances were
+caught by something downstream; this one produced a plausible FINDING, which is
+worse. It is also the same shape as `setup.sh` looping over an empty glob and
+reporting no failures, fixed the same day -- **an empty result and a passing
+result look identical unless something refuses to accept empty.**
+
+Fixed two ways, and the second matters more than the first:
+1. The fixture is now a verbatim record copied off a real `simulate.run`, so if
+   that contract moves the test fails instead of the experiment.
+2. `measure()` RAISES when an arm produces trades but zero parsed returns. No
+   data can no longer be reported as a null result, by construction rather than
+   by the reader noticing.

@@ -179,6 +179,20 @@ behind it clears its own noise. Checked at current settings:
 | chose 10-day hold over 15 | +2.27 | +0.44% | 1.59% | +0.28 | inside the noise |
 | chose 3 micro / 2 small | -2.34 | -0.36% | 1.50% | -0.24 | inside the noise |
 | raised deliv to 1.5 | +2.98 | +0.55% | 1.58% | +0.35 | inside the noise |
+| kept 5 seats over 8 | +2.00 | +0.61% | 1.35% | +0.46 | inside the noise |
+| kept 5 seats over 12 | +3.75 | +1.07% | 1.26% | +0.85 | inside the noise |
+| kept 5 seats over 3 | -2.49 | -0.85% | 1.79% | -0.48 | inside the noise |
+
+Bucket size was measured for the first time on 2026-08-20 (batch
+20260820-bucketsize, `src/research/bucket_size_test.py`): 3 / 5 / 8 / 12 seats
+with the cutoff scaled to the live 3:2 ratio. Per-trade return decays
+monotonically as seats are added (+3.00 / +2.15 / +1.54 / +1.08), which is the
+direction the rank-depth slope predicts and which was written down BEFORE the
+run -- and no arm reaches |t| > 2, so five seats stands as the reference rather
+than as a winner. Drawdown moves the other way (31.0% at five, 19.7% at eight)
+and the pre-set bar had no adoption path for that; it is left for a
+pre-registered test rather than re-decided after the fact. See L62, and L63 for
+the empty first run that reported itself as a null result.
 
 **Still none of them clears it, and the ordering barely moved** -- which is the
 useful result, because the guard removed 6.5 CAGR points, MORE than two of these

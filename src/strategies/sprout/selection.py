@@ -102,15 +102,24 @@ def size_mult(scheme, rank, vol_pct, med_vol_pct):
     raise ValueError(f"unknown sizing scheme {scheme!r}")
 
 
-def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT, mult=1.0):
+def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT, mult=1.0,
+                  max_pos=MAX_POSITIONS):
     """-> (qty, rupees_at_risk). Risk-based, then capped so one name cannot
-    exceed its share of the bucket."""
+    exceed its share of the bucket.
+
+    `max_pos` is a PARAMETER because the seat count divides the deployment cap.
+    It read the module constant, so simulate.run(max_pos=12) produced twelve
+    seats each sized for a five-seat book: 12 x 15% = 180% of equity, silent
+    leverage, and nothing in the buy loop checks cash. A bigger bucket would
+    have looked better for the reason that it was running more money. Default
+    is the live constant, so nothing about the live bucket changes.
+    """
     risk_rupees = capital * risk_pct / 100
     risk_per_share = entry * stop_pct / 100
     if risk_per_share <= 0:
         return 0, 0.0
     qty = int(risk_rupees / risk_per_share)
-    cap_value = capital * DEPLOY_PCT / 100 / MAX_POSITIONS * mult
+    cap_value = capital * DEPLOY_PCT / 100 / max_pos * mult
     qty = min(qty, int(cap_value / entry))
     return qty, qty * risk_per_share
 
@@ -398,6 +407,17 @@ def _selftest():
     cap = cap_each
     # a full bucket must leave cash on the table
     assert cap * MAX_POSITIONS <= 500_000 * 0.75, "the bucket must not be fully invested"
+    # ...AT ANY SEAT COUNT. This is the invariant a bucket-size experiment can
+    # otherwise buy its way past: sizing read MAX_POSITIONS while the seat count
+    # was injectable, so more seats meant more money, not smaller slices.
+    for _n in (1, 3, 5, 8, 12, 20):
+        _q, _ = position_size(500_000, 100.0, max_pos=_n)
+        assert _q * 100.0 * _n <= 500_000 * DEPLOY_PCT / 100 + 100, (
+            f"{_n} seats deploy {_q * 100.0 * _n:,.0f} of 500,000 -- a bucket "
+            f"must never deploy more than DEPLOY_PCT whatever its size")
+    # and the slice must actually shrink as seats are added, not stay flat
+    assert (position_size(500_000, 100.0, max_pos=12)[0]
+            < position_size(500_000, 100.0, max_pos=5)[0])
     q2, _ = position_size(500_000, 10.0)
     assert q2 * 10.0 <= cap + 1, q2 * 10.0
     assert position_size(500_000, 0)[0] == 0
