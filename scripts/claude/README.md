@@ -21,9 +21,17 @@ repo already holds in prose:
 |---|---|
 | `Read(./.env)`, `Read(./data/upstox_token.json)` | a live Upstox access token; only key NAMES belong in `.env.example` |
 | `Edit(strategies.jsonl)`, `Edit(trade_features.jsonl)`, `Edit(findings.jsonl)` | append-only ledgers; a mixed ledger cannot be un-mixed |
-| `Edit(positions.db)` | the order record: rows are edited through `positions.py`, never deleted |
 | `Bash(git push:*)` | pushing is the operator's decision, always |
 | `Bash(rm:*)` | one `rm` in `data/raw/` is a permanent hole in a point-in-time record |
+
+**`positions.db` is deliberately NOT denied.** It was, for one commit. Denying a
+path makes it unwritable to the whole sandbox, and `positions.db()` runs its
+`CREATE TRIGGER IF NOT EXISTS` script on every connect -- so the audit died with
+`attempt to write a readonly database` the moment this file was installed. The
+no-delete rule the operator asked for is enforced by `pos_no_delete` and
+`pos_log_no_delete` *inside* the database, which binds every connection,
+including a shell one-liner that ignores permissions entirely. The permission
+protected nothing and broke the one command that checks the ledger.
 
 ## skills/experiment
 

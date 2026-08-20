@@ -196,14 +196,24 @@ def run_task(name, log=print):
 
 
 def _jobs_loaded():
-    """Are the launchd/systemd jobs actually registered? A plist sitting in the
-    repo is not a running agent, and that gap is invisible otherwise."""
+    """-> [labels] registered, [] for none, or None when launchctl cannot be asked.
+
+    A plist sitting in the repo is not a running agent, and that gap is
+    invisible otherwise. The None case is the point: this returned [] for BOTH
+    "launchctl says nothing is loaded" and "launchctl could not be run at all",
+    so in any environment without it -- a container, a sandbox, Linux -- every
+    caller reported a definite "nothing is scheduled" on no evidence. An absence
+    of evidence is not a negative finding, and this repo's rule is that a status
+    is not evidence; the same applies to a status nobody was able to read.
+    """
     try:
-        out = subprocess.run(["launchctl", "list"], capture_output=True,
-                             text=True, timeout=10).stdout
-        return [l.split()[-1] for l in out.splitlines() if "tradingbot" in l]
+        r = subprocess.run(["launchctl", "list"], capture_output=True,
+                           text=True, timeout=10)
     except Exception:
-        return []
+        return None
+    if r.returncode != 0:
+        return None
+    return [l.split()[-1] for l in r.stdout.splitlines() if "tradingbot" in l]
 
 
 def attention():
@@ -219,7 +229,10 @@ def attention():
     ok, why = health()
     if not ok:
         out.append(f"agent {why}")
-    if not _jobs_loaded():
+    # `== []` and not `not ...`: None means launchctl could not be asked, and a
+    # monitor that fires in normal conditions gets ignored, then the real alarm
+    # is missed too.
+    if _jobs_loaded() == []:
         out.append("no launchd job registered -- nothing runs on a schedule")
 
     # Surveillance is the one unrecoverable data stream: NSE serves the current
@@ -414,6 +427,24 @@ def _selftest():
         # down, and reading it here would be a syntax error.
         assert (paths.ROOT / _argv[0]).exists(), \
             f"job {_name!r} spawns {_argv[0]}, which does not exist"
+
+    # "nothing is loaded" and "I could not ask" are different answers, and this
+    # returned [] for both. /health then printed a definite "no scheduled job is
+    # registered" on every machine without launchctl.
+    import subprocess as _sp
+    _o_run = _sp.run
+    try:
+        _sp.run = lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError())
+        assert _jobs_loaded() is None, "no launchctl read as 'nothing scheduled'"
+        _sp.run = lambda *a, **k: _sp.CompletedProcess(a, 1, "", "denied")
+        assert _jobs_loaded() is None, "a failed launchctl read as an answer"
+        _sp.run = lambda *a, **k: _sp.CompletedProcess(a, 0, "-\t0\tcom.apple.foo\n", "")
+        assert _jobs_loaded() == [], f"expected [] for no match, got {_jobs_loaded()!r}"
+        _sp.run = lambda *a, **k: _sp.CompletedProcess(
+            a, 0, "-\t0\tcom.sudhanshu.tradingbot.agent\n", "")
+        assert _jobs_loaded() == ["com.sudhanshu.tradingbot.agent"], _jobs_loaded()
+    finally:
+        _sp.run = _o_run
     global STATE, DIGEST, LOCK
     o = (STATE, DIGEST, LOCK)
     try:
@@ -548,7 +579,9 @@ if __name__ == "__main__":
         ok, why = health()
         print(f"  agent health    : {why}")
         jobs = _jobs_loaded()
-        print(f"  scheduled jobs  : {', '.join(jobs) if jobs else 'NONE INSTALLED'}")
+        print(f"  scheduled jobs  : "
+              + ("cannot ask launchctl here" if jobs is None else
+                 ", ".join(jobs) if jobs else "NONE INSTALLED"))
         for k in ("last_snapshot", "last_runner", "last_research"):
             print(f"  {k:<16}: {st.get(k, 'never')}")
         print()

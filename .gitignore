@@ -60,11 +60,19 @@ data/fundamentals/
 data/positions.db
 data/positions.db.bak-*
 
-# Claude Code's per-machine permission grants. Tracking it made a local tool
-# setting a repo change, and because the sandbox may not write this path a
-# branch switch could not check it out -- which is what blocked a fast-forward
-# for three attempts while the working tree sat on the wrong version of tg.py.
-.claude/settings.local.json
+# Claude Code's config. Tracking it made a local tool setting a repo change,
+# and because the sandbox may not write this path a branch switch could not
+# check it out -- which is what blocked a fast-forward for three attempts while
+# the working tree sat on the wrong version of tg.py. It then happened AGAIN the
+# day settings.json and skills/ were added: the merge aborted on "untracked
+# working tree files would be overwritten", and the tracked copy could not be
+# updated afterwards because the sandbox denies the path -- so the repo held a
+# settings.json contradicting the one actually in force.
+#
+# scripts/claude/ is the reviewable source of truth and one cp installs it,
+# exactly like scripts/deploy/. A file this repo cannot write is a file this
+# repo must not track.
+.claude/
 
 # iCloud conflict copies ("DIGEST 2.md", "agent_state 2.json"). Nothing reads
 # them; they are stale snapshots that show up as untracked changes.

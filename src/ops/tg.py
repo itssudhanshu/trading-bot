@@ -729,17 +729,24 @@ def cmd_health(_=None):
     # true; the tick belonged to the one a person has to act on.
     try:
         import agent as _a
-        jobs = _a._jobs_loaded()
+        jobs = _a._jobs_loaded()          # [] = none, None = could not ask
     except Exception:
-        jobs = None          # cannot ask launchctl -- do not claim either way
+        jobs = None
     if m is None:
         out.append("❌ Scheduler agent — never ran")
+    elif m >= 90:
+        out.append(f"❌ Scheduler agent — last ran {m:.0f} min ago")
     elif jobs == []:
         out.append(f"❌ Scheduler agent — ran {m:.0f} min ago, but no scheduled "
                    f"job is registered, so nothing will run it again")
+    elif jobs is None:
+        # "·" and not a tick, the same as the quote chain: this cannot be
+        # checked without launchctl, and a claim nobody could verify is worse
+        # than an admission. Off a Mac, every run lands here.
+        out.append(f"· Scheduler agent — ran {m:.0f} min ago; whether it is "
+                   f"scheduled to run again cannot be checked from here")
     else:
-        out.append(("✅" if m < 90 else "❌") +
-                   f" Scheduler agent — last ran {m:.0f} min ago")
+        out.append(f"✅ Scheduler agent — last ran {m:.0f} min ago")
 
     # Its own stamp, not pgrep -- see _beat.
     m = _age(LISTENER_BEAT)
@@ -1150,6 +1157,15 @@ def _selftest():
             assert "✅ Scheduler agent" not in h, \
                 "a fresh stamp with no scheduled job wore a tick: nothing will run it again"
             assert "no scheduled job is registered" in h, h[:400]
+            # None is NOT []. _jobs_loaded returned [] for "launchctl could not
+            # be run" too, so every container and every Linux box read as
+            # "nothing is scheduled" on no evidence at all.
+            _ag._jobs_loaded = lambda: None
+            h = cmd_health()
+            assert "✅ Scheduler agent" not in h and "· Scheduler agent" in h, \
+                f"unknown schedule was reported as a fact: {h[:200]!r}"
+            assert "no scheduled job is registered" not in h, \
+                "claimed nothing is scheduled when launchctl could not be asked"
     finally:
         ROOT, _ag._jobs_loaded = o_root, o_jobs
     print("  /health ticks the scheduler only when a job is registered ok")
