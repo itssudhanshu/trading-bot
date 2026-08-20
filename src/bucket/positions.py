@@ -235,9 +235,17 @@ def _append_only(c):
     END;
     -- The three order books the operator asks for by name. VIEWS, not tables:
     -- a pending order that fills would otherwise have to be DELETEd from
-    -- next_orders to appear in open_orders, and no-delete forbids that. One
+    -- pending_orders to appear in open_orders, and no-delete forbids that. One
     -- table with a status, three names to read it by.
-    CREATE VIEW IF NOT EXISTS next_orders   AS SELECT * FROM pos WHERE status='pending';
+    --
+    -- The DROP is the rename. This view was called next_orders, and CREATE VIEW
+    -- IF NOT EXISTS cannot rename anything -- it would have left both names
+    -- alive on every database that already existed, which is the one place a
+    -- stale name does real damage: a query against the old view keeps working
+    -- and keeps answering, so nothing ever reports the rename as incomplete.
+    -- Dropping a view destroys no rows; `pos` is the only table.
+    DROP VIEW IF EXISTS next_orders;
+    CREATE VIEW IF NOT EXISTS pending_orders AS SELECT * FROM pos WHERE status='pending';
     CREATE VIEW IF NOT EXISTS open_orders   AS SELECT * FROM pos WHERE status='open';
     CREATE VIEW IF NOT EXISTS closed_orders AS SELECT * FROM pos WHERE status='closed';
     """)
@@ -763,10 +771,17 @@ def _append_only_selftest():
             # 4. the three views ARE the three order books
             c.execute("INSERT INTO pos(symbol,status,qty) VALUES('BBB','pending',5)")
             c.execute("INSERT INTO pos(symbol,status,qty) VALUES('CCC','closed',5)")
-            for view, want in (("next_orders", {"BBB"}), ("open_orders", {"AAA"}),
+            for view, want in (("pending_orders", {"BBB"}), ("open_orders", {"AAA"}),
                                ("closed_orders", {"CCC"})):
                 got = {r[0] for r in c.execute(f"SELECT symbol FROM {view}")}
                 assert got == want, f"{view} -> {got}, want {want}"
+            # The old name must be GONE, not merely superseded. Asserting the new
+            # view exists would pass with both present, and both present is the
+            # failure mode: a caller still reading next_orders gets a correct
+            # answer and the rename looks done.
+            assert not list(c.execute(
+                "SELECT name FROM sqlite_master WHERE name='next_orders'")), \
+                "next_orders still exists; the rename to pending_orders is partial"
             c.close()
         finally:
             DB = _odb

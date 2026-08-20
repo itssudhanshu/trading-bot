@@ -165,7 +165,7 @@ A `tight` BOOK was built for this and removed within the day. To be a paired
 test it must enter the same name at the same price on the same day as main, and
 a separately-queued book cannot: it queues when IT has room, so it entered a
 position main had already held for a session and was 3.2% into. That is
-chasing, not pairing, and it also put a duplicate order in `/next_orders` for a
+chasing, not pairing, and it also put a duplicate order in `/pending_orders` for a
 name already live -- which is how it was caught.
 
 The endpoint is a PROPORTION, resolvable in ~62 trades, where comparing the two
@@ -185,12 +185,12 @@ read it by the names the operator uses:
 
 | view | rows |
 |---|---|
-| `next_orders` | `status='pending'` -- queued, enters at the next open |
+| `pending_orders` | `status='pending'` -- queued, enters at the next open |
 | `open_orders` | `status='open'` -- running |
 | `closed_orders` | `status='closed'` -- exited on a rule. THE forward evidence |
 
 **Three separate tables were asked for and cannot work.** A pending order that
-fills has to leave `next_orders` and appear in `open_orders`, and leaving a
+fills has to leave `pending_orders` and appear in `open_orders`, and leaving a
 table is a DELETE -- which the no-delete rule forbids. One table with a status
 and three views gives the three names without ever moving a row.
 

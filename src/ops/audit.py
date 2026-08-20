@@ -305,8 +305,10 @@ def main():
 
     # Every advertised command must dispatch, and every dispatchable one must be
     # advertised or deliberately aliased -- /help is the only map the operator has.
-    undoc = sorted(set(tg.COMMANDS) - tg.ALIASES
-                   - {c for c in tg.COMMANDS if c.replace("_", "\\_") in tg.cmd_help()})
+    _help = {tg.canon(c) for c in
+             __import__("re").findall(r"/[a-z][a-z_-]*", tg.cmd_help())}
+    undoc = sorted(c for c in set(tg.COMMANDS) - tg.ALIASES
+                   if tg.canon(c) not in _help)
     check("every command appears in /help", not undoc, f"{undoc or 'none'}")
 
     # RENDER every one of them and check the markup Telegram will parse. This

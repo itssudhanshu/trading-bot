@@ -181,7 +181,23 @@ def check_markup(text):
     _parts = text.split("```")
     _outside = "".join(_parts[i] for i in range(0, len(_parts), 2))
     _outside = _re.sub(r"`[^`]*`", "", _outside)      # inline code is literal too
-    _outside = _re.sub(r"\\.", "", _outside)           # backslash-escaped markers are literal
+    # THIS LINE USED TO STRIP r"\\." AS AN ESCAPE, AND THAT IS MarkdownV2. send()
+    # posts parse_mode=Markdown, the legacy one, which has no backslash escape at
+    # all: `\_` prints a literal backslash AND still opens an italic. So the
+    # validator blessed exactly what Telegram rejected -- /bucket died with
+    # "can't find end of the entity starting at byte offset 1847" while audit
+    # check 34 rendered it and passed. Reject the escape outright rather than
+    # counting around it, because it is never what the author meant: it shows up
+    # on the phone as `open\_orders`, which is also how the operator found it.
+    _bad = _re.search(r"\\[*_`\[]", _outside)
+    if _bad:
+        _i = _bad.start()
+        raise ValueError(
+            f"backslash escape {_outside[_i:_i + 2]!r} in a parse_mode=Markdown "
+            f"message: legacy Markdown has no escapes, so this prints the "
+            f"backslash AND opens an entity. Use plain words or a hyphen alias "
+            f"(/open-orders), or wrap it in backticks. "
+            f"near: ...{_outside[max(0, _i - 50):_i + 20]!r}")
     for _ch in ("*", "_"):
         if _outside.count(_ch) % 2:
             _i = _outside.rfind(_ch)
@@ -205,7 +221,13 @@ def send(text, chat_id=None):
 
 # --- command handlers: all read-only -------------------------------------
 
-SIZE = {"micro": "smallest companies", "small": "small companies"}
+# The operator's own words. "smallest companies" and "small companies" were
+# a plain-English paraphrase that read as a comparison between the two
+# clusters rather than as the names of two size bands, and micro cap and
+# small cap are what these are called everywhere else, including by the
+# person reading the screen (rules.md R1: a term already in use is not
+# re-invented).
+SIZE = {"micro": "micro cap", "small": "small cap"}
 
 
 
@@ -222,7 +244,7 @@ def _fields(*pairs):
     """-> ["name - value", ...]. THE definition of the order layout.
 
     All three order commands render through this, so a field cannot be spelled
-    one way in /open\\_orders and another in /closed\\_orders. A None value is
+    one way in /open-orders and another in /closed-orders. A None value is
     dropped rather than printed as "None"; a field the record does not hold is
     not a field worth a line.
     """
@@ -386,7 +408,7 @@ def cmd_clusters(_=None):
     for c in clusters.CLUSTERS:
         take = selection.TAKE_PER_CLUSTER.get(c, 0)
         inc = [r for r in rows if r["cluster"] == c]
-        plain = {"micro": "SMALLEST COMPANIES", "small": "SMALL COMPANIES"}
+        plain = {c: v.upper() for c, v in SIZE.items()}
         out.append(f"*{plain.get(c, c.upper())}*  — {len(inc)} worth buying, "
                    f"the bucket takes the top {take}")
         for n, r in enumerate(inc[:depth], 1):
@@ -420,7 +442,7 @@ def cmd_bucket(_=None):
             if r["status"] in ("open", "pending")}
     mix = selection.TAKE_PER_CLUSTER
     out = [_title("THE BUCKET",
-                  " + ".join(f"{v} of the {SIZE.get(k, k)}" for k, v in mix.items())),
+                  " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),
            f"_The {sum(mix.values())} best-scored. Each is bought only once its "
            f"price breaks above its recent high; until then that money stays in "
            f"cash._", ""]
@@ -459,7 +481,7 @@ def cmd_bucket(_=None):
         out += [f"*Also held, bought earlier*  {', '.join(earlier)}",
                 "_Tonight's ranking no longer puts these in the top 5, and that "
                 "changes nothing: each one runs to its own stop, target or "
-                "10-day limit. /open\\_orders for the detail._", ""]
+                "10-day limit. /open-orders for the detail._", ""]
     live = sum(1 for s in shown if s in held)
     out += [f"_Each number is a place out of 100 against the other shares in the "
             f"same size group -- 100 is the best. The score is their average, "
@@ -472,7 +494,7 @@ def cmd_bucket(_=None):
     return "\n".join(out)
 
 
-def cmd_next_orders(_=None):
+def cmd_pending_orders(_=None):
     """Stocks queued and waiting for the market to open."""
     import features, positions
     # ALL buckets. Defaulting to main would have shown "nothing waiting" while
@@ -481,11 +503,11 @@ def cmd_next_orders(_=None):
     s = positions.summary(which=None)
     pend = [r for r in s["rows"] if r["status"] == "pending"]
     if not pend:
-        return (_title("next\\_orders") + "\nNothing waiting. No stock in the "
+        return (_title("PENDING ORDERS") + "\nNothing waiting. No stock in the "
                 "picks has broken out, so the money stays in cash.")
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
-    out = [_title("next\\_orders", f"{len(pend)} waiting"),
+    out = [_title("PENDING ORDERS", f"{len(pend)} waiting"),
            "_These are bought at tomorrow morning's opening price._"]
     note = _lag_note()
     if note:
@@ -530,9 +552,9 @@ def cmd_open_orders(_=None):
     live = [r for r in s["rows"] if r["status"] == "open"]
     if not live:
         pend = s["pending"]
-        out = [_title("open\\_orders"), "Nothing recorded as live yet."]
+        out = [_title("OPEN ORDERS"), "Nothing recorded as live yet."]
         if pend:
-            out += ["", f"{pend} order(s) queued — see /next\\_orders."]
+            out += ["", f"{pend} order(s) queued — see /pending-orders."]
         note = _lag_note()
         if note:
             out += ["", note]
@@ -542,7 +564,7 @@ def cmd_open_orders(_=None):
     days = sorted({d for x in corpus.values() for d in x.days})
     q = quotes.live([r["symbol"] for r in live])
     src = ("live" if q else f"last close {days[-1]}")
-    out = [_title("open\\_orders", f"{len(live)} live"),
+    out = [_title("OPEN ORDERS", f"{len(live)} live"),
            f"_Prices: {src}._", ""]
     tot_val = tot_pl = 0.0
     for r in live:
@@ -583,7 +605,7 @@ def cmd_closed_orders(_=None):
     s = positions.summary(which=None)
     done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     if not done:
-        return (_title("closed\\_orders") + "\nNothing has been sold yet. Only "
+        return (_title("CLOSED ORDERS") + "\nNothing has been sold yet. Only "
                 "real trades made going forward show up here — never anything "
                 "replayed from past data.")
     # Statistics come from the POOLED buckets only. `tight` holds the same names
@@ -593,7 +615,7 @@ def cmd_closed_orders(_=None):
     ev = done
     rets = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100,
              "sym": r["symbol"], "clu": r["cluster"]} for r in ev]
-    out = [_title("closed\\_orders", f"{len(done)} finished"), ""]
+    out = [_title("CLOSED ORDERS", f"{len(done)} finished"), ""]
     corpus = features.load_corpus()
     for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
@@ -957,9 +979,9 @@ def cmd_help(_=None):
             "*How much money is there?*\n"
             "/wallet — cash, what is invested, profit so far\n\n"
             "*What am I in, and what is next?*\n"
-            "/open\\_orders — bought and running in the market now\n"
-            "/next\\_orders — chosen, waiting to be bought tomorrow morning\n"
-            "/closed\\_orders — finished, and what each one made or lost\n\n"
+            "/open-orders — bought and running in the market now\n"
+            "/pending-orders — chosen, waiting to be bought tomorrow morning\n"
+            "/closed-orders — finished, and what each one made or lost\n\n"
             "*Why these stocks?*\n"
             "/bucket — the 5 chosen this session, with the reason for each\n"
             "/clusters — the full ranking they were chosen from\n\n"
@@ -968,7 +990,7 @@ def cmd_help(_=None):
             "/review — tonight\'s read: holdings, evidence, suggestions\n\n"
             "*Is the bot alive?*\n"
             "/health — every moving part, checked\n\n"
-            "_Hyphens work too: /next-orders, /open-orders, /closed-orders._\n"
+            "_Hyphens work too: /pending-orders, /open-orders, /closed-orders._\n"
             "_Read-only. I never place a trade or change a setting from here._")
 
 
@@ -981,7 +1003,8 @@ def cmd_help(_=None):
 # /help, which is a better outcome than silently teaching the banned word.
 COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
             "/bucket": cmd_bucket,
-            "/next_orders": cmd_next_orders, "/next-orders": cmd_next_orders,
+            "/pending_orders": cmd_pending_orders,
+    "/pending-orders": cmd_pending_orders,
             "/open_orders": cmd_open_orders, "/open-orders": cmd_open_orders,
             "/closed_orders": cmd_closed_orders,
             "/closed-orders": cmd_closed_orders,
@@ -989,11 +1012,24 @@ COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
             "/health": cmd_health,
             "/help": cmd_help, "/start": cmd_help}
 
-# Spellings that work but are deliberately not advertised: the hyphen forms
-# (Telegram only autocompletes underscores) and older names kept alive so they
-# do not silently break. Everything else must appear in /help.
-ALIASES = {"/start", "/help",
-           "/next-orders", "/open-orders", "/closed-orders"}
+def canon(name):
+    """-> one spelling for a command bound under two. /open-orders and
+    /open_orders are the same screen, and both the selftest and the audit ask
+    "is every command in /help" -- a question that must not depend on which
+    spelling /help happens to print. It depended on it twice: the audit searched
+    for `c.replace("_", "\\_")`, the escaped form, and the selftest dropped any
+    match containing a hyphen. Both broke the moment /help switched to the hyphen
+    spellings, and neither was wrong about anything a reader cares about.
+    """
+    return name.replace("-", "_")
+
+
+# Bound and deliberately NOT in /help, because neither is a screen: /start is
+# Telegram's handshake and /help is the map itself. Every other command must be
+# findable there under one of its spellings. The hyphen forms used to be listed
+# here too, which made this set a list of spellings rather than a list of
+# exemptions -- see canon().
+ALIASES = {"/start", "/help"}
 
 
 
@@ -1048,7 +1084,7 @@ def poll_once(timeout=25):
         raw = (msg.get("text") or "").strip()
         tok = raw.split()[0].lower() if raw.split() else ""
         # Telegram appends @botname when a command is chosen from the
-        # autocomplete menu ("/next_orders@swingalpha_bot"). Without stripping
+        # autocomplete menu ("/pending_orders@swingalpha_bot"). Without stripping
         # it the lookup misses and every menu-selected command silently fell
         # through to /help.
         cmd = tok.split("@")[0]
@@ -1228,13 +1264,13 @@ def _selftest():
         assert isinstance(fn(None), str) and fn(None)
     # every advertised command must exist, and every command must be advertised
     import re as _re
-    listed = {m for m in _re.findall(r"/[a-z][a-z_-]*", cmd_help(None).replace("\\", ""))
-              if "-" not in m}
-    have = set(COMMANDS) - ALIASES
+    listed = {canon(m) for m in _re.findall(r"/[a-z][a-z_-]*", cmd_help(None))}
+    have = {canon(c) for c in COMMANDS} - {canon(a) for a in ALIASES}
     for a in ALIASES:
         assert a in COMMANDS, f"{a} is listed as an alias but is not bound"
     assert listed == have, (sorted(listed ^ have),
                             "help and COMMANDS disagree")
+    assert canon("/open-orders") == canon("/open_orders") == "/open_orders"
 
     # Every command must survive an EMPTY bucket. The bot is at its most useful
     # before the first trade, which is exactly when every record is missing.
@@ -1296,7 +1332,7 @@ def _selftest():
     assert "10-day limit" in _review({**_r, "exit_reason": "time"}, 1.4, 10)
     # an unrecognised reason must still say what happened, not invent a rule
     assert "sold: void" in _review({**_r, "exit_reason": "void"}, 0.0, 1)
-    for _c in ("cmd_next_orders", "cmd_open_orders", "cmd_closed_orders"):
+    for _c in ("cmd_pending_orders", "cmd_open_orders", "cmd_closed_orders"):
         assert "_fields(" in src.split(f"def {_c}")[1].split("\ndef ")[0], \
             f"{_c} does not use the shared layout; the three will drift apart"
     print("tg selftest ok")

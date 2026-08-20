@@ -129,7 +129,7 @@ identical from your phone's side.
 
 ### 2. Precompute the two corpus-heavy commands
 
-Only `/clusters` and `/bucket` need the full ranking. `/wallet`, `/next_orders`
+Only `/clusters` and `/bucket` need the full ranking. `/wallet`, `/pending_orders`
 and `/open_orders` need `positions.db` plus the **last day's closes only**;
 `/closed_orders`, `/findings` and `/help` need no corpus at all.
 
