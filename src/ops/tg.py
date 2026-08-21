@@ -1215,13 +1215,43 @@ def cmd_review(_=None):
         picks = selection.allocate(selection.build(corpus, as_of))
         held = {r["symbol"] for r in positions.summary(which=None)["rows"]
                 if r["status"] in ("open", "pending")}
+        # What the exchange and the papers have said about each name. Wrapped
+        # so it can never cost the review its picks: this is context, and the
+        # picks are the point.
+        mood = {}
+        try:
+            import sentiment
+            for r in picks:
+                m = sentiment.stock_sentiment(r["symbol"], as_of)
+                mood[r["symbol"]] = m
+        except Exception:
+            mood = {}
+
         out += ["", f"*Chosen tonight* ({as_of})"]
         for r in picks:
-            out.append(f"  {'🟢' if r['symbol'] in held else '⚪'} "
-                       f"{r['symbol']} — {SIZE.get(r['cluster'], r['cluster'])}, "
-                       f"score {r['score']:.0f}")
+            line = (f"  {'🟢' if r['symbol'] in held else '⚪'} "
+                    f"{r['symbol']} — {SIZE.get(r['cluster'], r['cluster'])}, "
+                    f"score {r['score']:.0f}")
+            m = mood.get(r["symbol"])
+            if m:
+                if m["composite"] is None:
+                    line += " · nothing said"
+                else:
+                    warn = "⚠️ " if m["composite"] <= -3.0 else ""
+                    line += f" · {warn}{m['band']} {m['composite']:+.1f}"
+            out.append(line)
         if not picks:
             out.append("  _nothing triggered_")
+        if mood:
+            # WITHOUT this line a reader sees five Bullish rows and concludes
+            # five good stocks. Measured: 9 of 10 scored items are positive, so
+            # Bullish is the resting state and Bearish is the one that means
+            # something. Stated in the same breath as the labels (rules.md R5)
+            # rather than left for the reader to work out.
+            out.append("_Most news is positive — about 9 in 10 items — so "
+                       "Bullish is the normal state here and Bearish is the "
+                       "one worth a look. 'Nothing said' means the filings "
+                       "were routine paperwork, not that opinion was split._")
         out.append("_/bucket for why · /clusters for the full ranking._")
     except Exception as e:
         out.append(f"_picks unavailable ({type(e).__name__})_")
