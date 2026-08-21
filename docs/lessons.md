@@ -2002,3 +2002,85 @@ Fixed two ways, and the second matters more than the first:
 2. `measure()` RAISES when an arm produces trades but zero parsed returns. No
    data can no longer be reported as a null result, by construction rather than
    by the reader noticing.
+
+## L64 — Drawdown vs concentration: the first thing to clear a pre-set bar, and it is still a decision, not an answer
+
+L62 left this open deliberately. Eight seats showed 19.7% drawdown against the
+live 31.0%, and the bucket-size bar had no adoption path for drawdown IMPROVING
+-- only a veto on it worsening -- so the question was parked rather than
+re-decided after the fact. Asked properly here (`src/research/drawdown_test.py`,
+batch 20260820-drawdown).
+
+**The 31.0 vs 19.7 gap was never evidence.** maxDD is one number off one path
+with no error bar. The fix is the whole design: split the equity curve into
+DISJOINT six-month blocks, compute drawdown inside each with the peak resetting
+at the block start, and compare arms over the same calendar blocks so the test
+is PAIRED and regime cancels out. `simulate.run` now returns the curve; it did
+not before, and nothing in the loop reads it.
+
+| seats | pathDD | mean block DD | vs live | std err | t | median | win% | LOO t |
+|---|---|---|---|---|---|---|---|---|
+| **5 (live)** | 31.0% | 6.82% | -- | -- | -- | -- | -- | -- |
+| 8 | 19.7% | 5.41% | -1.41% | 0.77 | -1.84 | -0.73% | 67% | -1.72 |
+| **12** | 20.2% | **4.82%** | **-2.01%** | 0.84 | **-2.40** | -1.65% | **75%** | **-2.61** |
+
+**Twelve seats clears every condition of the bar set before the run:** |t| > 2,
+median agreeing with the mean in sign, monotone across 5/8/12, and no resolved
+return cost. Eight seats does not (t = -1.84).
+
+**It is not one episode, and that was the alternative the design was built to
+catch.** 2022H1 dominates in magnitude (22.5% at five seats against 12.8% at
+twelve, a -9.7 point difference), but dropping it makes the statistic STRONGER,
+not weaker: LOO t = -2.61 against -2.40. Nine of twelve blocks improved. A
+single-episode artefact behaves the opposite way -- it inflates the variance it
+is measured against and collapses when removed.
+
+### Three reasons to hold this loosely, stated because the result is favourable
+
+1. **Twelve blocks is twelve observations.** At df=11 the 5% critical value is
+   2.201, so t = -2.40 is p ~ 0.035. It clears; it does not clear comfortably.
+2. **Multiplicity was not pre-registered, and it should have been.** Two arms
+   were tested against the same reference. A Bonferroni threshold for two
+   comparisons at 5% is |t| > 2.49, which **twelve seats does not reach** on the
+   headline statistic (it does on the leave-one-out, -2.61). The bar as written
+   was cleared and the bar as written is what governs -- criteria may be
+   tightened, never loosened, and that cuts both ways: a correction invented
+   after seeing the number is not a correction, it is a veto. Recorded as a
+   defect in the pre-registration, to be fixed in the NEXT one.
+3. **The return cost is unresolved but the point estimate is a halving.** Twelve
+   seats earns +1.08% per trade against +2.15% (t = -0.85, inside the noise) and
+   CAGR +3.83% against +7.59%. Condition (d) tested per-trade return, which is
+   the right statistical endpoint, and CAGR has no error bar so it cannot be
+   tested at all. But halving the headline is what an operator actually
+   experiences, and no t-statistic makes that disappear.
+
+**This does not contradict rank depth; it is the same finding seen from the
+other side.** Twelve seats earns less per trade exactly as the -1.18%-per-cohort
+slope predicts, because the extra seats are filled from further down. What the
+extra seats buy is diversification of idiosyncratic risk. Both are true at once,
+and the choice between them is a preference, not a fact.
+
+**Nothing was changed.** `MAX_POSITIONS` is still 5. How much drawdown the book
+should accept is the operator's design decision and not an output of a backtest
+-- CLAUDE.md is explicit that the approach is the user's design, not a parameter
+to be tuned away. Clearing the bar earns the question a hearing with evidence
+attached; it does not earn an edit.
+
+### What the selftest found out about the bar itself
+
+Building the guard exposed three things worth keeping:
+
+- **Condition (b) is a backstop, not the primary defence.** A lone outlier
+  inflates the variance it is measured against, so a one-episode fixture fails
+  condition (a) on its own and never reaches the leave-one-out check. Useful to
+  know before trusting a guard to do work the t-statistic already did.
+- **A real bug in that guard**: a zero-variance leave-one-out set was treated as
+  a FAILURE, when a perfectly consistent remainder is the strongest possible
+  pass. It would have rejected genuine effects.
+- **A divide-by-zero** when both arms had zero variance, in the code that
+  decides whether the bar is met.
+
+The selftest now checks all four directions: a one-episode fixture is rejected,
+a consistent effect carrying one extra-bad block SURVIVES (a guard that rejects
+every series with a worst block rejects every real series), and a resolved
+return cost vetoes even convincing drawdown.

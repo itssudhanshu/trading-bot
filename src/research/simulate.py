@@ -92,6 +92,12 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
     next_pid = 0                 # both legs of a scaled exit share one id
     fy_net, taxed = {}, set()
     occupancy = []
+    # (day, equity) once per session. maxdd below is ONE number off ONE path
+    # and carries no error bar, so a drawdown comparison between two configs
+    # cannot be resolved from it. The curve lets drawdown be recomputed inside
+    # disjoint windows, which turns a single realisation into a distribution.
+    # Recorded, never acted on here: nothing in this loop reads it.
+    curve = []
     for di in range(start_idx, len(days)):
         day = days[di]
         still = []
@@ -184,6 +190,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
             taxed.add(y)
         peak = max(peak, equity)
         maxdd = max(maxdd, (peak - equity) / peak)
+        curve.append((day, equity))
 
         room = max_pos - len(open_pos)
         if room > 0 and di % refresh == 0 and di + 1 < len(days):
@@ -274,7 +281,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
             "equity": equity, "capital": capital, "years": yrs,
             "total_pct": (equity / capital - 1) * 100,
             "cagr": ((equity / capital) ** (1 / yrs) - 1) * 100 if yrs > 0.5 else float("nan"),
-            "maxdd": maxdd * 100, "trades": closed}
+            "maxdd": maxdd * 100, "trades": closed, "curve": curve}
 
 
 RESULTS = paths.SDATA / "simulations.jsonl"
