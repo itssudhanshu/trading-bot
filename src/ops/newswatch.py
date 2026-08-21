@@ -108,6 +108,18 @@ MAX_FEED_AGE_DAYS = 7
 
 _robots_cache = {}
 
+# Feeds worth retrying through Nimble when a plain request is refused. These
+# are sources whose robots.txt PERMITS the path -- the refusal is bot protection
+# reacting to a urllib user-agent, not a stated policy -- so escalating to a
+# renderer is asking the same question a browser would. Nimble applies its own
+# robots check on top; a source that actually disallows is still not fetched.
+ESCALATE = {
+    "mc_latest":   "https://www.moneycontrol.com/rss/latestnews.xml",
+    "mc_results":  "https://www.moneycontrol.com/rss/results.xml",
+    "mc_buzz":     "https://www.moneycontrol.com/rss/buzzingstocks.xml",
+    "zeebiz":      "https://www.zeebiz.com/latest.xml/feed",
+}
+
 
 def robots_ok(url, ua=UA):
     """-> True if this host's robots.txt permits `url`.
@@ -221,14 +233,23 @@ def _query_for(symbol, name):
     So a query needs a resolved name that is more than the ticker and carries a
     word long enough to be a real name.
     """
-    if not name or name.strip().upper() == symbol.upper():
+    if not name:
         return None
     q = " ".join(w for w in name.split()
                  if w.lower().strip(".,") not in ("limited", "ltd", "ltd.", "the"))
+    q = q.strip()
+    # Compare the STRIPPED query against the ticker, not the raw name. "TAKE
+    # Limited" is a real registered name and differs from "TAKE", so a check on
+    # the raw name passes -- and then "Limited" is removed and the query IS the
+    # bare ticker, which is what searched for take-profit orders. The property
+    # is that the query must be more specific than the ticker, and only the
+    # stripped form can answer that.
+    if q.upper().replace(" ", "") == symbol.upper():
+        return None
     words = [w for w in re.split(r"[^A-Za-z]+", q) if len(w) >= 4]
     if not words:
         return None
-    return q.strip() or None
+    return q or None
 
 
 def _publisher(raw, host):
@@ -303,6 +324,29 @@ def parse_feed(body, source=""):
     return out
 
 
+def _escalate(name, url, status, log=print):
+    """-> (body, status, via) after retrying a refused feed through Nimble.
+
+    Optional in every sense: with no key configured this returns the original
+    refusal unchanged and the caller carries on. A daily job must not start
+    failing because an optional key expired.
+    """
+    if name not in ESCALATE:
+        return b"", status, "direct"
+    try:
+        import nimble
+    except Exception:
+        return b"", status, "direct"
+    if not nimble.available():
+        log(f"  {name}: HTTP {status}; no NIMBLE_API_KEY, not escalating")
+        return b"", status, "direct"
+    page = nimble.extract(url, formats=["html"])
+    if not page.ok or not page.html:
+        log(f"  {name}: HTTP {status}; nimble also failed ({page.error[:60]})")
+        return b"", status, "direct"
+    return page.html.encode(), 200, "nimble"
+
+
 def capture_symbols(symbols, log=print, fetcher=None, pause=2.0):
     """Query per company and append what is new, tagged with its symbol.
 
@@ -375,7 +419,18 @@ def capture(feeds=None, log=print, fetcher=None):
     """
     from snapshot import fetch
     fetcher = fetcher or fetch
-    feeds = feeds if feeds is not None else FEEDS
+    feeds = feeds if feeds is not None else dict(FEEDS)
+    # The escalate-only sources are attempted ONLY when a key exists. Adding
+    # them unconditionally would mean four requests a day that are known to
+    # return 403, which is noise in the log and load on someone else's server
+    # for a result already known.
+    if feeds is not None and fetcher is None:
+        try:
+            import nimble
+            if nimble.available():
+                feeds = dict(feeds, **ESCALATE)
+        except Exception:
+            pass
     now = datetime.now(timezone.utc)
     day = now.date().isoformat()
     out = NEWS / f"{day}.jsonl"
@@ -398,6 +453,11 @@ def capture(feeds=None, log=print, fetcher=None):
                 log(f"  skip {name}: robots.txt disallows")
                 continue
             status, body = fetcher(url, timeout=30)
+            via = "direct"
+            if (status != 200 or not body) and fetcher is not None:
+                # A refusal is not always the end. These sources publish the
+                # feed and permit the path; they refuse a urllib user-agent.
+                body, status, via = _escalate(name, url, status, log)
             if status != 200 or not body:
                 log(f"  skip {name}: HTTP {status}")
                 continue
@@ -419,9 +479,11 @@ def capture(feeds=None, log=print, fetcher=None):
             for i in new:
                 seen.add(i["link"])
                 i["captured_at"] = now.isoformat()
+                i["via"] = via          # how it was obtained, kept with the item
                 fh.write(json.dumps(i, ensure_ascii=False) + "\n")
             added += len(new)
-            log(f"  {name}: {len(items)} items, {len(new)} new")
+            log(f"  {name}: {len(items)} items, {len(new)} new"
+                + ("" if via == "direct" else f" (via {via})"))
     log(f"captured {added} new items -> {out.name}")
     return added
 
@@ -517,6 +579,12 @@ def _selftest():
     # --- a query that cannot be trusted is not made ------------------------
     assert _query_for("TAKE", "") is None, "a bare ticker became a search query"
     assert _query_for("TAKE", "TAKE") is None, "name equal to the ticker is not a name"
+    # The case that actually happened: a real registered name that REDUCES to
+    # the ticker once the generic tail is stripped. Checking the raw name lets
+    # this through, and the query then searched the bare word "TAKE".
+    assert _query_for("TAKE", "TAKE Limited") is None, \
+        "a name that strips down to the bare ticker became a query"
+    assert _query_for("TAKE", "Take Solutions Limited") == "Take Solutions"
     assert _query_for("XYZ", "Ltd") is None, "no word long enough to be a name"
     assert _query_for("YUKEN", "Yuken India Limited") == "Yuken India"
     assert _query_for("HAPPYFORGE", "Happy Forging Limited") == "Happy Forging"
@@ -538,6 +606,16 @@ def _selftest():
                "url=https%3a%2f%2fwww.moneycontrol.com%2fnews%2fx.html&c=1")
     assert _unwrap(wrapped) == "https://www.moneycontrol.com/news/x.html", _unwrap(wrapped)
     assert _unwrap("https://plain.example/story") == "https://plain.example/story"
+
+    # --- escalation is optional and silent when unconfigured ---------------
+    # The job must behave identically with no key, which is how it behaves
+    # today and how it will behave the day a key expires.
+    b, st, via = _escalate("mc_latest", "https://x.example/f", 403,
+                           log=lambda *_: None)
+    assert via == "direct" and st == 403 and b == b"", (via, st, b)
+    # a feed not on the escalate list is never escalated at all
+    assert _escalate("et_markets", "https://x.example/f", 500,
+                     log=lambda *_: None)[2] == "direct"
 
     # --- the staleness guard ------------------------------------------------
     # Both moneycontrol feeds returned HTTP 200 with items 848 days old. A guard
