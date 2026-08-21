@@ -2014,7 +2014,29 @@ significance, not to find it: the subgroup was chosen after the answer was
 known, so it needs a stiffer penalty than the pre-registered bar, not the same
 one.
 
-What it is instead is a sharp, cheap, falsifiable hypothesis for the future:
+**Then the sample was redrawn, and the number moved.** Rebasing onto main added
+two sessions to the corpus, which shifted the sampler's stride and therefore
+redrew every sampled symbol-date — an accidental but genuine independent draw of
+the same measurement:
+
+| feature | first draw (n=3,833) | redraw (n=3,847) |
+|---|---|---|
+| ann_burst | −0.06%, t = −0.18 | +0.37%, t = +1.19 |
+| **ann_tone** | **+1.80%, t = +2.20** | **+1.24%, t = +1.71** |
+| ann_flag | −0.90%, t = −1.32 | −0.29%, t = −0.40 |
+
+The two tone estimates differ by 0.56% against a standard error near 0.8% — so
+the error bar was honest, and **t = 2.20 was not a stable signal.** Redraw the
+sample and it is 1.71. Adopt at the usual |t| > 2 and this feature would have
+been in the score on Monday and out of it on Tuesday, with nothing about the
+market having changed.
+
+That is what the pre-registered 2.6 was protecting against, demonstrated twice
+in two days: once by the bar refusing the number, and once by the number
+refusing to stay put.
+
+What the tone result is instead is a sharp, cheap, falsifiable hypothesis for
+the future:
 *positive corporate actions predict; bad news does not.* And it cannot be
 confirmed on this corpus — any re-test would use the same price history that
 generated it. **The only thing that can settle it is forward paper trades, of
