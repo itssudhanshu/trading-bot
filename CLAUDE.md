@@ -24,10 +24,23 @@ wrong build:
   "book", never "holdings" -- all three existed at once and none of them
   helped (rules.md R1).
 - **rank** = a position in the score-sorted list, within a cluster.
-- There is ONE bucket. Three deeper ones ran for a day and were removed: they
-  bought ranks the score already marks as worse (-0.90% per rank step,
-  +6.41% between top and deepest), and buying what you believe is worse in
-  order to gather evidence faster is not a trade this book makes.
+- **TWO books run forward, since 2026-08-21**: the **bucket** (`main`, ranks
+  inside each band, fills the 3/2 quota) and the **pool** (`pooled`, ranks every
+  eligible name together and takes the best five, so the split lands where merit
+  puts it). Same signals, same stops, Rs 3,00,000 each, one variable different.
+  Backtests cannot separate them -- +0.04% per trade at t = +0.03 (L65) -- which
+  is precisely why they run forward instead. `positions.BUCKETS` is the registry
+  and `positions.LABEL` the words a person reads.
+- **The bucket is still the record.** `overview.py`, the baseline and every
+  statistic key off `main`. The pool's trades are shown and never counted: the
+  two hold the same names constantly, so pooling their results would put one
+  price path in twice, and letting the pool move the weights would feed back
+  into the bucket's own picks (`learning.for_weights`).
+- Three DEEPER buckets ran for a day in 2026-08 and were removed: they bought
+  ranks the score already marks as worse (-0.90% per rank step, +6.41% between
+  top and deepest), and buying what you believe is worse in order to gather
+  evidence faster is not a trade this book makes. The pool is not that: it is an
+  equally-ranked alternative rule, not a worse slice of the same one.
 - Do not say "slot". Say stock, or position.
 
 ## Autonomy

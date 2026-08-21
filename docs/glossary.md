@@ -52,7 +52,8 @@ three words for one thing has already caused a wrong build.
 
 | Term | Plain English |
 |---|---|
-| **bucket** | The five stocks held, and their combined profit and loss. There is exactly one bucket. Never call it a portfolio, a book, or holdings. |
+| **bucket** | The five stocks held, and their combined profit and loss. Never call it a portfolio, a book, or holdings. Since 2026-08-21 there are two: the **bucket** and the **pool**. |
+| **pool** | The second book, running beside the bucket on its own Rs 3,00,000. It ranks every eligible share together and takes the best five, so it has no 3/2 size quota -- its split can be 5/0, 1/4, anything. Same signals and stops as the bucket; only the seat allocation differs. |
 | **cluster** | A size band of companies, by how much money trades in them daily. **micro** = smaller, **small** = a bit bigger. The largest third of the market is never traded at all. A cluster is not a bucket. |
 | **rank** | Position in the score-sorted list within one cluster. Rank 1 = best. |
 | **score** | A 0–100 number combining four measurements. Used only to sort stocks against others of similar size — it cannot say whether a stock is good in absolute terms. |

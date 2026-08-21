@@ -462,8 +462,16 @@ def main():
 
     queued = {r["bucket"] for r in positions.summary(conn, which=None)["rows"]
               if r["status"] == "pending"}
-    check("nothing is queued outside the one bucket",
-          queued <= {positions.MAIN}, f"queued into {sorted(queued) or 'nothing'}")
+    # REGISTERED buckets, not `main` alone. This read `queued <= {MAIN}` and was
+    # right while one bucket existed; the pool's first order on 2026-08-21 would
+    # have failed it. The property it protects is unchanged -- an order must not
+    # appear under a name nothing queues into, which is how a retired bucket or
+    # a typo would quietly acquire positions. Widened to the registry, not
+    # removed: an unknown bucket still fails.
+    check("nothing is queued outside a registered bucket",
+          queued <= set(positions.BUCKETS),
+          f"queued into {sorted(queued) or 'nothing'}; "
+          f"registered {sorted(positions.BUCKETS)}")
 
     # A STALE text record is worse than none: it reads as the forward evidence
     # while missing whatever the last tick did. Checked by replaying it into a

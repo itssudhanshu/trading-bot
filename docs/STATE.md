@@ -130,11 +130,28 @@ disk, and it caught exactly this the day the files moved.
 money and one bucket. If a second strategy ever trades forward, that is a
 decision to take deliberately, with the `origin` column, not by a folder move.
 
-## The live bucket — one, `main`
+## The live books — two, `main` and `pooled`
 
-There is ONE bucket: 3 micro + 2 small, `main`. `overview.py`, STATE.md and the
-audit all key off it, and the audit enforces that nothing is queued outside it
-(`queued into ['main']`).
+Since **2026-08-21** two books run forward side by side inside sprout, on the
+same signals, the same stops and Rs 3,00,000 each:
+
+| key | shown as | rule |
+|---|---|---|
+| `main` | **bucket** | ranks inside each size band, fills a 3/2 quota |
+| `pooled` | **pool** | ranks every eligible name together, takes the best five |
+
+One variable differs -- how the five seats are allotted -- so a divergence has
+one cause. They run forward because no backtest can separate them: +0.04% per
+trade at t = +0.03 (L65). The pool's first order was KENNAMET, queued
+2026-08-21, filling at Monday's open.
+
+**`main` is still the record.** `overview.py`, the recorded baseline and every
+statistic key off it; the pool's trades are shown and never counted, and
+`learning.for_weights()` keeps the pool out of the weights so it cannot feed
+back into the bucket's own picks. The audit enforces that nothing is queued
+outside the REGISTERED buckets -- widened from `{main}` on 2026-08-21, since the
+pool's first order would otherwise have failed it, and still rejecting any
+unknown name.
 
 **A multi-bucket variant was explored and removed within the day.** The
 arithmetic that motivated it is real: one bucket makes ~71 trades a year and
