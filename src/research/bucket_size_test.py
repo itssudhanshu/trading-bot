@@ -98,6 +98,24 @@ ARMS = [
 ]
 LIVE = 5
 
+# POST-HOC ARM, and the label is the point. Proposed by the operator AFTER the
+# first results were seen, so it does not carry the pre-registration the four
+# arms above do. Two consequences, both stated before it was run:
+#
+#   1. It varies TWO things at once. Every ladder arm holds the live 3:2 ratio,
+#      so they differ in size alone; 4/4 changes size AND mix, and mix is a
+#      separate dial already measured at t = -0.24 with a sign that flipped
+#      whenever another setting moved. A win here cannot be attributed.
+#   2. An arm added after seeing the table is one more comparison against the
+#      same 195-trade reference. Adding arms until one looks good IS the noise
+#      search this file exists to avoid, so it is excluded from the monotone
+#      check and CANNOT trigger adoption under the pre-set bar. Reported, not
+#      promoted.
+#
+# The one clean reading it does allow: 8@4/4 against 8@5/3 differs ONLY in mix,
+# same seat count, same deployment. That isolates the mix at a fixed size.
+POST_HOC = [(8, {"micro": 4, "small": 4})]
+
 
 def _stats(vals):
     """-> (mean, std_err, n) in percent per trade."""
@@ -130,9 +148,9 @@ def _block(day):
     return "2022-2023" if y <= 2023 else "2024-2026"
 
 
-def measure(corpus, days):
+def measure(corpus, days, arms=None):
     out = {}
-    for seats, take in ARMS:
+    for seats, take in (arms or ARMS):
         entry._CACHE.clear()
         r = simulate.run(corpus, days, max_pos=seats,
                          take_per_cluster=take, **BASE)
@@ -241,6 +259,40 @@ def promote(res, verdicts):
     return True, f"{best} seats clears every condition of the pre-set bar"
 
 
+def post_hoc(corpus, days, res):
+    """Report POST_HOC arms against the live bucket AND against the ladder arm
+    of the same seat count, which is the only comparison that isolates mix."""
+    out = measure(corpus, days, arms=POST_HOC)
+    lm, lse, ln = _stats([p for _, _, p in res[LIVE]["rows"]])
+    print("\n\nPOST-HOC ARM -- proposed after the results above were seen.")
+    print("Excluded from the monotone check and from the promotion bar; it "
+          "varies mix AND size,\nso a win here cannot be attributed to either.")
+    for seats, take in POST_HOC:
+        d = out[seats]
+        m, se, n = _stats([p for _, _, p in d["rows"]])
+        mix = f"{take.get('micro',0)}/{take.get('small',0)}"
+        t = (m - lm) / ((se ** 2 + lse ** 2) ** 0.5)
+        print(f"\n  {seats} seats {mix}: CAGR {d['cagr']:+.2f}%  "
+              f"maxDD {d['maxdd']:.1f}%  occ {d.get('occupancy') or 0:.2f}  n={n}")
+        print(f"    per trade {m:+.2f}% +/- {se:.2f}%")
+        print(f"    vs live {LIVE}@3/2 : {m - lm:+.2f}%  t={t:+.2f}  "
+              f"{'RESOLVED' if abs(t) > 2 else 'inside the noise'}")
+        if seats in res:                       # same seats, mix-only contrast
+            bm, bse, bn = _stats([p for _, _, p in res[seats]["rows"]])
+            bmix = (f"{res[seats]['take'].get('micro',0)}/"
+                    f"{res[seats]['take'].get('small',0)}")
+            tb = (m - bm) / ((se ** 2 + bse ** 2) ** 0.5)
+            print(f"    vs {seats}@{bmix} : {m - bm:+.2f}%  t={tb:+.2f}  "
+                  f"{'RESOLVED' if abs(tb) > 2 else 'inside the noise'}"
+                  f"   <- same seats, MIX ONLY (n={bn})")
+        for cl in ("micro", "small"):
+            a = _stats([p for c, _, p in d["rows"] if c == cl])
+            b = _stats([p for c, _, p in res[LIVE]["rows"] if c == cl])
+            print(f"    {cl:6} {a[0]:+.2f}% +/- {a[1]:.2f}% (n={a[2]:>3})   "
+                  f"live {b[0]:+.2f}% +/- {b[1]:.2f}% (n={b[2]:>3})")
+    return out
+
+
 def _selftest():
     """Arithmetic and the bar, without a backtest. The stats are the part that
     can silently lie: a wrong std err turns noise into a finding."""
@@ -282,6 +334,7 @@ if __name__ == "__main__":
         days = sorted({d for x in corpus.values() for d in x.days})
         res = measure(corpus, days)
         verdicts = report(res)
+        post_hoc(corpus, days, res)
         adopt, why = promote(res, verdicts)
         print(f"\nPROMOTION BAR: {'ADOPT -- ' if adopt else 'no change. '}{why}")
         rec = {"at": BATCH, "kind": "bucket_size",

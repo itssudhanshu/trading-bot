@@ -1924,6 +1924,40 @@ deployment cap once the slice grows. That is the risk invariant working, and
 CLAUDE.md forbids searching risk invariants, so it was not relaxed to tidy the
 comparison. The 3-seat row answers "3 seats AND less money deployed".
 
+### 8 seats at 4/4, asked afterwards -- and the cleanest mix test yet run
+
+The operator proposed re-cutting the 8-seat bucket as 4 micro / 4 small rather
+than the 5/3 the ladder used. Run as a POST-HOC arm: excluded from the monotone
+check and from the promotion bar, because an arm added after seeing the table is
+one more comparison against the same reference, and adding arms until one looks
+good is the search this file exists to avoid.
+
+| arm | CAGR | maxDD | occ | n | per trade | vs live | t |
+|---|---|---|---|---|---|---|---|
+| 8 @ 4/4 | +5.58% | 21.5% | 4.35 | 311 | +1.59% +/- 0.79% | -0.56% | -0.42 |
+| 8 @ 5/3 | +5.59% | 19.7% | 4.47 | 318 | +1.54% +/- 0.81% | -0.61% | -0.46 |
+
+Inside the noise against the live bucket, like everything else here. But the
+comparison worth keeping is the one the ladder could never make, because every
+ladder arm holds the mix ratio fixed:
+
+**8 @ 4/4 against 8 @ 5/3 -- same seats, same deployment, mix ONLY -- is
++0.05% per trade at t = +0.05, on n=311 vs n=318.**
+
+Those are the two largest samples in the experiment and the difference is
+indistinguishable from exactly zero. CAGR agrees: 5.58% against 5.59%. This is
+the tightest test of the cluster mix this project has run -- the 3/2 vs 2/3
+comparison was confounded by settings that moved at the same time and gave a
+different sign on each of three occasions (t = -0.24 most recently). Holding
+seats and deployment constant and moving only the mix moves nothing.
+
+So the mix is not a lever. Whatever the bucket contributes, it is not coming
+from how the seats are divided between micro and small; it comes from how MANY
+seats there are, which is the axis that moved every number in the table above.
+Per cluster the 4/4 arm reads micro +1.44% +/- 1.21% (n=169) and small +1.77%
++/- 0.95% (n=142), against the live +2.35% (n=115) and +1.87% (n=80): giving
+micro one fewer seat did not help small.
+
 ### The bug that would have inverted this result
 
 `selection.position_size` capped a name at `capital * DEPLOY_PCT / MAX_POSITIONS`
