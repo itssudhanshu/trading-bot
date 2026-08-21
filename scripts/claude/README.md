@@ -41,6 +41,27 @@ control, report the error bar, adopt nothing inside the noise. It is CLAUDE.md's
 turned into a checklist, because the failure mode is deciding what a number
 means after seeing it.
 
+## skills/sentiment
+
+How a stock is being talked about, from this repo's own archives: what the
+company told the exchange, and what the papers said. Adapted from
+`sentiment-analysis` in tradeinsight-info/investment-analysis-skills -- their
+rubric, bands and report shape, their data replaced.
+
+Their three channels are NewsAPI, StockTwits and r/wallstreetbets. Those are
+right for a US large cap and carry essentially nothing on an NSE microcap, and a
+channel with no coverage scored as neutral reads as "no view" while meaning "no
+data". So the channels here are the announcement corpus (1,019,495 rows, dated
+to the second, complete) and `data/news/`.
+
+The split that matters: `src/ops/sentiment.py` decides **what was visible** and
+the skill decides **what it means**. The first half has to be reproducible and
+is -- same date in, same evidence out, with the 15:30 visibility rule applied.
+The second half is a model's judgement and cannot be, which is exactly why the
+skill is forbidden from feeding any measured result. thicket's `ann_tone` is the
+measured version: frozen, deterministic, and currently off at t = 1.71 against a
+bar of 2.6.
+
 ## No hooks, deliberately
 
 The two obvious candidates are already handled somewhere better:
