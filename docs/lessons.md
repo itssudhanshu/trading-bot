@@ -2043,6 +2043,45 @@ generated it. **The only thing that can settle it is forward paper trades, of
 which this project has still closed zero.** Which is where CLAUDE.md said the
 highest expected value was before any of this work started.
 
+### H5: patterns, and the arm that cleared instead of killing
+
+Flag, ascending triangle and cup-and-handle, frozen in their own commit before
+this test was written. Control is `breakout`, the incumbent, not `none`.
+
+| trigger | CAGR | maxDD | n | per trade | vs breakout | t |
+|---|---|---|---|---|---|---|
+| breakout (control) | +7.34% | 31.0% | 196 | +2.09% | — | — |
+| **pattern** | +8.75% | 33.9% | 214 | +2.51% | **+0.43%** | **0.21** |
+| none (looseness ref) | −2.43% | 39.5% | 236 | +0.12% | −1.97% | −1.28 |
+| flag | +1.76% | 40.4% | 199 | +1.05% | −1.04% | −0.63 |
+| asc_triangle | +5.23% | **10.4%** | 145 | +1.83% | −0.25% | −0.19 |
+| cup_handle | +4.17% | **10.0%** | **30** | **+8.50%** | +6.42% | 0.65 |
+
+Not adopted: t = 0.21 against a bar of 2.6.
+
+**The looseness arm behaved backwards, which is worth more than if it had
+behaved as expected.** `pattern` fires on 17.6% of bars against breakout's 3.9%,
+so the obvious failure mode was that any gain is just a looser filter reaching
+deeper down the ranked list — the one penalty this project has actually resolved
+(−1.18% per cohort, t = −4.10). Instead `none`, maximally loose, *lost* 1.97%
+per trade. Looseness is plainly harmful here, so pattern's small edge is not
+made of it. The arm was put in expecting it to kill the hypothesis; it cleared
+it, and the hypothesis died on its own error bar anyway.
+
+**cup_handle is the most dangerous number produced anywhere in this work:**
++8.50% per trade, four times the control — on **n = 30**. Its standard error
+puts it at t = 0.65. Thirty draws from a distribution with 16% per-trade spread
+will throw up a mean like that routinely. It was registered as description with
+no adoption path *before* it was run, which is the only reason it is a curiosity
+here rather than trellis's headline.
+
+**And one thing is left deliberately undecided.** asc_triangle and cup_handle
+both show ~10% maximum drawdown against breakout's 31%. That is a large move in
+the direction this book cares most about — and there is **no pre-registered
+adoption path for drawdown**, the same hole L62 records for bucket size.
+Deciding it now would be picking the criterion after seeing the number, which is
+the one habit this file exists to prevent. It wants its own pre-registered test.
+
 ---
 
 ## L62 — Bucket size measured for the first time: monotone, and still inside the noise
