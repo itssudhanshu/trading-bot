@@ -66,9 +66,40 @@ UA = "trading-bot-newswatch/1.0 (personal research; contact via repo owner)"
 FEEDS = {
     "et_markets":
         "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
+    "et_stocks":
+        "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
+    "et_ipo":
+        "https://economictimes.indiatimes.com/markets/ipos/fpos/rssfeeds/14655708.cms",
     "livemint_markets":
         "https://www.livemint.com/rss/markets",
+    "livemint_companies":
+        "https://www.livemint.com/rss/companies",
 }
+
+# --- the per-company channel ------------------------------------------------
+# The general feeds above are market-wide and almost never name a microcap: the
+# first day's archive matched ZERO headlines to YUKEN, which makes the whole
+# news channel useless for exactly the stocks this book trades. A per-company
+# query fixes that, and finding one that is allowed took some looking:
+#
+#   Google News RSS      perfect data, 64-100 items per company -- and
+#                        news.google.com/robots.txt is "Disallow: /" with only
+#                        "Allow: /$" for every agent. NOT USED.
+#   Yahoo Finance RSS    robots.txt disallows.
+#   Reuters              robots.txt disallows.
+#   Moneycontrol         HTTP 403 to any non-browser agent, all four feeds.
+#   StockTwits           404 on every NSE symbol tried, RELIANCE included --
+#                        it does not cover this market at all.
+#   Bing News RSS        ALLOWED: robots.txt disallows /search but permits
+#                        /news/search, checked both ways rather than assumed.
+SYMBOL_QUERY = "https://www.bing.com/news/search?q={q}&format=RSS"
+
+# A per-symbol item older than this is not archived. This is NOT the dead-feed
+# guard below: a quiet microcap with nothing but six-month-old coverage is
+# normal and its feed is perfectly alive, so the staleness rule that skips a
+# whole dead SOURCE must not be applied to a quiet COMPANY. Here the filter is
+# per item.
+SYMBOL_MAX_AGE_DAYS = 30
 
 # A feed whose newest item is older than this is treated as dead and its items
 # are NOT stored. Feeds die silently and keep returning 200; without this the
@@ -138,8 +169,110 @@ def _text(el, *names):
     return ""
 
 
+def _unwrap(link):
+    """-> the publisher's own URL behind an aggregator redirect.
+
+    Bing wraps every result in news/apiclick.aspx with the real address in a
+    `url=` parameter. Stored wrapped, every item's host reads "bing.com" and the
+    archive cannot say who published anything -- which is most of what makes a
+    headline worth keeping.
+    """
+    try:
+        p = urllib.parse.urlparse(link)
+        if "bing.com" in p.netloc and "apiclick" in p.path:
+            q = urllib.parse.parse_qs(p.query).get("url")
+            if q and q[0].startswith("http"):
+                return q[0]
+    except Exception:
+        pass
+    return link
+
+
+# A landing or tag page is not a story. Bing returns these alongside articles --
+# "Get all latest & breaking news on Happy Forgings" is a tag index, not news --
+# and archiving them would pad the count with items that can never be scored.
+_NOT_A_STORY = re.compile(r"/(tags?|topic|topics|quotes?|stocks?pricequote"
+                          r"|share-price|company)/", re.I)
+
+# The URL filter alone let "Yuken India Share Price" and "Yuken India Ltd YUKEN"
+# through on the first live run: quote and profile pages whose paths look like
+# ordinary article paths. Their TITLES give them away, and a title that is just
+# an entity label carries no sentiment to score -- worse, it reads as coverage.
+_TITLE_NOT_A_STORY = re.compile(
+    r"\b(share|stock)\s+price\b|\blive\s+today\b|\bquarterly\s+earnings\b"
+    r"|\bannual\s+report\s+analysis\b|\bprice\s+live\b|\bstock\s+quote\b"
+    r"|\bshare\s+price\s+target\b|\bcompany\s+profile\b"
+    r"|\bstock\s+research\s+report\b"
+    # "Yuken India Ltd YUKEN" -- a database row rendered as a title, ending in
+    # the ticker. Real headlines do not end that way.
+    r"|\bltd\.?\s+[A-Z0-9]{3,}\s*$", re.I)
+
+
+def _query_for(symbol, name):
+    """-> the search phrase for a company, or None if it cannot be trusted.
+
+    A bad query is worse than no query. TAKE resolved to no company name -- the
+    symbol is not in the current equity master -- so the first live run searched
+    the bare ticker "TAKE" and archived an Investopedia explainer on take-profit
+    orders, filed against a stock it has nothing to do with. One such row is
+    enough to make the whole channel untrustworthy, because nothing downstream
+    can tell it from a real headline.
+
+    So a query needs a resolved name that is more than the ticker and carries a
+    word long enough to be a real name.
+    """
+    if not name or name.strip().upper() == symbol.upper():
+        return None
+    q = " ".join(w for w in name.split()
+                 if w.lower().strip(".,") not in ("limited", "ltd", "ltd.", "the"))
+    words = [w for w in re.split(r"[^A-Za-z]+", q) if len(w) >= 4]
+    if not words:
+        return None
+    return q.strip() or None
+
+
+def _publisher(raw, host):
+    """-> a publisher name that is the same string every time.
+
+    The first run recorded Moneycontrol three ways -- "Moneycontrol",
+    "moneycontrol.com" and "cnbctv18" beside "CNBCTV18" -- plus
+    "Morningstar%2c Inc." with its comma still percent-encoded. Counting
+    publishers is the main thing this field is for, and three spellings of one
+    name is three publishers to anything doing the counting.
+    """
+    name = urllib.parse.unquote(raw or "").strip()
+    if not name:
+        name = host
+    name = re.sub(r"^www\.", "", name)
+    name = re.sub(r"\.(com|in|co\.in|net|org)$", "", name, flags=re.I)
+    name = re.sub(r"\s+on\s+MSN$", "", name, flags=re.I)
+    name = name.strip() or host
+    # Case is the last difference, and lowercasing everything would turn
+    # CNBCTV18 into cnbctv18. A small table of the publishers this archive
+    # actually sees, keyed on the flattened name; anything unknown keeps the
+    # spelling it arrived with rather than being mangled into Title Case.
+    return _CANON.get(name.casefold(), name)
+
+
+_CANON = {
+    "moneycontrol": "Moneycontrol",
+    "cnbctv18": "CNBCTV18",
+    "mint": "Mint", "livemint": "Mint",
+    "the economic times": "The Economic Times",
+    "economictimes": "The Economic Times", "economic times": "The Economic Times",
+    "business standard": "Business Standard",
+    "business line": "Business Line", "thehindubusinessline": "Business Line",
+    "the financial express": "The Financial Express",
+    "financialexpress": "The Financial Express",
+    "zee business": "Zee Business", "zeebiz": "Zee Business",
+    "hindustan times": "Hindustan Times", "hindustantimes": "Hindustan Times",
+    "business today": "Business Today", "businesstoday": "Business Today",
+    "reuters": "Reuters", "news18": "News18", "investopedia": "Investopedia",
+}
+
+
 def parse_feed(body, source=""):
-    """-> [{source, title, link, published}] from RSS or Atom bytes."""
+    """-> [{source, publisher, title, link, published}] from RSS or Atom."""
     try:
         root = ET.fromstring(body)
     except ET.ParseError:
@@ -152,13 +285,85 @@ def parse_feed(body, source=""):
         link = _text(it, "link", "id")
         if not title or not link:
             continue
+        real = _unwrap(link)
+        if _NOT_A_STORY.search(urllib.parse.urlparse(real).path):
+            continue
+        if _TITLE_NOT_A_STORY.search(title):
+            continue
+        # Bing names the publisher in <News:Source>; a plain RSS feed does not,
+        # and there the host is the publisher.
+        host = urllib.parse.urlparse(real).netloc
         out.append({
             "source": source,
+            "publisher": _publisher(_text(it, "Source"), host),
             "title": re.sub(r"\s+", " ", title)[:300],
-            "link": link,
+            "link": real,
             "published": _text(it, "pubDate", "published", "updated"),
         })
     return out
+
+
+def capture_symbols(symbols, log=print, fetcher=None, pause=2.0):
+    """Query per company and append what is new, tagged with its symbol.
+
+    Tagging matters: a general-feed headline has to be matched to a company by
+    name, which is fuzzy and drops three-letter tickers entirely. An item that
+    arrived FROM a company's own query carries that attribution for free, so
+    sentiment.py can read it exactly rather than guessing.
+    """
+    import time
+    import urllib.parse
+    from snapshot import fetch
+    import sentiment                    # one definition of the company name
+    fetcher = fetcher or fetch
+    now = datetime.now(timezone.utc)
+    day = now.date().isoformat()
+    out = NEWS / f"{day}.jsonl"
+    NEWS.mkdir(parents=True, exist_ok=True)
+
+    seen = set()
+    if out.exists():
+        for line in out.read_text().splitlines():
+            try:
+                seen.add(json.loads(line)["link"])
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+    added = 0
+    with out.open("a") as fh:
+        for sym in symbols:
+            q = _query_for(sym, sentiment.company_name(sym))
+            if q is None:
+                log(f"  skip {sym}: no company name to search on "
+                    f"(not in the current equity master)")
+                continue
+            url = SYMBOL_QUERY.format(q=urllib.parse.quote(f'"{q}"'))
+            if not robots_ok(url):
+                log(f"  skip {sym}: robots.txt disallows")
+                continue
+            status, body = fetcher(url, timeout=30)
+            if status != 200 or not body:
+                log(f"  {sym}: HTTP {status}")
+                time.sleep(pause)
+                continue
+            fresh = []
+            for i in parse_feed(body, source="bing_news"):
+                if i["link"] in seen:
+                    continue
+                age = _age_days(i["published"], now)
+                if age is not None and age > SYMBOL_MAX_AGE_DAYS:
+                    continue
+                i["symbol"] = sym            # exact attribution, not a guess
+                i["captured_at"] = now.isoformat()
+                fresh.append(i)
+                seen.add(i["link"])
+            for i in fresh:
+                fh.write(json.dumps(i, ensure_ascii=False) + "\n")
+            added += len(fresh)
+            log(f"  {sym} ({q}): {len(fresh)} new")
+            time.sleep(pause)
+    log(f"captured {added} per-company items -> {out.name}")
+    return added
 
 
 def capture(feeds=None, log=print, fetcher=None):
@@ -280,6 +485,60 @@ def _selftest():
     assert not offenders, \
         f"a backtest imports the forward news archive, which has no history: {offenders}"
 
+    # --- entity pages are not stories, and publishers get one spelling ------
+    ent = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+      <item><title>Yuken India Share Price</title>
+            <link>https://example.com/a</link></item>
+      <item><title>Yuken India Ltd. Share Price Live Today</title>
+            <link>https://example.com/b</link></item>
+      <item><title>Yuken India bags a Rs 40 crore order</title>
+            <link>https://example.com/c</link></item>
+    </channel></rss>"""
+    got = parse_feed(ent, source="t")
+    assert len(got) == 1, [g["title"] for g in got]
+    assert "bags a Rs 40 crore order" in got[0]["title"], got
+
+    assert _publisher("moneycontrol.com", "x") == _publisher("Moneycontrol", "x"), \
+        "one publisher recorded under two spellings"
+    assert _publisher("Morningstar%2c Inc.", "x") == "Morningstar, Inc.", \
+        _publisher("Morningstar%2c Inc.", "x")
+    assert _publisher("News18 on MSN", "x") == "News18"
+    # Assert the PROPERTY -- the host form and the display form of one publisher
+    # must agree -- not the literal string. An earlier version asserted
+    # "livemint", which the canonical table then correctly changed to "Mint",
+    # failing a test for a reason that was an improvement.
+    assert _publisher("", "www.livemint.com") == _publisher("Mint", "x"), \
+        "a publisher's host form and display form disagree"
+    assert _publisher("", "www.moneycontrol.com") == _publisher("Moneycontrol", "x")
+    # An unknown publisher keeps the spelling it arrived with rather than being
+    # mangled -- Title Case would turn CNBCTV18 into Cnbctv18.
+    assert _publisher("SomeNewWire", "x") == "SomeNewWire"
+
+    # --- a query that cannot be trusted is not made ------------------------
+    assert _query_for("TAKE", "") is None, "a bare ticker became a search query"
+    assert _query_for("TAKE", "TAKE") is None, "name equal to the ticker is not a name"
+    assert _query_for("XYZ", "Ltd") is None, "no word long enough to be a name"
+    assert _query_for("YUKEN", "Yuken India Limited") == "Yuken India"
+    assert _query_for("HAPPYFORGE", "Happy Forging Limited") == "Happy Forging"
+
+    # and the entity-title filter catches the database-row shape
+    ent2 = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+      <item><title>Yuken India Ltd YUKEN</title><link>https://e.com/a</link></item>
+      <item><title>Stock Research Report for Yuken India Ltd</title>
+            <link>https://e.com/b</link></item>
+      <item><title>Yuken India Ltd wins export order</title>
+            <link>https://e.com/c</link></item>
+    </channel></rss>"""
+    got2 = parse_feed(ent2, source="t")
+    assert len(got2) == 1 and "export order" in got2[0]["title"], \
+        [g["title"] for g in got2]
+
+    # --- aggregator redirects must be unwrapped to the real publisher --------
+    wrapped = ("http://www.bing.com/news/apiclick.aspx?ref=FexRss&aid=&"
+               "url=https%3a%2f%2fwww.moneycontrol.com%2fnews%2fx.html&c=1")
+    assert _unwrap(wrapped) == "https://www.moneycontrol.com/news/x.html", _unwrap(wrapped)
+    assert _unwrap("https://plain.example/story") == "https://plain.example/story"
+
     # --- the staleness guard ------------------------------------------------
     # Both moneycontrol feeds returned HTTP 200 with items 848 days old. A guard
     # that only checked the status code would have called that a healthy run.
@@ -311,6 +570,36 @@ def _selftest():
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         _selftest()
+    elif "--picks" in sys.argv:
+        # Per-company news for what the active strategy is actually looking at.
+        # Bounded by the bucket's size, so this is ~10 queries a day, not 900.
+        import clusters
+        import features
+        c = features.load_corpus()
+        day = sorted({d for s in c.values() for d in s.days})[-1]
+        syms = [s for lst in clusters.pick(c, day).values() for s, _ in lst[:5]]
+        print(f"newswatch --picks: {len(syms)} candidates as of {day}")
+        capture_symbols(syms)
     else:
+        # BOTH channels on the daily tick. The general feeds give the market
+        # backdrop; the per-company queries are the only reason the archive says
+        # anything at all about a microcap -- day one matched ZERO headlines to
+        # YUKEN from the general feeds alone.
+        #
+        # No STRATEGY is set by the scheduler, so the picks are sprout's, which
+        # is the live book. That is the right list: capture news for what is
+        # actually being looked at.
         print(f"newswatch -> {NEWS}")
         capture()
+        try:
+            import clusters
+            import features
+            c = features.load_corpus()
+            day = sorted({d for s in c.values() for d in s.days})[-1]
+            syms = [s for lst in clusters.pick(c, day).values() for s, _ in lst[:5]]
+            print(f"per-company ({paths.STRATEGY}, {len(syms)} candidates):")
+            capture_symbols(syms)
+        except Exception as e:
+            # A failure here must not cost the general capture, which has
+            # already been written. The job logs and exits clean.
+            print(f"  per-company capture skipped: {type(e).__name__}: {e}")

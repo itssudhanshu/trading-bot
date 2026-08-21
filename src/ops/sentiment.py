@@ -144,6 +144,15 @@ def news_evidence(symbol, day, window=NEWS_WINDOW):
                 continue
             if r.get("captured_at", "")[:10] > day.isoformat():
                 continue
+            # An item captured FROM this company's own query carries the
+            # symbol, so it needs no guessing. Name matching is the fallback for
+            # general-feed items, and it is strictly worse: it drops short
+            # tickers and can attach an unrelated story to a company.
+            tag = r.get("symbol")
+            if tag:
+                if tag.upper() == symbol.upper():
+                    out.append(r)
+                continue
             hay = f"{r.get('title','')} {r.get('source','')}".lower()
             if any(re.search(rf"\b{re.escape(t)}\b", hay) for t in terms):
                 out.append(r)
@@ -202,8 +211,11 @@ def render(ev):
         L.append(f"  (archive begins {start}; anything earlier is ABSENT, "
                  f"not quiet)")
     for r in ev["news"][:20]:
-        L.append(f"  {r.get('captured_at','')[:10]}  [{r.get('source','')}] "
-                 f"{r.get('title','')[:150]}")
+        who = r.get("publisher") or r.get("source", "")
+        how = "matched by name" if not r.get("symbol") else "this company's own feed"
+        L.append(f"  {r.get('captured_at','')[:10]}  [{who}]  "
+                 f"{r.get('title','')[:140]}")
+        L.append(f"      ({how})")
     return "\n".join(L)
 
 
@@ -240,6 +252,20 @@ def _selftest():
             ]
             (NEWS / "2026-08-20.jsonl").write_text(
                 "".join(json.dumps(r) + "\n" for r in rows))
+            # A symbol-tagged item belongs to its symbol and to no other, even
+            # when the name would match. Attribution beats guessing.
+            tagged = dict(rows[0], title="Tagged elsewhere", link="d",
+                          symbol="OTHERCO")
+            (NEWS / "2026-08-20.jsonl").write_text(
+                "".join(json.dumps(r) + "\n" for r in rows + [tagged]))
+            assert not [r for r in news_evidence("20MICRONS", day)
+                        if r["title"] == "Tagged elsewhere"], \
+                "an item tagged to another company leaked in by name matching"
+            assert len(news_evidence("OTHERCO", day)) == 1, \
+                "a symbol-tagged item did not reach its own company"
+            (NEWS / "2026-08-20.jsonl").write_text(
+                "".join(json.dumps(r) + "\n" for r in rows))
+
             got = news_evidence("20MICRONS", day)
             titles = [r["title"] for r in got]
             assert "20 Microns wins order" in titles, titles
