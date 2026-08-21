@@ -337,6 +337,29 @@ def main():
             tg.check_markup(tg.COMMANDS[name](None))
         except Exception as e:
             bad.append(f"{name}: {type(e).__name__} {str(e)[:90]}")
+    # HOW LONG each command takes, not just whether it renders. Reported three
+    # times by the operator as "responses are coming very slow" -- three times,
+    # because nothing here measured it and every check said green. /open-orders
+    # had reached 9.64s and /wallet 9.06s while the markup check passed them
+    # both, since a slow command renders perfectly.
+    #
+    # The corpus is already warm by this point in the audit, so these are the
+    # numbers a person feels on the second command onwards. 2.0s is generous
+    # against a live book: with a valid token the whole set runs in 1.28s.
+    import time as _time
+    _slow = []
+    for _name in sorted(set(tg.COMMANDS) - {"/start"}):
+        _t0 = _time.time()
+        try:
+            tg.COMMANDS[_name](None)
+        except Exception:
+            continue                      # the render check above owns failures
+        _dt = _time.time() - _t0
+        if _dt > 2.0:
+            _slow.append(f"{_name} {_dt:.1f}s")
+    check("no command takes longer than 2s to answer", not _slow,
+          "slowest well under 2s" if not _slow else " | ".join(_slow))
+
     check("every command renders and its markup is balanced", not bad,
           f"{len(tg.COMMANDS) - 1} rendered" if not bad else " | ".join(bad))
 

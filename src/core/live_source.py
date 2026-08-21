@@ -188,7 +188,7 @@ def upstox(symbols):
     left = token_hours_left(tok)
     if left is not None and left <= 0:
         upstox.last_error = (f"UPSTOX_ACCESS_TOKEN expired {-left:.0f}h ago; "
-                             f"run `python3 upstox_login.py`")
+                             f"paste a fresh token into .env")
         return {}
     keymap = instrument_keys(symbols)
     keys = ",".join(keymap[s] for s in symbols if s in keymap)
@@ -231,37 +231,6 @@ def upstox(symbols):
 
 upstox.authoritative = True
 
-
-def google(symbols):
-    """Scraped from Google Finance. Display only.
-
-    Sanity-checked against the day range: a parsed 'open' that falls outside
-    the parsed high/low is a parse error, not a price, and is dropped rather
-    than returned. Silence is safer than a plausible wrong number.
-    """
-    import re
-    out = {}
-    for s in symbols:
-        try:
-            req = urllib.request.Request(
-                f"https://www.google.com/finance/quote/{s}:NSE",
-                headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                html = r.read().decode("utf-8", "replace")
-            v = [float(x.replace(",", ""))
-                 for x in re.findall(r"\u20b9([\d,]+\.\d{2})", html)[:4]]
-            if len(v) < 4:
-                continue
-            cur, second, hi, lo = v
-            if not (lo <= cur <= hi and lo <= second <= hi and lo < hi):
-                continue                      # markup moved; do not guess
-            out[s] = {"ltp": cur, "open": None, "high": hi, "low": lo}
-        except Exception:
-            continue
-    return out
-
-
-google.authoritative = False
 
 
 def yahoo(symbols):
@@ -346,25 +315,6 @@ def why_no_quote():
     return "; ".join(reasons) or "no reason recorded"
 
 
-def _nse(symbols):
-    """NSE's own quote API. Returns {} while it answers 403."""
-    out = {}
-    for s in symbols:
-        try:
-            req = urllib.request.Request(
-                f"https://www.nseindia.com/api/quote-equity?symbol={s}",
-                headers={"User-Agent": UA, "Referer": "https://www.nseindia.com/",
-                         "Accept": "*/*"})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                p = json.loads(r.read()).get("priceInfo", {})
-            hl = p.get("intraDayHighLow") or {}
-            if p.get("lastPrice"):
-                out[s] = {"ltp": p["lastPrice"], "open": p.get("open"),
-                          "high": hl.get("max"), "low": hl.get("min")}
-        except Exception:
-            continue
-    return out
-
 
 # ONE list, because there were two. live() iterated its own tuple and
 # authoritative() looked up its own dict, so a fifth source added to the first
@@ -372,7 +322,21 @@ def _nse(symbols):
 # non-authoritative -- positions.py declines the fill, logs "no authoritative
 # price", and a working feed looks like a missing one. Order matters: the
 # authoritative sources come first so a fill never lands on the scrape.
-CHAIN = (upstox, yahoo, _nse, google)
+# TWO SOURCES, and that is the whole chain. upstox is the token the operator
+# pastes into .env; yahoo is the backup when it has expired.
+#
+# google and _nse are gone. google was DISPLAY-ONLY -- its fields were inferred
+# from where a number sat on a scraped page -- so it could never fill an order,
+# and all it did was spend 4.93s producing prices no fill could use. _nse has
+# answered 403 since 2026-08-17 and cost 0.29s a call to say so. A source that
+# cannot fill an order is not a fallback; it is a way to show a number and
+# decline to act on it, which is worse than showing nothing.
+#
+# Consequence, stated rather than discovered: when both fail there are NO
+# prices, and /wallet and /open-orders fall back to the last close. That is the
+# correct outcome -- this file's rule is that silence beats a plausible wrong
+# number.
+CHAIN = (upstox, yahoo)
 
 
 # NSE's own API, so the fields are NAMED by the exchange (lastPrice, open,
@@ -380,7 +344,6 @@ CHAIN = (upstox, yahoo, _nse, google)
 # the whole difference from google, and it is why this one may fill an order.
 # Stated explicitly because it was fillable only by inheriting getattr()'s
 # default -- correct by accident is not the same as correct.
-_nse.authoritative = True
 
 
 # A quote is good for a minute, and a source that just failed is still failing.
@@ -498,7 +461,7 @@ def _yahoo_selftest():
     # a missing open is not a price
     assert yahoo_bar(payload([t_now], o=None), today) is None
     assert yahoo_bar(payload([]), today) is None
-    assert yahoo.authoritative is True and google.authoritative is False
+    assert yahoo.authoritative is True
     print("  yahoo date guard ok")
 
 
@@ -677,10 +640,16 @@ def _selftest():
         assert authoritative() is _fn.authoritative, \
             f"authoritative() does not recognise {_fn.__name__}"
     live.source = None
-    assert CHAIN[0].authoritative and not CHAIN[-1].authoritative, \
-        "the chain must try an authoritative source before a display-only one"
+    # TIGHTENED, not flipped. It used to read "the chain must try an
+    # authoritative source before a display-only one", which was the right
+    # property while google sat at the end of the chain. google is gone, so
+    # every source can now fill an order and the stronger statement holds:
+    # nothing in the chain may produce a price the bucket is not allowed to act
+    # on. Relaxing this back would re-admit a scraped source.
+    assert all(f.authoritative for f in CHAIN), \
+        "every source in the chain must be able to fill an order"
+    assert CHAIN[0] is upstox, "the pasted token is the primary source"
     assert getattr(upstox, "authoritative") is True
-    assert getattr(google, "authoritative") is False, "google must never fill"
     print("live_source selftest ok")
 
 
