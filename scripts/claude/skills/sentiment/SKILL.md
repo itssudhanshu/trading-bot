@@ -132,12 +132,30 @@ Two more that look like news and are not, both seen in real captures:
 
 ## Step 4 — Channel scores
 
-```
-announcement_score = mean(announcement scores) × 10
-news_score         = mean(news scores) × 10
+The scoring is done for you, deterministically:
+
+```bash
+STRATEGY=thicket python3 src/ops/sentiment.py --table
 ```
 
-A channel with no items has **no score** — not zero. Report it as "no data".
+Each item scores in [−1, +1] — the frozen category table leading and a finance
+lexicon adjusting, with negation handled ("not profitable" is negative). A
+channel then aggregates as
+
+```
+score = 10 × (sum of items that carried signal) / (2 + how many there were)
+```
+
+**Not the plain mean, and the reason matters.** Averaging every item was tried
+and made all ten candidates Neutral between +0.00 and +2.50, because ~90% of
+filings are procedural and correctly score 0, so one insolvency notice among
+thirteen became a thirteenth of a signal. A filing that says nothing is an
+absence of observation, not an observation of neutrality. The `+2` makes the far
+bands require agreement across several items: one item reaches +3.3, three reach
++6.0, six reach +7.5, and no single filing can produce a Very Bullish.
+
+A channel with no items that carried signal has **no score** — not zero. Report
+it as "no data".
 
 ## Step 5 — Composite
 
@@ -157,13 +175,36 @@ tested them and they must be described that way whenever the composite is shown.
 Always print both channel scores beside the composite so the reader can ignore
 the weighting entirely.
 
-## Step 6 — Bands
+## Step 6 — Bands, and the base rate that decides how to read them
 
-- **≥ +7.0** — very positive
-- **+3.0 to +7.0** — positive
-- **−3.0 to +3.0** — neutral
-- **−7.0 to −3.0** — negative
-- **≤ −7.0** — very negative
+- **≥ +7.0** — Very Bullish
+- **+3.0 to +7.0** — Bullish
+- **−3.0 to +3.0** — Neutral
+- **−7.0 to −3.0** — Bearish
+- **≤ −7.0** — Very Bearish
+
+**Bullish is close to the base rate here, and that changes what it means.**
+Measured across ten candidates on one day: 18 scored items positive against
+**2** negative — 90% positive — from a lexicon with 109 positive and 112
+negative words that detects negatives correctly when they exist. The skew is in
+the world, not the scale: companies announce good news and the coverage follows
+them.
+
+So read the labels asymmetrically:
+
+- **Bullish** — the normal state. It means "nothing is wrong", not "something
+  is right". Do not report it as a finding.
+- **Neutral** — usually means *nothing said anything*, not that opinion was
+  balanced. Check the signal count before reading anything into it.
+- **Bearish or Very Bearish** — **rare, and therefore the informative case.**
+  Two negative items in a sample of twenty is the level at which one is worth
+  looking at directly. Always name the filing or headline driving it.
+
+Note also that ~87 of 91 filings in that sample scored **silent** — procedural
+paperwork that correctly says nothing. That is normal and is why the aggregation
+ignores zeros rather than averaging them in.
+
+
 
 ## Step 7 — Report
 
