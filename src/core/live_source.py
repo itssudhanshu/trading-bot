@@ -383,6 +383,32 @@ CHAIN = (upstox, yahoo, _nse, google)
 _nse.authoritative = True
 
 
+# A quote is good for a minute, and a source that just failed is still failing.
+#
+# Measured 2026-08-21 with the token expired: yahoo took 3.78s to return HTTP
+# 429, nse 0.29s for nothing, google 4.93s fetching four symbols one at a time
+# -- 9.66s per call, paid again in full by the very next command. /wallet then
+# /open-orders cost 19s between them for the same four prices. With two buckets
+# the position count roughly doubles.
+#
+# TTL is short on purpose: this is a LIVE price and a stale one is a wrong one.
+# Sixty seconds is under the time it takes to read the screen it feeds.
+_CACHE = {}                       # symbol -> (fetched_at, quote)
+_DEAD = {}                        # provider name -> retry_after
+QUOTE_TTL = 60.0
+DEAD_FOR = 300.0
+
+
+def _now():
+    import time
+    return time.monotonic()
+
+
+def cache_clear():
+    _CACHE.clear()
+    _DEAD.clear()
+
+
 def live(symbols):
     """-> {symbol: quote}. Empty when no source is available. Never raises."""
     if not symbols:
@@ -397,16 +423,41 @@ def live(symbols):
             return _PROVIDER(list(symbols)) or {}
         except Exception:
             return {}
+    want = list(symbols)
+    now = _now()
+    hit = {s: q for s in want
+           for t, q in [_CACHE.get(s, (0, None))] if q and now - t < QUOTE_TTL}
+    missing = [s for s in want if s not in hit]
+    if not missing:
+        return hit                     # every price still fresh; source unchanged
     for fn in CHAIN:
+        # A source that failed seconds ago is not worth another timeout. yahoo
+        # answers 429 in 3.78s and that is 3.78s of every command until it
+        # stops, which is minutes.
+        if _DEAD.get(fn.__name__, 0) > now:
+            continue
+        t0 = _now()
         try:
-            q = fn(list(symbols))
+            q = fn(missing)
         except Exception:
             q = {}
         if q:
             live.source = fn.__name__
-            return q
-    live.source = None
-    return {}
+            _CACHE.update({s: (now, v) for s, v in q.items()})
+            return {**hit, **q}
+        # Dead-list ONLY a source that was SLOW to fail, which is the entire
+        # point: the cost being avoided is the timeout, not the failure.
+        #
+        # upstox refuses in 0.00s when the token is expired, so skipping it
+        # saves nothing -- and would cost something real. fill_live() goes
+        # through live(), so a dead-listed upstox means the 09:20 fill falls
+        # through to a display-only source and DECLINES, for five minutes after
+        # the operator refreshed the token to fix exactly that. A configuration
+        # failure is not a dead source; it is a source waiting to be configured.
+        if _now() - t0 > 1.0:
+            _DEAD[fn.__name__] = now + DEAD_FOR
+    live.source = None if not hit else live.source
+    return hit
 
 
 def authoritative():
@@ -544,7 +595,62 @@ def _upstox_selftest():
     print(f"  upstox instrument keys ok ({len(m)} cached, age-bounded)")
 
 
+def _cache_selftest():
+    """The cache must not outlive its TTL, and a FAST failure must never be
+    dead-listed -- fill_live() goes through live(), so a skipped upstox is a
+    declined morning fill."""
+    cache_clear()
+    calls = []
+
+    def slow_fail(syms):
+        import time as _t
+        calls.append("slow")
+        _t.sleep(1.1)                      # over the 1.0s dead-list threshold
+        return {}
+
+    def fast_fail(syms):
+        calls.append("fast")
+        return {}
+
+    def good(syms):
+        calls.append("good")
+        return {s: {"ltp": 5.0, "open": 5.0} for s in syms}
+
+    for f, n in ((slow_fail, "slow_fail"), (fast_fail, "fast_fail"),
+                 (good, "good")):
+        f.__name__ = n
+        f.authoritative = True
+    _chain = globals()["CHAIN"]
+    try:
+        globals()["CHAIN"] = (fast_fail, slow_fail, good)
+        assert live(["A"])["A"]["ltp"] == 5.0
+        assert "fast_fail" not in _DEAD, \
+            "a source that failed instantly was dead-listed; upstox refuses in " \
+            "0.00s and skipping it declines the morning fill"
+        assert "slow_fail" in _DEAD, "a slow failure must be skipped next time"
+        # the cache answers without touching the chain at all
+        calls.clear()
+        assert live(["A"])["A"]["ltp"] == 5.0 and not calls, calls
+        # ...and expires
+        _CACHE["A"] = (_now() - QUOTE_TTL - 1, {"ltp": 5.0})
+        live(["A"])
+        assert calls, "an expired quote was served from cache"
+        # a partial hit must fetch only what is missing
+        cache_clear()
+        globals()["CHAIN"] = (good,)
+        live(["A", "B"])
+        calls.clear()
+        _CACHE["A"] = (_now() - QUOTE_TTL - 1, {"ltp": 5.0})
+        live(["A", "B"])
+        assert calls == ["good"], calls
+    finally:
+        globals()["CHAIN"] = _chain
+        cache_clear()
+    print("  quote cache ok (fast failures retried, slow ones skipped)")
+
+
 def _selftest():
+    _cache_selftest()
     _yahoo_selftest()
     _upstox_selftest()
     assert live([]) == {}
