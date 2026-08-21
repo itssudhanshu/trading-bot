@@ -61,22 +61,46 @@ def main(day=None):
     filled, closed = positions.step(corpus, day, conn)
     s = positions.summary(conn)
 
-    rows = selection.build(corpus, day, capital=s["equity"])
-    room = selection.MAX_POSITIONS - (s["open"] + s["pending"])
-    # Pass the WHOLE allocation and let queue() apply the room, because it is
-    # the function that knows which names are already live. Slicing here first
-    # spent the room on duplicates -- see positions.queue.
-    queued = positions.queue(selection.allocate(rows), day, conn,
-                             limit=room) if room > 0 else 0
+    # EVERY bucket queues, each against its OWN holdings and its own equity.
+    # main is first and its path is unchanged: same capital, same allocate()
+    # defaults, same room arithmetic, so the recorded baseline still reproduces.
+    queued = {}
+    for name, cfg in positions.BUCKETS.items():
+        bs = s if name == positions.MAIN else positions.summary(conn, which=name)
+        seats = cfg["seats"] or selection.MAX_POSITIONS
+        room = seats - (bs["open"] + bs["pending"])
+        if room <= 0:
+            queued[name] = 0
+            continue
+        # The ranking rule is set for THIS bucket and restored immediately. A
+        # leak would silently re-rank the other bucket, and the two would stop
+        # being a comparison at all.
+        _was = selection.RANKING
+        try:
+            selection.RANKING = cfg["ranking"]
+            rows = selection.build(corpus, day, capital=bs["equity"])
+            picks = (selection.allocate(rows, None, max_pos=seats)
+                     if cfg["ranking"] == "pooled" else selection.allocate(rows))
+        finally:
+            selection.RANKING = _was
+        # Pass the WHOLE allocation and let queue() apply the room, because it
+        # is the function that knows which names are already live. Slicing here
+        # first spent the room on duplicates -- see positions.queue.
+        queued[name] = positions.queue(picks, day, conn, which=name, limit=room)
+    assert selection.RANKING == "per_cluster", "ranking leaked out of the loop"
 
     print(f"{day}  equity Rs {s['equity']:,.0f}  realised Rs {s['realised']:+,.0f}")
-    print(f"  filled {len(filled)}  closed {len(closed)}  queued {queued}")
-    print(f"  bucket: open {s['open']}  pending {s['pending']}  "
-          f"closed-total {s['closed']}")
+    print(f"  filled {len(filled)}  closed {len(closed)}  "
+          f"queued {sum(queued.values())} ({', '.join(f'{k} {v}' for k, v in queued.items())})")
+    for name in positions.BUCKETS:
+        b = s if name == positions.MAIN else positions.summary(conn, which=name)
+        print(f"  {name}: open {b['open']}  pending {b['pending']}  "
+              f"closed-total {b['closed']}  -- {positions.slice_of(name)}")
     allb = positions.summary(conn, which=None)
-    if allb["open"] != s["open"] or allb["closed"] != s["closed"]:
-        print(f"  incl. retired buckets: open {allb['open']}  "
-              f"closed-total {allb['closed']}")
+    known = sum(positions.summary(conn, which=n)["open"]
+                for n in positions.BUCKETS)
+    if allb["open"] != known:
+        print(f"  incl. retired buckets: open {allb['open'] - known} more")
 
     # Record the findings after every session that closed something, so the
     # per-stock and per-cluster picture accumulates instead of being recomputed

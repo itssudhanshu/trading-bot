@@ -88,26 +88,54 @@ COSTS = __import__("engine").Costs()
 # The two positions opened under the old design keep their labels until they
 # exit on their own rules. Nothing is sold to tidy up a naming decision.
 MAIN = "main"
-BUCKET = dict(offset=0, stop_pct=None,
-              note="ranks 1-3 smallest, 1-2 small -- the top of the ranking")
+POOLED = "pooled"
+
+# TWO BUCKETS RUN FORWARD, side by side, on the same signals and the same
+# capital. They differ in ONE thing -- how the five seats are allotted -- so a
+# divergence between them has one cause and not two:
+#
+#   main    ranks inside each size band and fills a 3/2 quota (the live rule)
+#   pooled  ranks every eligible name together and takes the best five, so the
+#           split lands wherever merit puts it: 5/0, 1/4, 2/3, whatever the day
+#           gives. Measured over history the two are INDISTINGUISHABLE in return
+#           (+0.04% per trade, t = +0.03, L65) while holding visibly different
+#           books (2.11 names against 3.10). That is exactly the pair worth
+#           running forward: no backtest can separate them, so only live trades
+#           can, and their books differ enough for a divergence to be visible.
+#
+# This is NOT the retired deeper-bucket experiment (L56). Those bought ranks
+# the score already marked as worse, to gather evidence faster. Pooled is not
+# worse by construction; it is an equally-ranked alternative rule.
+BUCKETS = {
+    MAIN:   dict(offset=0, stop_pct=None, ranking="per_cluster", seats=None,
+                 note="ranks 1-3 micro, 1-2 small -- the top of each band"),
+    POOLED: dict(offset=0, stop_pct=None, ranking="pooled", seats=5,
+                 note="the best 5 by rank, whatever band they fall in"),
+}
+BUCKET = BUCKETS[MAIN]        # the old name, still the main bucket's config
 
 
 def slice_of(name=MAIN):
-    """-> 'ranks 1-3 micro, 1-2 small', DERIVED from the mix, not restated.
+    """-> 'ranks 1-3 micro, 1-2 small', DERIVED from the rule, not restated.
 
     Written out by hand this went stale the moment the mix changed -- the same
     way a comment describing a 2/2/1 bucket survived a minute past the design
     that made it true.
     """
     import selection
+    cfg = BUCKETS.get(name, BUCKET)
+    if cfg["ranking"] == "pooled":
+        return (f"the best {cfg['seats'] or selection.MAX_POSITIONS} by rank, "
+                f"any size band")
     return ", ".join(f"ranks 1-{k} {c}"
                      for c, k in selection.TAKE_PER_CLUSTER.items())
 
 
 def bucket_cfg(name=MAIN):
     """-> the bucket's rules. Legacy names from the retired deeper buckets
-    still resolve, so their open positions keep running to their own exits."""
-    b = dict(BUCKET)
+    still resolve to main's rules, so their open positions keep running to
+    their own exits rather than raising on a name nobody queues any more."""
+    b = dict(BUCKETS.get(name, BUCKET))
     b["stop_pct"] = STOP_PCT if b["stop_pct"] is None else b["stop_pct"]
     return b
 
@@ -250,18 +278,29 @@ def _append_only(c):
     CREATE VIEW IF NOT EXISTS closed_orders AS SELECT * FROM pos WHERE status='closed';
     """)
     c.executescript(_audit_triggers(cols))
-    # One live row per symbol, whatever the bucket. The app-level dedup in
-    # queue() only ever consulted ONE bucket's holdings, so it could not see a
-    # second entry arriving by any other path -- and that is precisely how
-    # HAPPYFORGE came to be open twice at two prices. Re-entry AFTER an exit is
-    # still allowed: the index only constrains 'pending' and 'open'.
+    # One live row per symbol PER BUCKET. It used to be one per symbol full
+    # stop, which was right while a single bucket existed and is fatal the
+    # moment two run side by side: main and pooled want the same name
+    # constantly -- 23 shared picks across the last 20 sessions, and on
+    # 2026-08-18 they wanted an identical pair. Whichever queued second would
+    # have been refused every one of them, queue() would have printed
+    # "skipped ... already live" and carried on, and the second bucket's
+    # forward record would have been an artefact of an index rather than a
+    # result of a rule. That is the failure this project keeps meeting: a
+    # silent skip that looks like a finding.
+    #
+    # The protection it was created for is unchanged. HAPPYFORGE came to be
+    # open twice at two prices IN ONE BUCKET, and (symbol, bucket) still
+    # forbids exactly that. Re-entry AFTER an exit stays allowed: the index
+    # only constrains 'pending' and 'open'.
+    c.execute("DROP INDEX IF EXISTS ux_pos_live")
     try:
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_pos_live "
-                  "ON pos(symbol) WHERE status IN ('pending','open')")
+                  "ON pos(symbol, bucket) WHERE status IN ('pending','open')")
     except sqlite3.IntegrityError:
         dup = ", ".join(r[0] for r in c.execute(
             "SELECT symbol FROM pos WHERE status IN ('pending','open') "
-            "GROUP BY symbol HAVING count(*) > 1"))
+            "GROUP BY symbol, bucket HAVING count(*) > 1"))
         raise SystemExit(
             f"{DB} already holds the same symbol live twice: {dup}.\n"
             f"Rows are append-only, so RETIRE the wrong one instead of deleting "
@@ -592,6 +631,49 @@ def _bars_held_selftest():
     print("  bars_held ok (bars not calendar; never negative)")
 
 
+def _two_bucket_selftest():
+    """Two buckets must be able to hold the same name; one must not hold it
+    twice. This is the property that makes a parallel forward test mean
+    anything: main and pooled wanted the SAME name on 23 of the last 20
+    sessions' picks, and under the old global index the second bucket to queue
+    was refused every one of them -- silently, with a printed skip and a
+    carry-on. Its record would have measured the index, not the rule.
+    """
+    import tempfile
+    global DB
+    _odb = DB
+    with tempfile.TemporaryDirectory() as td:
+        DB = f"{td}/p.db"
+        try:
+            c = db()
+            row = dict(symbol="AAA", cluster="micro", qty=10, stop=90.0,
+                       target=120.0, ref_close=100.0)
+            assert queue([row], "2026-08-20", c, which=MAIN) == 1
+            # the SAME name into the other bucket must be accepted
+            assert queue([row], "2026-08-20", c, which=POOLED) == 1, \
+                "a second bucket was refused a name the first holds"
+            # ...and into the same bucket again must not
+            assert queue([row], "2026-08-20", c, which=MAIN) == 0, \
+                "one bucket took the same name twice"
+            live = c.execute("SELECT bucket FROM pos WHERE symbol='AAA'"
+                             " AND status='pending' ORDER BY bucket").fetchall()
+            assert [r[0] for r in live] == [MAIN, POOLED], live
+            # every registered bucket must describe itself; a bucket with no
+            # rule would queue main's picks under another name and read as a
+            # comparison
+            for name, cfg in BUCKETS.items():
+                assert cfg["ranking"] in ("per_cluster", "pooled"), (name, cfg)
+                assert slice_of(name), name
+                assert bucket_cfg(name)["ranking"] == cfg["ranking"], name
+            # an unknown bucket falls back to main's rules rather than raising,
+            # so retired buckets' open rows keep running to their own exits
+            assert bucket_cfg("deep2")["ranking"] == "per_cluster"
+            c.close()
+        finally:
+            DB = _odb
+    print("  two buckets hold one name; one bucket does not ok")
+
+
 def _fill_source_selftest():
     """A fill must NAME its feed, and reconcile must still find it.
 
@@ -798,6 +880,7 @@ def _selftest():
     _room_selftest()
     _record_selftest()
     _fill_source_selftest()
+    _two_bucket_selftest()
     import tempfile, learning
     _orig_ledger = learning.LEDGER
     learning.LEDGER = __import__("pathlib").Path(tempfile.gettempdir()) / "pbook_selftest_ledger.jsonl"
@@ -838,21 +921,51 @@ def __selftest_body():
             assert queue([row_in], days[200], c) == 1
             # queueing the same symbol twice must not double it
             assert queue([row_in], days[200], c) == 0
-            # A SECOND BUCKET MUST NOT TAKE IT EITHER. This assertion is the
-            # reverse of what it said before, and the reversal is deliberate:
-            # it used to protect the `tight` bucket, which held main's names on
-            # purpose so a 5% stop could be compared on identical price paths.
-            # That bucket is gone (STATE.md), one bucket remains, and the thing
-            # the old assertion permitted is the thing that actually went wrong
-            # -- HAPPYFORGE open twice at two prices. The property now is: one
-            # live row per symbol, whatever bucket asks.
-            assert queue([row_in], days[200], c, which="second") == 0, \
-                "a second bucket took a name already live"
+            # A SECOND BUCKET MAY TAKE IT. This assertion has now been
+            # reversed TWICE and the history is the reason to state the
+            # property rather than the value:
+            #
+            #   originally  permitted, to protect the `tight` bucket, which
+            #               held main's names on purpose so a 5% stop could be
+            #               compared on identical price paths
+            #   then        forbidden, when `tight` was retired and one bucket
+            #               remained -- HAPPYFORGE had been open twice at two
+            #               prices and a global unique index stopped it
+            #   now         permitted again, because main and pooled run side
+            #               by side and want the same names constantly (23
+            #               shared picks in the last 20 sessions' allocations)
+            #
+            # That looks like flip-flopping and is not. The property was never
+            # "one live row per symbol globally"; it was "a BUCKET must not
+            # double-enter a name". While exactly one bucket existed the two
+            # were the same sentence, and the global form was an over-tight
+            # proxy that happened to hold. HAPPYFORGE was a double entry in ONE
+            # book, and (symbol, bucket) forbids that just as absolutely.
+            #
+            # The comparison needs it: two books that cannot hold the same name
+            # are not running the same market, and whichever queued second
+            # would have been starved silently.
+            assert queue([row_in], days[200], c, which="second") == 1, \
+                "a second bucket was refused a name the first holds"
             assert c.execute("SELECT count(*) FROM pos WHERE symbol='T' AND "
-                             "status IN ('pending','open')").fetchone()[0] == 1
+                             "status IN ('pending','open')").fetchone()[0] == 2
+            # and neither bucket may double it
+            assert queue([row_in], days[200], c, which="second") == 0
+            assert queue([row_in], days[200], c) == 0
 
             filled, closed = step(corpus, days[201], c)
-            assert len(filled) == 1 and not closed, (filled, closed)
+            # ONE fill PER BUCKET holding the name, not one fill overall.
+            # step() walks positions by status and is bucket-agnostic, which is
+            # what lets both books advance in a single pass -- so two live rows
+            # in the same name produce two fills, at the same price, on the same
+            # bar. Asserting the COUNT would have to change again the next time
+            # a bucket is added; asserting one-per-holding-bucket does not.
+            live_buckets = {r[0] for r in c.execute(
+                "SELECT DISTINCT bucket FROM pos WHERE symbol='T'"
+                " AND status='open'")}
+            assert len(filled) == len(live_buckets) == 2, (filled, live_buckets)
+            assert all(sym == "T" for sym, _ in filled), filled
+            assert not closed, closed
             got = dict(c.execute(
                 "SELECT bucket, stop FROM pos WHERE status='open'").fetchall())
             assert abs(got["main"] - 90.0) < 1e-9, got     # 10% below the fill
@@ -877,10 +990,19 @@ def __selftest_body():
             assert all(x[2] > 0 for x in c2), "target exit must be profitable"
             s2 = summary(c)                       # defaults to main only
             assert s2["closed"] == 1 and s2["realised"] > 0, s2
-            # One bucket, so pooling every bucket must find exactly the same
-            # trade -- not a second copy of it.
-            assert summary(c, which=None)["closed"] == 1, "which=None must pool"
-            assert summary(c, which="second")["closed"] == 0
+            # ISOLATION, and the arithmetic that proves it. Both books held T
+            # and both exited on the same bar, so `main` must see exactly its
+            # own one trade and `which=None` must see the sum of the parts --
+            # never main's trade counted twice, and never the other book's
+            # trade leaking into main's record. The old assertion read
+            # `which=None == 1` because one bucket existed and pooling was
+            # therefore indistinguishable from isolating; with two it is the
+            # difference between an honest forward record and a doubled one.
+            per = {n: summary(c, which=n)["closed"] for n in (MAIN, "second")}
+            assert per[MAIN] == 1 and per["second"] == 1, per
+            assert summary(c, which=None)["closed"] == sum(per.values()) == 2, \
+                "which=None must pool every bucket, exactly once each"
+            assert summary(c)["realised"] == summary(c, which=MAIN)["realised"]
             # A closed name is free to be re-entered; the index only binds live rows.
             assert queue([row_in], days[212], c) == 1, \
                 "re-entry after an exit must still be allowed"
