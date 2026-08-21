@@ -285,6 +285,26 @@ and the selftest asserts the 22:56 case by name. On real data 65% roll forward.
 to `data/news/`. It has no history, no backtest may read it, and its selftest
 asserts no research or strategy module imports it. It exists only to accumulate.
 
+### The `sentiment` skill (2026-08-22)
+
+`scripts/claude/skills/sentiment/SKILL.md`, installed with the `cp` in
+`scripts/claude/README.md`. Adapted from `sentiment-analysis` in
+[tradeinsight-info/investment-analysis-skills](https://github.com/tradeinsight-info/investment-analysis-skills)
+— their rubric, bands and report shape; their data replaced, because their three
+channels (NewsAPI, StockTwits, r/wallstreetbets) carry essentially nothing on an
+NSE microcap. The channels here are the announcement corpus and `data/news/`.
+
+**`src/ops/sentiment.py` decides what was VISIBLE; the skill decides what it
+MEANS.** The first is reproducible — same date in, same evidence out, 15:30 rule
+applied. The second is a model's judgement and is not, which is why the skill
+may never feed a measured result and why its selftest asserts no research or
+strategy module imports it.
+
+    python3 src/ops/sentiment.py 20MICRONS
+    STRATEGY=thicket python3 src/ops/sentiment.py --picks
+
+It is an operator's view of today. `ann_tone` is the measured version.
+
 ### Five hypotheses, five negatives
 
 Pre-registered with the bar at **|t| ≥ 2.6** (the usual 2.0 tightened across five
