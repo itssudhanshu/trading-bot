@@ -253,19 +253,34 @@ def main():
     check("every trade exits by stop, target or time",
           set(holds) <= {"stop", "target", "time"}, f"{Counter(holds)}")
 
-    # the wallet must add up: total value = capital + realised + unrealised
+    # The wallet must add up, FOR EVERY BUCKET: value = cash + holdings.
+    #
+    # This check went SKIPPED, not failed, when /wallet was rewritten per
+    # bucket: it parsed "*Total value*" and the labels became an indented
+    # "Value" under a bucket header, so the regex matched nothing and the
+    # check quietly stopped protecting the arithmetic. A skipped check is worse
+    # than a failing one -- it reports as "0 failed" and nobody looks. It now
+    # parses each bucket section and asserts one of them exists, so the same
+    # drift fails loudly next time.
     import tg as _tg
-    txt = _tg.COMMANDS["/wallet"]()
     import re as _re
-    nums = {k: float(v.replace(",", "")) for k, v in
-            _re.findall(r"\*(Total value|Cash|Invested)\*\s+Rs ([\d,\-]+)", txt)}
-    if len(nums) == 3:
-        check("wallet total equals cash plus holdings",
-              abs(nums["Total value"] - (nums["Cash"] + nums["Invested"])) < 2,
-              f"total {nums['Total value']:,.0f} vs cash {nums['Cash']:,.0f} "
-              f"+ invested {nums['Invested']:,.0f}")
-    else:
-        skip("wallet total equals cash plus holdings", "could not parse /wallet")
+    txt = _tg.COMMANDS["/wallet"]()
+    _sections = _re.split(r"^\*([A-Z ]+)\* — ", txt, flags=_re.M)[1:]
+    _wallets = {}
+    for _i in range(0, len(_sections) - 1, 2):
+        _name, _body = _sections[_i], _sections[_i + 1]
+        _n = {k: float(v.replace(",", "")) for k, v in _re.findall(
+            r"^\s+(Value|Cash|Invested)\s+Rs ([\d,\-]+)", _body, _re.M)}
+        if len(_n) == 3:
+            _wallets[_name] = _n
+    _bad = [f"{k}: total {v['Value']:,.0f} vs cash {v['Cash']:,.0f} + invested "
+            f"{v['Invested']:,.0f}" for k, v in _wallets.items()
+            if abs(v["Value"] - (v["Cash"] + v["Invested"])) >= 2]
+    check("every bucket's wallet total equals cash plus holdings",
+          bool(_wallets) and not _bad,
+          f"{len(_wallets)} bucket(s) check out: {', '.join(sorted(_wallets))}"
+          if _wallets and not _bad else
+          (" | ".join(_bad) if _bad else "no bucket section parsed from /wallet"))
 
     # every tg.* call made from the daily runner must actually resolve
     import ast, importlib.util, tg

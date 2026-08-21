@@ -284,6 +284,90 @@ def _away(px, level):
     return (level / px - 1) * 100 if px and level else 0
 
 
+def _groups(rows):
+    """-> [(display_name, key, rows)] grouped by bucket, live buckets first.
+
+    GROUPED, never interleaved. The two buckets hold the same names constantly
+    -- they pick from one universe by two rules -- so a flat list shows the
+    same stock twice with nothing to say why, which reads as a double position
+    rather than as two records. Retired buckets sort last and keep their own
+    key as a name, so their rows stay identifiable instead of quietly joining
+    the live evidence.
+    """
+    import positions
+    order = list(positions.BUCKETS)
+    seen = {}
+    for r in rows:
+        seen.setdefault(r["bucket"], []).append(r)
+    out = [(positions.label(k), k, seen.get(k, [])) for k in order]
+    out += [(positions.label(k), k, v) for k, v in sorted(seen.items())
+            if k not in order]
+    return out
+
+
+def _merged(rows):
+    """-> [(row, [bucket labels])], identical positions collapsed to one line.
+
+    The two buckets buy the same names constantly, and when they buy on the
+    same day at the same price the two records are the same trade twice over --
+    printing both is noise a reader has to diff by eye. They are merged ONLY
+    when every number a reader would compare is identical.
+
+    They are NOT always identical, which is why this merges on the numbers and
+    not on the symbol. Size is drawn from each bucket's OWN equity, so the
+    moment either banks a trade the quantities part company -- Rs 312,000
+    against Rs 300,000 buys 52 shares against 50 at the same price. A name can
+    also enter one bucket while the other is full, arriving later at a
+    different price with its own ten-day clock. Merging those would print one
+    entry price for two different trades, which is a lie rather than a summary.
+    """
+    import positions
+    order = {k: i for i, k in enumerate(positions.BUCKETS)}
+    groups = {}
+    for r in rows:
+        key = (r["symbol"], r["entry_day"], r["queued_on"], r["entry_px"],
+               r["qty"], r["stop"], r["target"], r["exit_day"], r["exit_px"])
+        groups.setdefault(key, []).append(r)
+    out = []
+    for _, rs in groups.items():
+        rs.sort(key=lambda r: order.get(r["bucket"], 99))
+        out.append((rs[0], [positions.label(r["bucket"]).title() for r in rs]))
+    out.sort(key=lambda t: (order.get(t[0]["bucket"], 99), t[0]["symbol"]))
+    return out
+
+
+def _tag(labels):
+    """-> ' — Bucket, Pool'. Always shown while more than one bucket runs: a
+    label that appears only sometimes makes the reader ask what its absence
+    means."""
+    import positions
+    return f" — {', '.join(labels)}" if len(positions.BUCKETS) > 1 else ""
+
+
+def _twin_note(rows):
+    """-> a line for a symbol printed on MORE THAN ONE line, only when it is.
+
+    Not for a name held by both buckets: _merged() already collapses those to a
+    single row tagged "Bucket, Pool", which says it better than a footnote can.
+    This is for the case that genuinely confuses -- the same symbol on two
+    lines at two entry prices, because the buckets bought it on different days
+    or at different sizes. Without a word that reads as one position recorded
+    twice by mistake.
+
+    A note that shows unconditionally is read once and then never again, so it
+    stays absent on the days it would be noise.
+    """
+    import positions
+    from collections import Counter
+    seen = Counter(r["symbol"] for r, _ in _merged(rows))
+    dup = sorted(s for s, n in seen.items() if n > 1)
+    if not dup:
+        return ""
+    return (f"_{', '.join(dup)} is listed twice: the bucket and the pool "
+            f"bought it at different prices or sizes. Two separate records of "
+            f"{_rs(positions.CAPITAL)} each, not one position bought twice._")
+
+
 def _lag_note():
     """-> one line explaining the end-of-day lag, or '' when there is none.
 
@@ -319,17 +403,11 @@ def _px_now(corpus, sym, day):
 
 
 # ============================================================ MONEY
-def cmd_wallet(_=None):
-    """Cash, stocks held, profit."""
-    import analysis, features, positions, selection
-    s = positions.summary()
-    corpus = features.load_corpus()
-    days = sorted({d for x in corpus.values() for d in x.days})
-    import live_source
-    q = live_source.live([r["symbol"] for r in s["rows"]
-                     if r["status"] in ("open", "pending")])
+def _wallet_of(rows, realised, q, corpus, days):
+    """-> (cash, invested, unrealised) for ONE bucket's rows."""
+    import selection
     invested = unreal = spent = 0.0
-    for r in s["rows"]:
+    for r in rows:
         if r["status"] not in ("open", "pending"):
             continue
         px = ((q.get(r["symbol"]) or {}).get("ltp")
@@ -342,23 +420,55 @@ def cmd_wallet(_=None):
         spent += (r["qty"] or 0) * (r["entry_px"] or px)
         if r["status"] == "open" and r["entry_px"]:
             unreal += r["qty"] * (px - r["entry_px"])
-    cash = selection.CAPITAL + s["realised"] - spent
-    out = [_title("WALLET"), "",
-           f"*Total value*  {_rs(cash + invested)}",
-           f"*Cash*         {_rs(cash)}",
-           f"*Invested*     {_rs(invested)}  "
-           f"({invested / selection.CAPITAL * 100:.0f}% of capital)", "",
-           f"*Profit realised*    Rs {s['realised']:+,.0f}   ({s['closed']} closed)",
-           f"*Profit on paper*    Rs {unreal:+,.0f}   ({s['open']} running)", "",
-           f"*Started with*  {_rs(selection.CAPITAL)}",
-           f"*Change*        Rs {cash + invested - selection.CAPITAL:+,.0f}  "
-           f"({(cash + invested) / selection.CAPITAL * 100 - 100:+.2f}%)"]
+    return selection.CAPITAL + realised - spent, invested, unreal
+
+
+def cmd_wallet(_=None):
+    """Cash, stocks held, profit -- for each bucket separately."""
+    import analysis, features, positions, selection
+    everything = positions.summary(which=None)
+    corpus = features.load_corpus()
+    days = sorted({d for x in corpus.values() for d in x.days})
+    import live_source
+    q = live_source.live([r["symbol"] for r in everything["rows"]
+                          if r["status"] in ("open", "pending")])
+    out = [_title("WALLET"), ""]
     base = analysis.load_occupancy()
-    held = s["open"] + s["pending"]
-    if base:
-        out += ["", f"_Holding {held} of {selection.MAX_POSITIONS}. Typical is "
-                    f"{base['mean']:.2f}; {base['dist'].get(held, 0):.0f}% of "
-                    f"sessions hold exactly this many._"]
+    for name, key, rows in _groups(everything["rows"]):
+        if not rows and key not in positions.BUCKETS:
+            continue
+        realised = sum(r["net"] or 0 for r in rows if r["status"] == "closed")
+        closed = sum(1 for r in rows if r["status"] == "closed")
+        open_n = sum(1 for r in rows if r["status"] == "open")
+        pend_n = sum(1 for r in rows if r["status"] == "pending")
+        cash, invested, unreal = _wallet_of(rows, realised, q, corpus, days)
+        total = cash + invested
+        # NEVER added together. Each bucket is its own Rs 3,00,000 record
+        # running the same signals; summing them would report six lakh of
+        # capital that does not exist and a profit nobody made.
+        out += [f"*{name.upper()}* — {positions.slice_of(key)}",
+                f"  Value      {_rs(total)}   "
+                f"(Rs {total - selection.CAPITAL:+,.0f}, "
+                f"{total / selection.CAPITAL * 100 - 100:+.2f}%)",
+                f"  Cash       {_rs(cash)}",
+                f"  Invested   {_rs(invested)}  "
+                f"({invested / selection.CAPITAL * 100:.0f}% of capital)",
+                f"  Banked     Rs {realised:+,.0f}   ({closed} finished)",
+                f"  On paper   Rs {unreal:+,.0f}   ({open_n} running"
+                + (f", {pend_n} buying at the next open)" if pend_n else ")")]
+        if base and key == positions.MAIN:
+            held = open_n + pend_n
+            out.append(f"  _Holding {held} of {selection.MAX_POSITIONS}. "
+                       f"Typical is {base['mean']:.2f}; "
+                       f"{base['dist'].get(held, 0):.0f}% of sessions hold "
+                       f"exactly this many._")
+        out.append("")
+    note = _twin_note(everything["rows"])
+    out += [f"_Each runs {_rs(selection.CAPITAL)} of its own on the same "
+            f"signals; they differ only in how the five places are handed "
+            f"out. Never added together._"]
+    if note:
+        out.append(note)
     return "\n".join(out)
 
 
@@ -438,8 +548,14 @@ def cmd_bucket(_=None):
     # 'void' entry alongside the real position -- and keying by symbol without
     # this filter let whichever row came last in the table decide whether the
     # stock showed as running.
+    # main only: this screen IS the bucket's ranking, and marking a name green
+    # because the POOL happens to hold it would say the bucket owns something
+    # it does not. The pool's own holdings are named separately below.
     held = {r["symbol"]: r["status"] for r in positions.summary()["rows"]
             if r["status"] in ("open", "pending")}
+    pool_held = {r["symbol"] for r in
+                 positions.summary(which=positions.POOLED)["rows"]
+                 if r["status"] in ("open", "pending")}
     mix = selection.TAKE_PER_CLUSTER
     out = [_title("THE BUCKET",
                   " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),
@@ -482,6 +598,14 @@ def cmd_bucket(_=None):
                 "_Tonight's ranking no longer puts these in the top 5, and that "
                 "changes nothing: each one runs to its own stop, target or "
                 "10-day limit. /open-orders for the detail._", ""]
+    # The POOL, named separately and never mixed into the ranking above. This
+    # screen is the BUCKET's list; a pool holding shown green among these rows
+    # would say the bucket owns a name it does not.
+    if pool_held:
+        out += [f"*The pool holds*  {', '.join(sorted(pool_held))}",
+                "_The pool ranks every eligible share together and takes the "
+                "best five, so its five need not match the bucket's. "
+                "/open-orders shows both._", ""]
     live = sum(1 for s in shown if s in held)
     out += [f"_Each number is a place out of 100 against the other shares in the "
             f"same size group -- 100 is the best. The score is their average, "
@@ -514,7 +638,7 @@ def cmd_pending_orders(_=None):
         out.append(note)
     out.append("")
     total = risk = 0.0
-    for r in pend:
+    for r, labels in _merged(pend):
         px = _px_now(corpus, r["symbol"], days[-1]) or 0
         val = (r["qty"] or 0) * px
         # The stop percentage is the BOOK's, not a constant. `tight` runs 5%
@@ -538,9 +662,16 @@ def cmd_pending_orders(_=None):
         out.append("")
     out.append(f"*Total being spent*  {_rs(total)}")
     out.append(f"*Most it can lose*   {_rs(risk)}")
-    others = sorted({r["bucket"] for r in pend} - {positions.MAIN})
-    if others:
-        out.append(f"_Includes {', '.join(others)} — retired buckets still "
+    # The pool is LIVE, not retired. This said "retired buckets still running
+    # to their own exits" and would have introduced the pool's first order as a
+    # relic the moment it queued -- a recorded reason outliving the thing it
+    # described, which is the defect L60 tracks.
+    note = _twin_note(pend)
+    if note:
+        out.append(note)
+    retired = sorted({r["bucket"] for r in pend} - set(positions.BUCKETS))
+    if retired:
+        out.append(f"_Includes {', '.join(retired)} — retired buckets still "
                    f"running to their own exits._")
     return "\n".join(out)
 
@@ -567,7 +698,7 @@ def cmd_open_orders(_=None):
     out = [_title("OPEN ORDERS", f"{len(live)} live"),
            f"_Prices: {src}._", ""]
     tot_val = tot_pl = 0.0
-    for r in live:
+    for r, labels in _merged(live):
         lq = q.get(r["symbol"]) or {}
         px = lq.get("ltp") or _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"]
         val = r["qty"] * px
@@ -580,7 +711,7 @@ def cmd_open_orders(_=None):
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop, to_tgt = _away(px, r["stop"]), _away(px, r["target"])
         out.append(f"{icon} *{r['symbol']}* "
-                   f"({SIZE.get(r['cluster'], r['cluster'])})")
+                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}")
         out += _fields(
             ("filled", r["entry_day"]),
             ("entry", f"{r['entry_px']:,.2f} → now {px:,.2f}"),
@@ -592,6 +723,9 @@ def cmd_open_orders(_=None):
             # and would print a number the 10-day exit rule does not use.
             ("day(s)", f"{held} of {selection.HOLD_DAYS}, then sold either way"))
         out.append("")
+    note = _twin_note(live)
+    if note:
+        out.append(note)
     out.append(f"*Total worth*  {_rs(tot_val)}")
     out.append(f"*Total profit* Rs {tot_pl:+,.0f}  "
                f"({tot_pl / (tot_val - tot_pl) * 100 if tot_val != tot_pl else 0:+.1f}%)")
@@ -608,22 +742,28 @@ def cmd_closed_orders(_=None):
         return (_title("CLOSED ORDERS") + "\nNothing has been sold yet. Only "
                 "real trades made going forward show up here — never anything "
                 "replayed from past data.")
-    # Statistics come from the POOLED buckets only. `tight` holds the same names
-    # as main, so its trades are not independent -- including them would count
-    # the same price path twice and overstate the evidence, which is exactly
-    # the error the bucket design exists to avoid.
-    ev = done
+    # EVERY statistic below is the BUCKET's alone. The pool holds the same
+    # names constantly -- it picks from one universe by a second rule -- so its
+    # trades are not independent draws; counting both would put the same price
+    # path in twice and overstate the evidence. The pool's trades are SHOWN,
+    # because they are real records, and never counted.
+    #
+    # The old comment here said "the POOLED buckets", meaning pooled-together.
+    # That word now names a bucket, so it had to go: two meanings of one word
+    # on one screen is the collision rules.md R1 forbids.
+    ev = [r for r in done if r["bucket"] == positions.MAIN]
     rets = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100,
              "sym": r["symbol"], "clu": r["cluster"]} for r in ev]
     out = [_title("CLOSED ORDERS", f"{len(done)} finished"), ""]
     corpus = features.load_corpus()
-    for r in sorted(done, key=lambda x: x["exit_day"] or "")[-10:]:
+    for r, labels in sorted(_merged(done),
+                            key=lambda t: t[0]["exit_day"] or "")[-10:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
         icon = "✅" if (r["net"] or 0) > 0 else "❌"
         held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
                                    r["exit_day"])
         out.append(f"{icon} *{r['symbol']}* "
-                   f"({SIZE.get(r['cluster'], r['cluster'])})")
+                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}")
         out += _fields(
             ("filled", r["entry_day"]),
             ("exit", f"{r['exit_day']} at {r['exit_px']:,.2f}"),
@@ -636,17 +776,25 @@ def cmd_closed_orders(_=None):
             ("day(s)", held),
             ("review", _review(r, pct, held)))
         out.append("")
-    won = sum(1 for r in done if (r["net"] or 0) > 0)
-    main_net = sum(r["net"] or 0 for r in done if r["bucket"] == positions.MAIN)
-    out += [f"*Won* {won}   *Lost* {len(done) - won}   "
-                f"*Hit rate* {won / len(done) * 100:.0f}%",
+    # Counted over `ev`, not `done`: won, lost, hit rate and total must all
+    # describe the SAME set, and it must be the bucket's. Mixing the count over
+    # every bucket with a total from one was the shape already here.
+    won = sum(1 for r in ev if (r["net"] or 0) > 0)
+    main_net = sum(r["net"] or 0 for r in ev)
+    out += [f"*Won* {won}   *Lost* {len(ev) - won}   "
+            f"*Hit rate* {won / len(ev) * 100:.0f}%" if ev else "*No finished "
+            "trades in the bucket yet*",
             f"*Total* Rs {main_net:+,.0f}"]
-    if len(done) != len(ev) or any(r["bucket"] != positions.MAIN for r in done):
-        out.append(f"_Includes Rs {s['realised']:+,.0f} from the retired "
-                   f"deeper buckets, still running to their own exits._")
+    others = sorted({r["bucket"] for r in done} - {positions.MAIN})
+    if others:
+        out.append(f"_Counts the bucket only. "
+                   f"{', '.join(positions.label(b).title() for b in others)} "
+                   f"trades are listed above but not counted: they hold the "
+                   f"same names, so adding them would put one price path in "
+                   f"twice._")
     out += ["", "*By cluster*"]
     by = defaultdict(list)
-    for r in done:
+    for r in ev:
         by[r["cluster"]].append(r["net"] or 0.0)
     for c, v in sorted(by.items()):
         out.append(f"  {c}: {len(v)} trades, Rs {sum(v):+,.0f}, "
@@ -838,10 +986,20 @@ def cmd_health(_=None):
         # returns the starting capital exactly. Printing that as "worth" reads
         # to anyone as today's value of the bucket, which it is not.
         # /wallet is the one place money is quoted, off live prices.
-        out.append(f"✅ Bucket — {s['open']} held, {s['pending']} buying at the "
-                   f"next open, {s['closed']} finished")
+        # One line PER BUCKET. Reporting only main would have shown a green
+        # tick while the pool sat dead, which is the shape of every /health
+        # defect this file has already fixed: a check that cannot see the
+        # thing it claims to cover.
+        for _name, _key, _rows in _groups(positions.summary(which=None)["rows"]):
+            if _key not in positions.BUCKETS:
+                continue
+            _o = sum(1 for r in _rows if r["status"] == "open")
+            _p = sum(1 for r in _rows if r["status"] == "pending")
+            _c = sum(1 for r in _rows if r["status"] == "closed")
+            out.append(f"✅ {_name.title()} — {_o} held, {_p} buying at the "
+                       f"next open, {_c} finished")
     except Exception as e:
-        out.append(f"· Bucket — cannot tell ({type(e).__name__})")
+        out.append(f"· Buckets — cannot tell ({type(e).__name__})")
     try:
         import agent
         due = agent.due()
@@ -902,7 +1060,10 @@ def cmd_review(_=None):
 
     out += ["", "*Anything worth changing?*"]
     try:
-        led = learning.load()
+        # main ONLY. The pool's trades are recorded and reported, but they
+        # must never move the weights: they would feed back into the bucket's
+        # own picks and the two would stop being independent records.
+        led = learning.for_weights(learning.load())
         cur = learning.load_weights()
         new, notes = learning.propose(led, current=dict(cur))
         moved = {k: (cur.get(k, 1.0), v) for k, v in new.items()

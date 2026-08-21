@@ -114,6 +114,21 @@ BUCKETS = {
 }
 BUCKET = BUCKETS[MAIN]        # the old name, still the main bucket's config
 
+# What a PERSON sees. The stored key stays `main` because the ledger is
+# append-only and already holds rows under it -- renaming would mean editing an
+# audited record to tidy a label, which is not a trade this book makes. The
+# display name is the operator's word (rules.md R1): the live one is the
+# BUCKET, the second is the POOL. Never "book", never "portfolio", and never
+# the internal keys, which mean nothing to a reader.
+LABEL = {MAIN: "bucket", POOLED: "pool"}
+
+
+def label(name):
+    """-> the name a person reads for a bucket. Unknown keys show themselves
+    rather than pretending to be main, so a retired bucket's rows stay
+    identifiable instead of silently joining the live record."""
+    return LABEL.get(name, name)
+
 
 def slice_of(name=MAIN):
     """-> 'ranks 1-3 micro, 1-2 small', DERIVED from the rule, not restated.
