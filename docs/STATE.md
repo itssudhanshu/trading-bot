@@ -250,6 +250,64 @@ selection that did not make them. Nothing filters on it yet.
 The bucket now holds 4 of 5: HAPPYFORGE, GMMPFAUDLR (small), SAHYADRI, YUKEN
 (micro), Rs 179,501 of the Rs 225,000 cap. Still 0 closed trades.
 
+## Two more strategies exist, and neither changes anything (2026-08-21)
+
+`thicket` and `trellis` live beside `sprout` under `src/strategies/`, with their
+own `data/<name>/`. **Both are behavioural clones of sprout with every new rule
+switched off**, so neither alters the live bucket, and `tests/clone_reproduces.py`
+asserts each still reproduces whatever sprout produces *right now* — measured
+side by side in child processes rather than against a number recorded weeks ago.
+
+| strategy | what it adds | switch | state |
+|---|---|---|---|
+| thicket | NSE corporate announcements as a score input | `clusters.ANN_FEATURES` | off; nothing cleared the bar |
+| trellis | structural exit, and named chart patterns | `selection.STRUCTURAL_EXIT`, `TRIGGER` | off; nothing cleared the bar |
+
+**The operator's condition was that sprout must not be impacted**, and that is
+enforced rather than promised: `tests/sprout_untouched.py` runs in the sweep and
+hashes sprout's rules, weights and headline, refuses a file being added to
+`sprout/`, checks no strategy or research module can *reach* the live order book,
+and confirms a non-sprout `STRATEGY` resolves its data outside `data/sprout`.
+
+### The data that arrived with them
+
+`src/core/announcements.py` — **1,019,495 NSE announcements**, 360 weeks,
+2,640 symbols, 99.96% parsed, in `data/announcements/` (gitignored, ~1 GB,
+refetchable via `backfill()`). `data/announcements/tone_table.json` is the frozen
+category→sign table and **is** tracked: it is evidence.
+
+**60% of announcements arrive after the 15:30 close.** Dated by calendar day —
+the obvious way — that fraction of the signal is information nobody had when the
+trade was placed. `announcements.visible_from()` is the whole point of the file
+and the selftest asserts the 22:56 case by name. On real data 65% roll forward.
+
+`src/ops/newswatch.py` runs daily from the scheduler, appending market headlines
+to `data/news/`. It has no history, no backtest may read it, and its selftest
+asserts no research or strategy module imports it. It exists only to accumulate.
+
+### Five hypotheses, five negatives
+
+Pre-registered with the bar at **|t| ≥ 2.6** (the usual 2.0 tightened across five
+tests) *before* any data was downloaded. See L61.
+
+| | result | |
+|---|---|---|
+| ann_burst | +0.37%, t +1.19 | how often a company files carries nothing |
+| ann_tone | +1.24%, t +1.71 | read +2.20 on the first draw; a resampling moved it |
+| ann_flag | −0.29%, t −0.40 | inside the noise |
+| structural exit | +0.33%, t 0.22 | holding 30 days flat gained 4× as much |
+| patterns | +0.43%, t 0.21 | `none` lost 1.97%, so it is not just looseness |
+
+Nothing adopted. The one live lead is post-hoc and unconfirmable here: the whole
+tone effect is **positive** corporate actions (+1.77% vs neutral, n=255), with
+bad news carrying nothing. Settling it forward needs ~400 trades — over a decade
+at this book's rate.
+
+**An open gap, stated so it is not decided by accident.** `asc_triangle` ran at
+**10.4% max drawdown against breakout's 31.0%** (n=145), and `cup_handle` at
+10.0% (n=30). There is no pre-registered adoption path for drawdown — the same
+hole L62 records for bucket size — so it is left undecided rather than claimed.
+
 ## What has been tested and REJECTED
 
 Do not re-add these without evidence that addresses the stated reason.
