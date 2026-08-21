@@ -62,28 +62,36 @@ skill is forbidden from feeding any measured result. thicket's `ann_tone` is the
 measured version: frozen, deterministic, and currently off at t = 1.71 against a
 bar of 2.6.
 
-## skills/nimble
+## skills/crawl
 
 A general fetcher for pages ordinary means cannot reach -- JavaScript rendering,
-a 403 to a plain client, geo-restriction, structured extraction from HTML.
-`src/core/nimble.py` behind two dataclasses, `Fetch` and `Page`, and it knows
+a 403 to a plain client, geo-restriction, content buried in messy HTML.
+`src/core/crawl.py` behind two dataclasses, `Fetch` and `Page`, and it knows
 nothing about stocks: it will be wanted for other things, and a client that knew
 what a stock was would need rewriting the first time it was pointed elsewhere.
 
-`Page.ok` means BOTH that Nimble succeeded AND that the target returned 2xx. A
-404 fetched flawlessly is still a 404.
+**No API key, nothing metered** -- it drives a local headless Chromium through
+Crawl4AI. It briefly used a paid API instead, and `Page` survived that swap
+unchanged, which is the argument for naming a module after its job rather than
+its supplier.
+
+`Page.ok` means BOTH that the crawl succeeded AND that the target returned 2xx.
+A 404 fetched flawlessly is still a 404.
 
 `respect_robots` defaults on. Overriding is explicit at a call site, where it
 appears in a diff, or recorded in `ALLOWED_DESPITE_ROBOTS` with a reason. That
 dict ships empty and the selftest asserts it stays empty, so no host is exempted
 unless a person put it there. The distinction it encodes: robots.txt is a
 published preference, a 403 is a server refusing this client, and they are not
-the same thing.
+the same thing. Moneycontrol is the worked example -- robots permits `/rss/`,
+and it 403s a urllib agent.
 
-`NIMBLE_API_KEY` in `.env`, read through `live_source.env_value`, never printed
-or placed in a `Page`. Without it every call returns `ok=False` with a readable
-reason and `newswatch` does not even attempt the escalate-only sources -- an
-optional key must never be able to stop a scheduled job.
+`pip install crawl4ai && crawl4ai-setup` is ~90 packages and a Chromium
+download, in a repo that is otherwise standard-library only. Contained by
+importing it LAZILY inside the call: `import crawl` stays instant and the sweep
+does not load a browser stack to check a dataclass. Without it installed,
+`crawl.available()` is False and `newswatch` does not even attempt the
+escalate-only sources -- an optional dependency must never stop a scheduled job.
 
 ## No hooks, deliberately
 

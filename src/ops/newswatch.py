@@ -108,17 +108,27 @@ MAX_FEED_AGE_DAYS = 7
 
 _robots_cache = {}
 
-# Feeds worth retrying through Nimble when a plain request is refused. These
+# Feeds worth retrying with a browser when a plain request is refused. These
 # are sources whose robots.txt PERMITS the path -- the refusal is bot protection
-# reacting to a urllib user-agent, not a stated policy -- so escalating to a
-# renderer is asking the same question a browser would. Nimble applies its own
-# robots check on top; a source that actually disallows is still not fetched.
-ESCALATE = {
-    "mc_latest":   "https://www.moneycontrol.com/rss/latestnews.xml",
-    "mc_results":  "https://www.moneycontrol.com/rss/results.xml",
-    "mc_buzz":     "https://www.moneycontrol.com/rss/buzzingstocks.xml",
-    "zeebiz":      "https://www.zeebiz.com/latest.xml/feed",
-}
+# reacting to a urllib user-agent, not a stated policy -- so rendering the page
+# asks the same question a browser would. crawl applies its own robots check on
+# top; a source that actually disallows is still not fetched.
+#
+# EMPTY, and the reason is the useful part. Three moneycontrol feeds and Zee
+# Business were listed here. The browser reached moneycontrol perfectly -- 403
+# to urllib, 200 rendered, the XML parsed to attributed items -- and the
+# staleness guard then reported every one of them 850 DAYS OLD. Zee returned 404
+# even rendered.
+#
+# So the 403 was never what stood between us and that content: the feeds are
+# abandoned. Bypassing the block bought nothing, and the guard written for a
+# different reason is what said so. Current moneycontrol articles DO reach the
+# archive -- through the per-company channel, which finds them because they are
+# published, just not to these URLs.
+#
+# The mechanism stays because it is proven and cheap to re-arm; put a source
+# here only with a run showing same-day items behind it.
+ESCALATE: dict = {}
 
 
 def robots_ok(url, ua=UA):
@@ -324,6 +334,28 @@ def parse_feed(body, source=""):
     return out
 
 
+def _feeds_for(feeds, injected: bool) -> dict:
+    """-> the feed list for this run.
+
+    The escalate-only sources join it ONLY on a real default run with a browser
+    available. Adding them unconditionally would mean four requests a day known
+    to return 403 -- noise in a log and load on someone else's server for an
+    answer already known. An explicit feed list or an injected fetcher means a
+    test or a caller who asked for something specific, and neither should have
+    sources appear behind their back.
+    """
+    if feeds is not None or injected:
+        return dict(feeds) if feeds is not None else {}
+    out = dict(FEEDS)
+    try:
+        import crawl
+        if crawl.available():
+            out.update(ESCALATE)
+    except Exception:
+        pass
+    return out
+
+
 def _escalate(name, url, status, log=print):
     """-> (body, status, via) after retrying a refused feed through Nimble.
 
@@ -334,17 +366,17 @@ def _escalate(name, url, status, log=print):
     if name not in ESCALATE:
         return b"", status, "direct"
     try:
-        import nimble
+        import crawl
     except Exception:
         return b"", status, "direct"
-    if not nimble.available():
-        log(f"  {name}: HTTP {status}; no NIMBLE_API_KEY, not escalating")
+    if not crawl.available():
+        log(f"  {name}: HTTP {status}; crawl4ai not installed, not escalating")
         return b"", status, "direct"
-    page = nimble.extract(url, formats=["html"])
+    page = crawl.fetch(url, timeout=45)
     if not page.ok or not page.html:
-        log(f"  {name}: HTTP {status}; nimble also failed ({page.error[:60]})")
+        log(f"  {name}: HTTP {status}; browser also failed ({page.error[:60]})")
         return b"", status, "direct"
-    return page.html.encode(), 200, "nimble"
+    return page.html.encode(), 200, "browser"
 
 
 def capture_symbols(symbols, log=print, fetcher=None, pause=2.0):
@@ -418,19 +450,13 @@ def capture(feeds=None, log=print, fetcher=None):
     the moment we saw an item is the moment it was demonstrably available.
     """
     from snapshot import fetch
+    # Decide BEFORE defaulting. Reading `fetcher is None` after
+    # `fetcher = fetcher or fetch` is always False, so the escalate sources were
+    # silently never added while the code read as though they were -- the guard
+    # reported nothing and did nothing. Hence _feeds_for, which is a function
+    # precisely so it can be asserted.
+    feeds = _feeds_for(feeds, injected=fetcher is not None)
     fetcher = fetcher or fetch
-    feeds = feeds if feeds is not None else dict(FEEDS)
-    # The escalate-only sources are attempted ONLY when a key exists. Adding
-    # them unconditionally would mean four requests a day that are known to
-    # return 403, which is noise in the log and load on someone else's server
-    # for a result already known.
-    if feeds is not None and fetcher is None:
-        try:
-            import nimble
-            if nimble.available():
-                feeds = dict(feeds, **ESCALATE)
-        except Exception:
-            pass
     now = datetime.now(timezone.utc)
     day = now.date().isoformat()
     out = NEWS / f"{day}.jsonl"
@@ -610,7 +636,24 @@ def _selftest():
     # --- escalation is optional and silent when unconfigured ---------------
     # The job must behave identically with no key, which is how it behaves
     # today and how it will behave the day a key expires.
-    b, st, via = _escalate("mc_latest", "https://x.example/f", 403,
+    # --- the gate that silently did nothing --------------------------------
+    # `fetcher is None` was read AFTER `fetcher = fetcher or fetch`, so it was
+    # always False: the escalate sources never joined the run while the code
+    # read as though they did. Assert the behaviour rather than the appearance.
+    import crawl as _c
+    default_feeds = _feeds_for(None, injected=False)
+    if _c.available() and ESCALATE:
+        assert set(ESCALATE) <= set(default_feeds), \
+            "a browser is available and the escalate sources were not added"
+    else:
+        assert not (set(ESCALATE) & set(default_feeds)), \
+            "escalate sources added with no browser to fetch them"
+    # An explicit list, or an injected fetcher, gets exactly what it asked for.
+    assert _feeds_for({"only": "u"}, injected=False) == {"only": "u"}
+    assert not (set(ESCALATE) & set(_feeds_for(None, injected=True))), \
+        "an injected fetcher had sources added behind its back"
+
+    b, st, via = _escalate("not_a_feed", "https://x.example/f", 403,
                            log=lambda *_: None)
     assert via == "direct" and st == 403 and b == b"", (via, st, b)
     # a feed not on the escalate list is never escalated at all
