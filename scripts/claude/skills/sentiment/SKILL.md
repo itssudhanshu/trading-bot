@@ -15,12 +15,42 @@ StockTwits returns 404 for every NSE symbol, RELIANCE included. An absent
 channel scored as neutral reads as "no view" while meaning "no data", and those
 are different facts.
 
-**Headlines come from the publishers you would expect** — Moneycontrol, Business
-Standard, Financial Express, CNBCTV18, Economic Times, Mint — reached through an
-aggregator whose robots.txt permits it, because most of those sites either
-disallow us or return 403 to a non-browser agent. Each item records which
-publisher it came from, and each is tagged with the symbol whose own query
-retrieved it, so attribution is exact rather than matched by name.
+## The sources, and what each is worth
+
+Three channels feed this. Their weight in the answer is not equal and should not
+be treated as equal.
+
+**1 · What the company told the exchange** — `announcements.py`.
+1,019,495 NSE corporate filings back to 2019, timestamped to the second, across
+**2,640 symbols**. Complete, legally compelled, and already point-in-time: the
+15:30 rule means a filing made at 22:56 does not count for the day it was made,
+and 60% of them arrive after the close. **For a microcap this is the best channel
+by a distance** and nothing else comes close. 23 categories carry a signed tone;
+three (`Price movement`, `Spurt in Volume`, `News Verification`) are the exchange
+demanding an explanation rather than the company volunteering one.
+
+**2 · General market feeds** — five RSS feeds read directly with the standard
+library: Economic Times (markets, stocks, IPO) and Mint (markets, companies).
+They are market-wide. **They almost never name a microcap**, and most of what
+they do produce is a wrap that lists a stock in passing — which scores 0.0.
+
+**3 · Per-company search** — one query per candidate, through an aggregator whose
+robots.txt permits it. This exists because channel 2 matched **zero** headlines
+to a microcap on day one. It reaches the publishers that block us directly:
+Moneycontrol, Business Standard, Financial Express, CNBCTV18, News18, Business
+Today, NDTV Profit, The Hindu. Items from it carry the symbol whose query found
+them, so attribution is exact rather than matched by name.
+
+**The mix is lopsided and you should know it.** Within the NEWS archive --
+channel 1 is a separate corpus and not counted here -- roughly **94% comes from
+channel 2** (Economic Times and Mint) and only ~6% from the per-company channel.
+So a stock with several channel-3 headlines has genuinely been written about; a
+stock appearing only in channel 2 has probably just been listed in a market
+wrap, and that is a 0.0 rather than coverage.
+
+A browser fetcher (`crawl`) is available for pages that refuse a plain client.
+No source currently needs it — the three Moneycontrol RSS feeds were tried and
+turned out to be 850 days stale, so the block was never what stood in the way.
 
 ## The rule that comes before the steps
 
@@ -112,8 +142,8 @@ A channel with no items has **no score** — not zero. Report it as "no data".
 ## Step 5 — Composite
 
 Announcements carry more weight than headlines here, because they are complete,
-exchange-verified and legally compelled, while the news archive is a general
-markets feed that mentions a microcap only occasionally.
+exchange-verified and legally compelled, while ~94% of the news archive is
+market-wide coverage that mentions a microcap only in passing.
 
 | available | announcements | news |
 |---|---|---|

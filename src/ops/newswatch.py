@@ -282,7 +282,34 @@ def _publisher(raw, host):
     # CNBCTV18 into cnbctv18. A small table of the publishers this archive
     # actually sees, keyed on the flattened name; anything unknown keeps the
     # spelling it arrived with rather than being mangled into Title Case.
-    return _CANON.get(name.casefold(), name)
+    flat = name.casefold()
+    if flat in _CANON:
+        return _CANON[flat]
+    # A host can be multi-part: "economictimes.indiatimes.com" strips to
+    # "economictimes.indiatimes", which matches nothing, so the archive carried
+    # The Economic Times under THREE names -- that, "The Economic Times" from
+    # the per-company channel, and the feed key "et_markets" from rows captured
+    # before this field existed. Try each part of the host, longest first.
+    for part in sorted(flat.split("."), key=len, reverse=True):
+        if part in _CANON:
+            return _CANON[part]
+    # ...and finally our own feed keys, which is what legacy rows carry.
+    for prefix, canon in _FEED_PUBLISHER.items():
+        if flat.startswith(prefix):
+            return canon
+    return name
+
+
+# Our feed names map to their publisher. Rows captured before `publisher`
+# existed carry the feed key here, and a reader counting publishers should not
+# see "et_markets" beside "The Economic Times" as though they were two papers.
+_FEED_PUBLISHER = {
+    "et_": "The Economic Times",
+    "livemint_": "Mint",
+    "mc_": "Moneycontrol",
+    "zeebiz": "Zee Business",
+    "bs_": "Business Standard",
+}
 
 
 _CANON = {
@@ -601,6 +628,14 @@ def _selftest():
     # An unknown publisher keeps the spelling it arrived with rather than being
     # mangled -- Title Case would turn CNBCTV18 into Cnbctv18.
     assert _publisher("SomeNewWire", "x") == "SomeNewWire"
+    # The three spellings of one paper that the archive actually contained.
+    assert (_publisher("", "economictimes.indiatimes.com")
+            == _publisher("The Economic Times", "x")
+            == _publisher("et_markets", "x")), \
+        "The Economic Times still has more than one spelling"
+    assert (_publisher("", "www.livemint.com")
+            == _publisher("livemint_markets", "x")
+            == _publisher("Mint", "x")), "Mint still has more than one spelling"
 
     # --- a query that cannot be trusted is not made ------------------------
     assert _query_for("TAKE", "") is None, "a bare ticker became a search query"
