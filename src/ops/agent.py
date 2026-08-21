@@ -98,6 +98,10 @@ _JOBS = {
     # ranking, the evidence so far, and any weight change that has EARNED
     # itself. It proposes and never applies -- see tg.cmd_review.
     "review":   [_S("ops/tg.py"), "--review"],
+    # Forward news capture. The one job here whose value is entirely in the
+    # future: it has no history, no backtest can ever read it, and every day it
+    # does not run is a day of evidence that cannot be recovered later.
+    "news":     [_S("ops/newswatch.py")],
 }
 _JOB_NAMES = tuple(_JOBS)
 
@@ -113,6 +117,7 @@ PLAIN = {
     "fill":     "buy today's orders at the open",
     "audit":    "run the self-check",
     "review":   "write tonight's findings",
+    "news":     "save today's market headlines",
 }
 
 
@@ -193,6 +198,20 @@ def due(now=None):
             and (now.hour > 9 or (now.hour == 9 and now.minute >= 20))
             and now.hour < 18):
         todo.append("fill")
+    # News, LAST on purpose. It reaches two third-party servers, and nothing
+    # here should wait behind that -- not the morning fill, not the audit that
+    # review quotes. A slow or hanging feed then costs the archive a day rather
+    # than costing the bucket its orders.
+    #
+    # Every day, weekends included: the strategy trades on weekdays but news
+    # does not stop, and Monday's open reads the weekend's headlines.
+    #
+    # Once daily is a floor, not an optimum. The feeds hold roughly 50 items, so
+    # a busy day may scroll items off before the evening tick sees them. Raising
+    # the cadence needs timestamp state -- once() stores a DATE per job -- so it
+    # is left until a gap is observed rather than guessed at.
+    if st.get("last_news") != str(today) and now.hour >= 18:
+        todo.append("news")
     return todo
 
 
@@ -538,12 +557,18 @@ def _selftest():
     # which is how it read before ops/ went under src/. The PROPERTY is "only
     # these four scripts and these three flags", and that is what survives.
     allowed = {_S("ops/snapshot.py"), _S("ops/daily.py"), _S("ops/tg.py"),
-               _S("ops/audit.py"), "--catchup", "--fill-live", "--review"}
-    for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit"):
+               _S("ops/audit.py"), _S("ops/newswatch.py"),
+               "--catchup", "--fill-live", "--review"}
+    for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit",
+                "news"):
         for arg in _cmd_for(job)[1:]:
             assert arg in allowed, f"{job} runs unexpected {arg!r}"
+    # Extended deliberately for "news", which is the point of a closed set: a
+    # job cannot join the agent without someone editing this line and saying so.
+    # newswatch.py only ever APPENDS to data/news/ and reads two public feeds,
+    # so it cannot touch the bucket, the order book or any strategy's data.
     assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill",
-                              "review", "audit"}, _JOB_NAMES
+                              "review", "audit", "news"}, _JOB_NAMES
     # A job with no plain name reaches /health as its internal name. Assert the
     # SET matches, so adding a job without naming it fails here rather than
     # printing "pbook" at someone.
