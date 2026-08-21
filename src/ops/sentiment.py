@@ -29,9 +29,15 @@ So:
                   strictly better than any news API: it is complete, it is
                   dated, and it is what the company is legally obliged to say.
 
-  news            headlines from data/news/, matched to the company. Thin by
-                  construction -- the archive only starts the day newswatch
-                  first ran -- and it says so rather than implying otherwise.
+  news            headlines from data/news/, in two channels: market-wide feeds,
+                  and a per-company query run over the day's candidates. The
+                  second exists because the first matched ZERO headlines to a
+                  microcap on day one. Items carry the publisher they came from
+                  -- Moneycontrol, Business Standard, CNBCTV18, Mint and the
+                  rest -- and the symbol whose own query retrieved them, so
+                  attribution is exact rather than guessed. Thin by
+                  construction: the archive starts the day newswatch first ran,
+                  and it says so rather than implying otherwise.
 
 WHAT THIS IS NOT
 ----------------

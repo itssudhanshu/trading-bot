@@ -89,8 +89,16 @@ Same −1.0 to +1.0 scale, using the source skill's bands:
 - **−0.4 to −0.7** — missed estimates, downgrade, minor regulatory concern
 - **−0.8 to −1.0** — investigation, fraud allegation, severe miss, exit under fire
 
-A market-wide wrap that happens to name the stock is **0.0**, not positive. Most
-matched headlines in this archive are exactly that.
+A market-wide wrap that happens to name the stock is **0.0**, not positive.
+
+Two more that look like news and are not, both seen in real captures:
+
+- **A quote or profile page** — "Yuken India Share Price", "Yuken India Ltd
+  YUKEN". These are filtered out before they reach you; if one survives, score
+  it 0.0 and say the filter missed it.
+- **A broker target repeated across outlets** — "Buy X; target of Rs 2200: ICICI
+  Securities" carried by three sites is *one* opinion, not three. Score it once
+  and note the duplication, rather than letting repetition inflate the mean.
 
 ## Step 4 — Channel scores
 
