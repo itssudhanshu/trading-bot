@@ -11,8 +11,16 @@ Their scoring rubric, signal bands and report shape are borrowed almost intact.
 What changed is the data, and it had to change: their three channels are
 NewsAPI, StockTwits and r/wallstreetbets, which are the right three for a US
 large cap and carry essentially nothing on the NSE microcaps this book trades.
-An absent channel scored as neutral reads as "no view" while meaning "no data",
-and those are different facts.
+StockTwits returns 404 for every NSE symbol, RELIANCE included. An absent
+channel scored as neutral reads as "no view" while meaning "no data", and those
+are different facts.
+
+**Headlines come from the publishers you would expect** — Moneycontrol, Business
+Standard, Financial Express, CNBCTV18, Economic Times, Mint — reached through an
+aggregator whose robots.txt permits it, because most of those sites either
+disallow us or return 403 to a non-browser agent. Each item records which
+publisher it came from, and each is tagged with the symbol whose own query
+retrieved it, so attribution is exact rather than matched by name.
 
 ## The rule that comes before the steps
 
