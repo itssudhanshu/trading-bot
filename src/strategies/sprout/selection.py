@@ -337,7 +337,7 @@ def decorrelate(rows, corpus, as_of, max_corr):
     return kept
 
 
-def allocate(rows, take_per_cluster=None, offset=0):
+def allocate(rows, take_per_cluster=None, offset=0, max_pos=None):
     """Take the best from EACH cluster, not the best overall.
 
     Ranking all 60 candidates together and taking the top 5 returned five mid
@@ -353,12 +353,18 @@ def allocate(rows, take_per_cluster=None, offset=0):
     # 35% win, the only negative cluster. All three no-mid mixes beat all three
     # with-mid mixes, and the controlled pair (2/2/0 vs 2/2/1) puts the mid
     # position alone at -1.32 points of CAGR.
+    # The seat count is a PARAMETER on the pooled path too. It read the module
+    # constant while simulate.run took max_pos as an argument, so a pooled
+    # bucket could not be sized at all: every arm silently allocated five
+    # however many seats it was asked for. Same defect as position_size had --
+    # a count injected by the caller and ignored by the callee.
+    n_seats = MAX_POSITIONS if max_pos is None else max_pos
     if RANKING == "pooled" and take_per_cluster is None:
         # Pooled ranking with a per-cluster quota would be neither one thing
-        # nor the other: take the best five outright, whatever band they are in.
-        out = [r for r in rows[:MAX_POSITIONS] if r.get("triggered", True)]
+        # nor the other: take the best n outright, whatever band they are in.
+        out = [r for r in rows[:n_seats] if r.get("triggered", True)]
         if len(out) < MIN_POSITIONS:
-            for r in rows[:MAX_POSITIONS]:
+            for r in rows[:n_seats]:
                 if len(out) >= MIN_POSITIONS:
                     break
                 if r not in out:
@@ -434,6 +440,22 @@ def _selftest():
     a, _ = position_size(500_000, 100.0, stop_pct=10.0)
     b, _ = position_size(500_000, 100.0, stop_pct=20.0)
     assert b < a, (a, b)
+
+    # the pooled path must honour an INJECTED seat count, not the module
+    # constant. It ignored it, so a pooled bucket of any size allocated five.
+    _was = RANKING
+    try:
+        globals()["RANKING"] = "pooled"
+        pool = [{"cluster": "small" if i % 2 else "micro", "score": 90 - i,
+                 "symbol": f"P{i}", "triggered": True} for i in range(20)]
+        for _n in (3, 5, 8, 12):
+            assert len(allocate(pool, None, max_pos=_n)) == _n, (
+                f"pooled allocate ignored max_pos={_n}: got "
+                f"{len(allocate(pool, None, max_pos=_n))}")
+        assert len(allocate(pool, None)) == MAX_POSITIONS, "default must be live"
+    finally:
+        globals()["RANKING"] = _was
+    assert RANKING == "per_cluster", RANKING
 
     # allocation must spread across clusters, not collapse into the richest one
     # `small` deliberately carries the highest scores: a bucket that ranked

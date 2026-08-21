@@ -201,7 +201,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                 held_clusters[p["clu"]] += 1
             rows = selection.allocate(
                 selection.build(corpus, day, capital=equity, trigger=trigger),
-                take_per_cluster, offset=offset)
+                take_per_cluster, offset=offset, max_pos=max_pos)
             rows = selection.decorrelate(rows, corpus, day, max_corr)
             for r in rows:
                 if room <= 0:

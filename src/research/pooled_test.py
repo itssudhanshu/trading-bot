@@ -71,13 +71,20 @@ Bonferroni threshold. That defect is not repeated here.
 WHAT IS NOT VARIED. Five seats, hold, stop, target, trigger, weights and the
 impact constant all stay live. Risk invariants untouched.
 
-ONE MECHANICAL WRINKLE, recorded because it constrains the design. Under
-`RANKING = "pooled"`, `allocate()` takes `rows[:MAX_POSITIONS]` -- the MODULE
-constant -- where the per-cluster path takes an injectable quota. So the pooled
-seat count cannot be varied through `simulate.run(max_pos=...)` the way
-bucket_size_test varied it. This experiment therefore runs at five seats only,
-which is the live value and the right comparison anyway; a pooled bucket of a
-different size would need that inconsistency fixed first.
+ONE MECHANICAL WRINKLE, now FIXED, recorded because the fix is what makes the
+post-hoc arms possible. Under `RANKING = "pooled"`, `allocate()` took
+`rows[:MAX_POSITIONS]` -- the MODULE constant -- where the per-cluster path took
+an injectable quota. So a pooled bucket could not be sized at all: asked for
+eight seats it allocated five, and the arm would have been mislabelled rather
+than wrong-looking. Same defect as `position_size` carried (bucket_size_test):
+a count injected by the caller and ignored by the callee. `allocate()` takes
+`max_pos` now, defaulting to the live constant, and `selection._selftest`
+asserts the pooled path honours 3/5/8/12.
+
+The PRE-REGISTERED comparison above is still pooled-at-5 against live-at-5, one
+comparison, no multiplicity correction. The 8- and 12-seat pooled arms were
+asked for after that result was seen; they are POST_HOC, reported below the bar
+and unable to promote through it.
 """
 
 import sys as _sys, pathlib as _pl
@@ -97,9 +104,19 @@ BASE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
 
 # (label, RANKING value, take_per_cluster). Pooled REQUIRES take=None: with a
 # quota it is neither one thing nor the other, and allocate() says so.
+# (label, RANKING, take_per_cluster, seats). Pooled at 8 and 12 was proposed
+# AFTER the 5-seat result was seen and is marked post-hoc for that reason: it
+# cannot promote under the bar above, which compares one variant to live. It is
+# measurable at all only because allocate() now honours an injected seat count;
+# it read the module constant before, so every pooled arm allocated five however
+# many it was asked for.
 ARMS = [
-    ("per_cluster 3/2", "per_cluster", dict(selection.TAKE_PER_CLUSTER)),
-    ("pooled",          "pooled",      None),
+    ("per_cluster 3/2", "per_cluster", dict(selection.TAKE_PER_CLUSTER), 5),
+    ("pooled",          "pooled",      None, 5),
+]
+POST_HOC = [
+    ("pooled@8",  "pooled", None, 8),
+    ("pooled@12", "pooled", None, 12),
 ]
 LIVE = "per_cluster 3/2"
 
@@ -110,16 +127,16 @@ def _worst_block(bl):
     return min(v[1] for v in bl.values()) if bl else 0.0
 
 
-def measure(corpus, days):
+def measure(corpus, days, arms=None):
     out = {}
     original = selection.RANKING
     try:
-        for label, ranking, take in ARMS:
+        for label, ranking, take, seats in (arms or ARMS):
             # Set the variant INSIDE the fork and restore it, so a variant
             # cannot leak into its sibling or into the live module.
             selection.RANKING = ranking
             entry._CACHE.clear()
-            r = simulate.run(corpus, days, max_pos=selection.MAX_POSITIONS,
+            r = simulate.run(corpus, days, max_pos=seats,
                              take_per_cluster=take, **BASE)
             if not r["trades"]:
                 raise SystemExit(f"{label}: no trades; nothing to compare")
@@ -259,6 +276,26 @@ if __name__ == "__main__":
         days = sorted({d for x in corpus.values() for d in x.days})
         res = measure(corpus, days)
         t, bt = report(res)
+        extra = measure(corpus, days, arms=POST_HOC)
+        lm, lse, _ = drawdown_test._stats(res[LIVE]["rets"])
+        lbl = {k: v[0] for k, v in res[LIVE]["blocks"].items()}
+        print("\n\nPOST-HOC: pooled at other seat counts. Proposed after the "
+              "5-seat result;\nreported, and excluded from the bar above.")
+        print(f"\n{'arm':<12}{'CAGR':>9}{'maxDD':>8}{'worstBlk':>10}{'top1':>8}"
+              f"{'syms':>6}{'occ':>6}{'n':>6}{'per trade':>16}{'t':>7}")
+        for label, _, _, seats in POST_HOC:
+            d = extra[label]
+            m, se, n = drawdown_test._stats(d["rets"])
+            tt = drawdown_test._t2(m, se, lm, lse)
+            print(f"{label:<12}{d['cagr']:>+8.2f}%{d['maxdd']:>7.1f}%"
+                  f"{d['worst_block']:>9.1f}%{d['conc']['top1']:>7.1f}%"
+                  f"{d['conc']['n_symbols']:>6}{d['occ']:>6.2f}{n:>6}"
+                  f"{m:>+11.2f}% +/-{se:.2f}{tt:>+7.2f}")
+            pb = {k: v[0] for k, v in d["blocks"].items()}
+            bm, bse, bn, bbt, _ = drawdown_test.paired(pb, lbl)
+            print(f"{'':12}paired block drawdown vs live {bm:+.2f}% "
+                  f"t={bbt:+.2f} (n={bn})  "
+                  f"{'RESOLVED' if abs(bbt) > 2 else 'inside the noise'}")
         ok, why = promote(res, t, bt)
         print(f"\nPROMOTION BAR: {'ADOPT -- ' if ok else 'no change. '}{why}")
         print("\nrecord:", json.dumps(

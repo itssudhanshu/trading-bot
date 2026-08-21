@@ -2135,6 +2135,52 @@ but "the two are indistinguishable, and a live rule is not swapped on a t of
 recorded reason that no longer matches reality is the L60 defect and this one was
 still being quoted.
 
+### Pooled at 8 and 12 seats, asked afterwards
+
+Post-hoc arms, excluded from the bar. Measurable at all only because
+`allocate()` now honours an injected seat count -- it read the module constant,
+so a pooled bucket asked for eight seats allocated five and the arm would have
+been MISLABELLED rather than merely wrong. Same defect `position_size` carried,
+found the same day, in the same function family.
+
+| arm | CAGR | maxDD | worst blk | top-1 | syms | occ | n | per trade | t | paired block DD |
+|---|---|---|---|---|---|---|---|---|---|---|
+| per_cluster @5 | +7.59% | 31.0% | -22.5% | 11.2% | 124 | 3.10 | 195 | +2.15% +/- 1.08% | -- | -- |
+| pooled @5 | +8.42% | 30.0% | -21.7% | 9.5% | 120 | 2.11 | 207 | +2.19% +/- 1.05% | +0.03 | +0.08 (t=+0.12) |
+| **pooled @8** | +5.31% | 27.0% | **-16.8%** | **8.1%** | **178** | 4.06 | 322 | +1.47% +/- 0.78% | -0.51 | **-1.27 (t=-2.36)** |
+| pooled @12 | +1.19% | **20.3%** | **-11.1%** | **6.1%** | **262** | 6.07 | 480 | +0.52% +/- 0.65% | -1.29 | -1.40 (t=-1.42) |
+
+Pooling at eight improves every risk measure at once -- worst block, top-1
+share, distinct symbols, whole-path drawdown -- and its paired block drawdown
+reads t = -2.36. Return falls with it: CAGR +5.31% against +7.59%, per trade
++1.47% against +2.15% (t = -0.51, unresolved). At twelve the return collapses to
+CAGR +1.19% while the risk measures keep improving.
+
+**This is the same axis as L64, seen through a different rule.** Whether seats
+are filled by quota or by pooled merit, adding them trades return for drawdown
+in the same direction and roughly the same proportion. That consistency is worth
+more than either individual result, and it says the effect belongs to
+CONCENTRATION, not to how the seats are divided -- which is exactly what the
+mix null (+0.05% at t = +0.05) already implied.
+
+### The multiplicity across the whole day, which no single file records
+
+Nine non-reference arms were compared against the same live bucket today across
+three experiments: bucket size at 3/8/12, bucket 8 at 4/4, drawdown at 8/12, and
+pooled at 5/8/12. A Bonferroni threshold at 5% for nine comparisons is
+**|t| > 2.77**.
+
+Both of the day's "RESOLVED" results sit below it -- L64's twelve-seat drawdown
+at t = -2.40 and pooled@8 at t = -2.36. **Neither survives a correction for how
+many questions were asked.** Each file registered its own multiplicity honestly
+within itself, and no file could see the total, which is how a day of disciplined
+experiments still ends up over-claiming.
+
+What survives is not any single t. It is that every arm, on both rules, moved
+drawdown and return in the same direction by roughly the same amount. A shape
+repeated across nine arms is a different kind of evidence from one arm at
+t = 2.4, and it is the only kind this day produced.
+
 **Two smaller things worth keeping.**
 
 The fear that pooling collapses the bucket into one band did not materialise at
