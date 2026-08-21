@@ -2,8 +2,9 @@
 """trellis: sprout's bucket, with an exit that can read the chart.
 
 A clone of sprout, identical to it until STRUCTURAL_EXIT is switched on.
-clone_reproduces.py asserts that with the knob off this still gives
-+7.59% / 31.0% / 195.
+clone_reproduces.py asserts that with the knob off this reproduces whatever
+sprout produces RIGHT NOW, measured side by side rather than against a number
+recorded weeks ago.
 
 The sprout bucket: Rs 3,00,000 across two size clusters.
 
@@ -108,15 +109,24 @@ def size_mult(scheme, rank, vol_pct, med_vol_pct):
     raise ValueError(f"unknown sizing scheme {scheme!r}")
 
 
-def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT, mult=1.0):
+def position_size(capital, entry, stop_pct=STOP_PCT, risk_pct=RISK_PCT, mult=1.0,
+                  max_pos=MAX_POSITIONS):
     """-> (qty, rupees_at_risk). Risk-based, then capped so one name cannot
-    exceed its share of the bucket."""
+    exceed its share of the bucket.
+
+    `max_pos` is a PARAMETER because the seat count divides the deployment cap.
+    It read the module constant, so simulate.run(max_pos=12) produced twelve
+    seats each sized for a five-seat book: 12 x 15% = 180% of equity, silent
+    leverage, and nothing in the buy loop checks cash. A bigger bucket would
+    have looked better for the reason that it was running more money. Default
+    is the live constant, so nothing about the live bucket changes.
+    """
     risk_rupees = capital * risk_pct / 100
     risk_per_share = entry * stop_pct / 100
     if risk_per_share <= 0:
         return 0, 0.0
     qty = int(risk_rupees / risk_per_share)
-    cap_value = capital * DEPLOY_PCT / 100 / MAX_POSITIONS * mult
+    cap_value = capital * DEPLOY_PCT / 100 / max_pos * mult
     qty = min(qty, int(cap_value / entry))
     return qty, qty * risk_per_share
 
@@ -159,20 +169,29 @@ def _why(r):
 # takes the best five outright. The size clusters then only decide WHO IS
 # ELIGIBLE (the least-liquid 67%), not how the five are split.
 #
-# Measured against per-cluster 3/2: CAGR +16.61 vs +13.57, CAGR-per-drawdown
-# 0.553 vs 0.471 -- but the worst half-year block is -119.4% against -83.6%.
-# Better return and better risk-adjusted return, worse tail. Worst-block
-# ranking is the one that has generalised in this project, so this is a
-# deliberate trade, not a free win.
 # "pooled" ranks every eligible stock against every other and takes the best
 # five outright; "per_cluster" ranks inside each band and fills a 3/2 quota.
 #
-# Pooled was tried and REVERTED. It wins on headline return (+16.61% vs
-# +13.57%) and on CAGR-per-drawdown (0.553 vs 0.471), and loses on everything
-# else: worst half-year -119.4% vs -83.6%, best single symbol 15.4% of all
-# gains vs 7.6%, 119 symbols traded vs 136, 2.54 stocks held vs 3.09, and
-# -1,588 vs +5,349 replaying the last 30 sessions. Two wins out of seven, both
-# of them the measure a best-of-N search inflates by construction.
+# RE-MEASURED POST-GUARD (pooled_test.py, batch 20260820-pooled), and the old
+# justification written here did not survive. Pre-guard the case against pooled
+# was its tail and its concentration: worst half-year -119.4% against -83.6%,
+# best single symbol 15.4% of all gains against 7.6%, "two wins out of seven".
+# Post-guard BOTH of those reverse -- worst block -21.7% against -22.5%, top-1
+# share 9.5% against 11.2% -- and pooled wins 5 of 7 measures. The magnitudes
+# collapsed too (a worst block of -119% was phantom fills, not a market).
+#
+#   per_cluster 3/2   CAGR +7.59%  maxDD 31.0%  worst blk -22.5%  top1 11.2%
+#                     occ 3.10  n=195  +2.15% +/- 1.08% per trade
+#   pooled            CAGR +8.42%  maxDD 30.0%  worst blk -21.7%  top1  9.5%
+#                     occ 2.11  n=207  +2.19% +/- 1.05% per trade
+#
+# It stays per_cluster anyway, and the reason is now the honest one: the two
+# are INDISTINGUISHABLE on return. The per-trade edge is +0.04% at t = +0.03
+# and paired block drawdown is +0.08% at t = +0.12. The CAGR gap shrank from
+# +3.04 points pre-guard to +0.83. There is no longer a case against pooled;
+# there is also no case FOR changing, and a live rule is not swapped on a
+# t of 0.03. Pooled also holds 2.11 names against 3.10, which cuts against the
+# one drawdown effect that did resolve today (L64).
 RANKING = "per_cluster"
 
 TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
@@ -197,11 +216,17 @@ TRIGGER = "breakout"    # trigger_test, re-run after the circuit-lock guard
 # no fixed day count could ever have found it.
 #
 # The rule: past day HOLD_DAYS, keep holding while the up-structure is intact.
-# Frozen here, in advance (spec 5.1). An exit condition left to judgement is the
-# same hindsight hole this project warns about for pattern detectors.
+# Frozen in advance (spec 5.1). An exit condition left to judgement is the same
+# hindsight hole this project warns about for pattern detectors.
+#
+# MEASURED AND REJECTED, 2026-08-20 (exit_shape_test, batch 20260820-trellis):
+# +0.34% per trade against the flat control at t = 0.22, against a bar of 2.6.
+# Holding 30 days flat -- no structure at all -- gained +1.42%, four times as
+# much, so this is a worse way of holding longer rather than a way of reading
+# structure. It stays here, off, because the code is the record of what was
+# tried; it does not stay because it works.
 STRUCTURAL_EXIT = False
 
-# All three must hold for the structure to count as intact.
 STRUCT_EMA = 20         # close must be above its own 20-day average
 STRUCT_LOOKBACK = 5     # ... and must not have made a lower high over this many
 STRUCT_ATR_MULT = 1.5   # ... and ATR(14) must not have expanded by more than
@@ -230,32 +255,21 @@ def structure_intact(s, i, p):
     trailing stops were measured across six configurations at both 3% and 10%
     stops and every one LOWERED expectancy -- lifting win rate 42% -> 48% while
     collapsing target hits 20% -> 8%, by stopping the book out of the winners
-    that pay for everything else. Repeating that under a new name would be a
-    waste of a hypothesis.
-
-    Condition 3 is the volatility-change shape CLAUDE.md names as legitimate.
+    that pay for everything else.
     """
     ema = features.ema(s.close, STRUCT_EMA)
     e = ema[i] if 0 <= i < len(ema) else None
     if e is None or s.close[i] <= e:
         return False
-
-    # No lower high: the recent window's high must not sit below the window
-    # before it. Compared window-to-window rather than bar-to-bar, because a
-    # single inside day is noise, not a change of structure.
     k = STRUCT_LOOKBACK
     if i - 2 * k + 1 < 0:
         return False
-    recent = max(s.high[i - k + 1:i + 1])
-    prior = max(s.high[i - 2 * k + 1:i - k + 1])
-    if recent < prior:
+    if max(s.high[i - k + 1:i + 1]) < max(s.high[i - 2 * k + 1:i - k + 1]):
         return False
-
     j = s.index_of(p["entry_day"])
     a_now, a_in = _atr_at(s, i), (_atr_at(s, j) if j is not None else None)
-    if a_now is not None and a_in:
-        if a_now > STRUCT_ATR_MULT * a_in:
-            return False
+    if a_now is not None and a_in and a_now > STRUCT_ATR_MULT * a_in:
+        return False
     return True
 
 
@@ -408,7 +422,7 @@ def decorrelate(rows, corpus, as_of, max_corr):
     return kept
 
 
-def allocate(rows, take_per_cluster=None, offset=0):
+def allocate(rows, take_per_cluster=None, offset=0, max_pos=None):
     """Take the best from EACH cluster, not the best overall.
 
     Ranking all 60 candidates together and taking the top 5 returned five mid
@@ -424,12 +438,18 @@ def allocate(rows, take_per_cluster=None, offset=0):
     # 35% win, the only negative cluster. All three no-mid mixes beat all three
     # with-mid mixes, and the controlled pair (2/2/0 vs 2/2/1) puts the mid
     # position alone at -1.32 points of CAGR.
+    # The seat count is a PARAMETER on the pooled path too. It read the module
+    # constant while simulate.run took max_pos as an argument, so a pooled
+    # bucket could not be sized at all: every arm silently allocated five
+    # however many seats it was asked for. Same defect as position_size had --
+    # a count injected by the caller and ignored by the callee.
+    n_seats = MAX_POSITIONS if max_pos is None else max_pos
     if RANKING == "pooled" and take_per_cluster is None:
         # Pooled ranking with a per-cluster quota would be neither one thing
-        # nor the other: take the best five outright, whatever band they are in.
-        out = [r for r in rows[:MAX_POSITIONS] if r.get("triggered", True)]
+        # nor the other: take the best n outright, whatever band they are in.
+        out = [r for r in rows[:n_seats] if r.get("triggered", True)]
         if len(out) < MIN_POSITIONS:
-            for r in rows[:MAX_POSITIONS]:
+            for r in rows[:n_seats]:
                 if len(out) >= MIN_POSITIONS:
                     break
                 if r not in out:
@@ -487,6 +507,17 @@ def _selftest():
     cap = cap_each
     # a full bucket must leave cash on the table
     assert cap * MAX_POSITIONS <= 500_000 * 0.75, "the bucket must not be fully invested"
+    # ...AT ANY SEAT COUNT. This is the invariant a bucket-size experiment can
+    # otherwise buy its way past: sizing read MAX_POSITIONS while the seat count
+    # was injectable, so more seats meant more money, not smaller slices.
+    for _n in (1, 3, 5, 8, 12, 20):
+        _q, _ = position_size(500_000, 100.0, max_pos=_n)
+        assert _q * 100.0 * _n <= 500_000 * DEPLOY_PCT / 100 + 100, (
+            f"{_n} seats deploy {_q * 100.0 * _n:,.0f} of 500,000 -- a bucket "
+            f"must never deploy more than DEPLOY_PCT whatever its size")
+    # and the slice must actually shrink as seats are added, not stay flat
+    assert (position_size(500_000, 100.0, max_pos=12)[0]
+            < position_size(500_000, 100.0, max_pos=5)[0])
     q2, _ = position_size(500_000, 10.0)
     assert q2 * 10.0 <= cap + 1, q2 * 10.0
     assert position_size(500_000, 0)[0] == 0
@@ -494,6 +525,22 @@ def _selftest():
     a, _ = position_size(500_000, 100.0, stop_pct=10.0)
     b, _ = position_size(500_000, 100.0, stop_pct=20.0)
     assert b < a, (a, b)
+
+    # the pooled path must honour an INJECTED seat count, not the module
+    # constant. It ignored it, so a pooled bucket of any size allocated five.
+    _was = RANKING
+    try:
+        globals()["RANKING"] = "pooled"
+        pool = [{"cluster": "small" if i % 2 else "micro", "score": 90 - i,
+                 "symbol": f"P{i}", "triggered": True} for i in range(20)]
+        for _n in (3, 5, 8, 12):
+            assert len(allocate(pool, None, max_pos=_n)) == _n, (
+                f"pooled allocate ignored max_pos={_n}: got "
+                f"{len(allocate(pool, None, max_pos=_n))}")
+        assert len(allocate(pool, None)) == MAX_POSITIONS, "default must be live"
+    finally:
+        globals()["RANKING"] = _was
+    assert RANKING == "per_cluster", RANKING
 
     # allocation must spread across clusters, not collapse into the richest one
     # `small` deliberately carries the highest scores: a bucket that ranked

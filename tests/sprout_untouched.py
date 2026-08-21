@@ -46,12 +46,33 @@ sys.path.insert(0, str(ROOT / "src"))
 import paths  # noqa: E402
 
 MANIFEST = ROOT / "tests" / "sprout_manifest.json"
+BASELINE = ROOT / "data" / "sprout" / "baseline.json"
 
 # An import statement, not a mention. selection.py has a COMMENT saying orders
 # "are queued into positions.db by daily.py", which is true, documentary, and
 # must not trip this check.
 _IMPORTS_ORDER_BOOK = re.compile(r"^\s*(?:import\s+positions|from\s+positions\s+import)",
                                  re.MULTILINE)
+
+# What is actually TOUCHED matters more than whether the module was imported.
+# This check originally failed anything that imported `positions` at all, which
+# was right when nothing did and became wrong the moment the forward-trading
+# work landed: learning.py imports it to read the string constant
+# positions.MAIN and filter its OWN ledger, and never opens the database.
+#
+# So the rule is now about reach, not about imports. Reading a label cannot
+# touch the order book; anything else can.
+_ATTR = re.compile(r"\bpositions\.([A-Za-z_][A-Za-z0-9_]*)")
+_LABELS = {"MAIN", "POOL", "BUCKETS"}     # plain strings/tuples naming a book
+
+# Modules allowed to reach further, each with the reason it is allowed. Named
+# individually so an exception has to be defended in writing rather than
+# happening quietly -- the same idiom run_selftests.py uses for NO_SELFTEST.
+_MAY_READ_ORDER_BOOK = {
+    "src/research/forward_test.py":
+        "the live forward run IS its subject; it reads the order book and "
+        "never writes to it",
+}
 
 _fails = []
 
@@ -112,13 +133,27 @@ def check_order_book_unreachable():
     a second strategy could corrupt sprout's live bucket. Backtests have no
     business there, and this asserts they cannot get there by accident.
     """
-    offenders = []
+    offenders, labelled = [], []
     for d in ("src/strategies", "src/research"):
         for p in sorted((ROOT / d).rglob("*.py")):
-            if _IMPORTS_ORDER_BOOK.search(p.read_text(encoding="utf-8", errors="replace")):
-                offenders.append(str(p.relative_to(ROOT)))
-    check("no strategy or research module imports the live order book",
-          not offenders, f"offenders: {offenders or 'none'}")
+            rel = str(p.relative_to(ROOT))
+            src = p.read_text(encoding="utf-8", errors="replace")
+            if not _IMPORTS_ORDER_BOOK.search(src):
+                continue
+            if rel in _MAY_READ_ORDER_BOOK:
+                labelled.append(rel)
+                continue
+            # "positions.db" in prose is the FILENAME, not an attribute; it is
+            # lowercase and no such attribute exists, so it cannot match a label
+            # and would be a false positive. Excluded by name.
+            reach = {a for a in _ATTR.findall(src)
+                     if a not in _LABELS and a != "db"}
+            if reach:
+                offenders.append(f"{rel} -> {sorted(reach)}")
+    check("no strategy or research module can reach the live order book",
+          not offenders,
+          f"reaching: {offenders or 'none'}; "
+          f"allowed by name: {labelled or 'none'}")
 
 
 def check_data_scoped():
@@ -152,7 +187,13 @@ def main():
     check_rules_unchanged()
     check_order_book_unreachable()
     check_data_scoped()
-    print(f"\n  behavioural check (baseline +7.59% / n=195) is audit.py's, and"
+    # READ the baseline; never print a copy of it. A hardcoded "+7.59% / n=195"
+    # sat here and was already wrong within a day of being typed, which is L60
+    # in miniature -- and wrong in the one place a reader goes to check whether
+    # sprout has moved.
+    _b = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
+    print(f"\n  behavioural check (recorded baseline "
+          f"{_b.get('cagr', '?')}% / n={_b.get('n', '?')}) is audit.py's, and"
           f"\n  runs in the sweep: python3 tests/run_selftests.py\n")
     if _fails:
         print(f"{len(_fails)} FAILED: {', '.join(_fails)}")

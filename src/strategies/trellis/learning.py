@@ -89,6 +89,30 @@ def record(rows, path=None):
     return len(rows)
 
 
+def for_weights(rows):
+    """-> only the trades that may inform the WEIGHTS.
+
+    The bucket and the pool run the same signals side by side and hold the same
+    names constantly, so their outcomes are not independent draws -- they are
+    largely the same trades reached by two routes. Two consequences, and the
+    second is the serious one:
+
+      counting both inflates n with correlated rows, so a spread looks better
+      measured than it is;
+
+      and letting the POOL's outcomes move the weights would feed back into the
+      BUCKET's future picks, which stops the two being a comparison at all. The
+      pool is supposed to be an independent forward record, not an input to the
+      thing it is being compared against.
+
+    So the weights learn from `main` alone. Rows with no `portfolio` are the
+    historical seed, which predates any bucket and is kept.
+    """
+    import positions
+    return [r for r in rows
+            if r.get("portfolio") in (None, positions.MAIN)]
+
+
 def load(path=None):
     p = Path(path) if path else LEDGER
     if not p.exists():
