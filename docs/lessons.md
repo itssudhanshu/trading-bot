@@ -2084,3 +2084,67 @@ The selftest now checks all four directions: a one-episode fixture is rejected,
 a consistent effect carrying one extra-bad block SURVIVES (a guard that rejects
 every series with a worst block rejects every real series), and a resolved
 return cost vetoes even convincing drawdown.
+
+## L65 — Pooled ranking: the case against it was made of phantom fills, and it still is not adopted
+
+The operator asked whether the 3/2 quota should go, letting merit take all five
+seats -- 5/0 if small looks stronger than micro, 0/5 if not. That is exactly
+`RANKING = "pooled"`, which already exists, was already tried, and was already
+reverted. Re-run post-guard (`src/research/pooled_test.py`, batch
+20260820-pooled) because every number behind the revert predated the
+circuit-lock guard by three days, and CLAUDE.md's rule is that any figure
+without a post-guard tag is the old, phantom-filled one.
+
+| measure | per_cluster 3/2 | pooled | better |
+|---|---|---|---|
+| CAGR | +7.59% | **+8.42%** | pooled |
+| maxDD, whole path | 31.0% | **30.0%** | pooled |
+| per trade | +2.15% +/- 1.08% (n=195) | **+2.19% +/- 1.05%** (n=207) | pooled |
+| worst 6-month block | -22.5% | **-21.7%** | pooled |
+| top-1 share of gains | 11.2% | **9.5%** | pooled |
+| distinct symbols | **124** | 120 | per_cluster |
+| stocks held | **3.10** | 2.11 | per_cluster |
+
+**The prediction written before the run was wrong, and wrong where it counted.**
+It said pooled would reproduce its pre-guard shape: higher CAGR, WORSE tail,
+HIGHER concentration. The tail and the concentration both REVERSED. Pre-guard,
+the entire case against pooled rested on those two -- worst half-year -119.4%
+against -83.6%, best single symbol 15.4% of all gains against 7.6%. Post-guard
+pooled wins both, and wins 5 of 7 measures overall.
+
+**Look at what happened to the magnitudes.** A worst half-year block of -119.4%
+is not a market event, it is a bucket filled at prices no seller offered. The
+guard removed the circuit-locked bars -- 9.8% of picks had a locked trigger bar,
+8.7% a locked FILL bar, every one an upper lock -- and those were
+disproportionately the violent up-day fills. They inflated a few names enormously
+(concentration) and produced block swings above 100% (tail). Strip them and both
+measures come back to earth: -21.7% against -22.5%, 9.5% against 11.2%. **The
+argument that killed pooled was an artefact of the same bug L58 found.**
+
+**And pooled is still not adopted, for a better reason than before.** The bar
+required the per-trade edge to be RESOLVED in pooled's favour. It is +0.04% at
+**t = +0.03**, which is as close to exactly nothing as this project has
+measured. Paired block drawdown is +0.08% at t = +0.12. The CAGR gap shrank from
++3.04 points pre-guard to +0.83. Condition (c) also failed on distinct symbols,
+120 against 124, though that margin is trivial and would not carry the decision
+alone.
+
+So the verdict is unchanged and its reason is replaced: not "pooled loses 5 of 7"
+but "the two are indistinguishable, and a live rule is not swapped on a t of
+0.03". The stale justification in `selection.py` has been rewritten, because a
+recorded reason that no longer matches reality is the L60 defect and this one was
+still being quoted.
+
+**Two smaller things worth keeping.**
+
+The fear that pooling collapses the bucket into one band did not materialise at
+this scale: pooled traded 91 micro against 116 small, a 44/56 split, not 0/100.
+The structural tilt is real -- pooling stops neutralising `liq`, so the more
+liquid band gains seats regardless of whether it is having a good week, and the
+pooled top ten on 2026-08-20 was 9 small / 1 micro against 8 / 2 -- but it is a
+tilt, not a collapse.
+
+Pooled holds **2.11** names against 3.10. That cuts directly against L64, where
+more concurrent positions resolvably reduced block drawdown (t = -2.40). Pooled
+gets a slightly better whole-path maxDD while holding a third fewer names, which
+is the one genuinely puzzling number in the table and is not explained here.

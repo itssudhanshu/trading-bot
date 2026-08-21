@@ -162,20 +162,29 @@ def _why(r):
 # takes the best five outright. The size clusters then only decide WHO IS
 # ELIGIBLE (the least-liquid 67%), not how the five are split.
 #
-# Measured against per-cluster 3/2: CAGR +16.61 vs +13.57, CAGR-per-drawdown
-# 0.553 vs 0.471 -- but the worst half-year block is -119.4% against -83.6%.
-# Better return and better risk-adjusted return, worse tail. Worst-block
-# ranking is the one that has generalised in this project, so this is a
-# deliberate trade, not a free win.
 # "pooled" ranks every eligible stock against every other and takes the best
 # five outright; "per_cluster" ranks inside each band and fills a 3/2 quota.
 #
-# Pooled was tried and REVERTED. It wins on headline return (+16.61% vs
-# +13.57%) and on CAGR-per-drawdown (0.553 vs 0.471), and loses on everything
-# else: worst half-year -119.4% vs -83.6%, best single symbol 15.4% of all
-# gains vs 7.6%, 119 symbols traded vs 136, 2.54 stocks held vs 3.09, and
-# -1,588 vs +5,349 replaying the last 30 sessions. Two wins out of seven, both
-# of them the measure a best-of-N search inflates by construction.
+# RE-MEASURED POST-GUARD (pooled_test.py, batch 20260820-pooled), and the old
+# justification written here did not survive. Pre-guard the case against pooled
+# was its tail and its concentration: worst half-year -119.4% against -83.6%,
+# best single symbol 15.4% of all gains against 7.6%, "two wins out of seven".
+# Post-guard BOTH of those reverse -- worst block -21.7% against -22.5%, top-1
+# share 9.5% against 11.2% -- and pooled wins 5 of 7 measures. The magnitudes
+# collapsed too (a worst block of -119% was phantom fills, not a market).
+#
+#   per_cluster 3/2   CAGR +7.59%  maxDD 31.0%  worst blk -22.5%  top1 11.2%
+#                     occ 3.10  n=195  +2.15% +/- 1.08% per trade
+#   pooled            CAGR +8.42%  maxDD 30.0%  worst blk -21.7%  top1  9.5%
+#                     occ 2.11  n=207  +2.19% +/- 1.05% per trade
+#
+# It stays per_cluster anyway, and the reason is now the honest one: the two
+# are INDISTINGUISHABLE on return. The per-trade edge is +0.04% at t = +0.03
+# and paired block drawdown is +0.08% at t = +0.12. The CAGR gap shrank from
+# +3.04 points pre-guard to +0.83. There is no longer a case against pooled;
+# there is also no case FOR changing, and a live rule is not swapped on a
+# t of 0.03. Pooled also holds 2.11 names against 3.10, which cuts against the
+# one drawdown effect that did resolve today (L64).
 RANKING = "per_cluster"
 
 TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
