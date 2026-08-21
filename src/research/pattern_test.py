@@ -209,9 +209,44 @@ def _selftest():
     assert CONTROL == selection.TRIGGER, "control drifted from the live trigger"
     assert CONTROL != "none", "controlling on 'none' would be a straw man"
 
-    # Every arm must exist as a real trigger.
-    for nm in (CONTROL, PRIMARY, LOOSE) + DESCRIPTIVE:
-        assert nm in entry.TRIGGERS, f"{nm} is not a registered trigger"
+    # Every arm must exist as a real trigger. This file lives in the SHARED
+    # research directory but its arms are trellis's, and the sweep runs under
+    # whatever STRATEGY is active -- usually sprout, where `pattern` does not
+    # exist. Asserting against the imported module therefore failed the sweep
+    # for a reason that says nothing about whether this test is correct.
+    #
+    # Skipping the check when the strategy is not trellis would be worse: it
+    # would never run, since the sweep is the only thing that runs it. So it
+    # checks the FILE that defines the triggers, which is true from anywhere.
+    if paths.STRATEGY == "trellis":
+        for nm in (CONTROL, PRIMARY, LOOSE) + DESCRIPTIVE:
+            assert nm in entry.TRIGGERS, f"{nm} is not a registered trigger"
+    else:
+        # The TABLE, not the source text. A first attempt grepped trellis's
+        # entry.py for '"cup_handle"' and had no teeth: the name appears twice
+        # in that file -- once in the TRIGGERS registration and once inside its
+        # own selftest's list -- so renaming the registration still matched the
+        # mention. agent.py records the same trap in the same words: a source
+        # scan for a name matches the list of names itself and can never fail.
+        #
+        # So trellis is imported in a CHILD, which is the only way one process
+        # can see another strategy's rules -- paths binds the active strategy at
+        # import, and that isolation is deliberate.
+        import os
+        import subprocess
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env["STRATEGY"] = "trellis"
+        r = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, 'src'); import paths, entry;"
+             " print(' '.join(entry.TRIGGERS))"],
+            cwd=paths.ROOT, env=env, capture_output=True, text=True, timeout=120)
+        got = set(r.stdout.split())
+        assert got, f"could not read trellis's triggers: {r.stderr[-300:]}"
+        for nm in (PRIMARY,) + DESCRIPTIVE:
+            assert nm in got, f"{nm} is not registered in trellis: {sorted(got)}"
+        for nm in (CONTROL, LOOSE):
+            assert nm in entry.TRIGGERS, f"{nm} must exist in every strategy"
 
     # The looseness arm is not optional: removing it is what would let a purely
     # looser trigger pass as a pattern finding, exactly as removing H4's
