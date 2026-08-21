@@ -507,8 +507,16 @@ def cmd_clusters(_=None):
     # before a single rupee has moved, and stays 🟢 the next day when the price
     # never broke out and it was never bought (rules.md R1 -- a word already in
     # use is not reused for something else).
-    live = {r["symbol"] for r in positions.summary(which=None)["rows"]
-            if r["status"] in ("open", "pending")}
+    _rows = [r for r in positions.summary(which=None)["rows"]
+             if r["status"] in ("open", "pending")]
+    live = {r["symbol"] for r in _rows}
+    # symbol -> the books holding it, in registry order, so a name held by both
+    # reads "— Bucket, Pool" exactly as it does on the order screens.
+    holders = {}
+    for _r in sorted(_rows, key=lambda x: list(positions.BUCKETS).index(x["bucket"])
+                     if x["bucket"] in positions.BUCKETS else 99):
+        holders.setdefault(_r["symbol"], []).append(
+            positions.label(_r["bucket"]).title())
     depth = max(selection.TAKE_PER_CLUSTER.values()) * 3
     out = [_title("RANKING", f"as of {as_of}"),
            f"_Of the NSE shares that trade least each day, the "
@@ -525,11 +533,16 @@ def cmd_clusters(_=None):
             sym = r["symbol"]
             mark = ("🟢" if sym in live else "🔵" if sym in chosen else
                     "🔸" if sym in trig else "▫️")
-            out.append(f"  rank {n}. {mark} {sym}  score {r['score']:.0f}")
+            # WHICH book holds it. `live` pools every bucket, so 🟢 under a
+            # legend reading "the bucket owns it now" said the bucket held
+            # KENNAMET when the POOL did -- a false statement about the live
+            # book on the screen that lists the whole ranking.
+            out.append(f"  rank {n}. {mark} {sym}  score {r['score']:.0f}"
+                       f"{_tag(holders.get(sym, [])) if sym in live else ''}")
         if len(inc) > depth:
             out.append(f"  _...{len(inc) - depth} more, ranked too low to buy_")
         out.append("")
-    out.append("_🟢 the bucket owns it now · 🔵 chosen, waiting for its price to "
+    out.append("_🟢 held now, by the book named · 🔵 chosen, waiting for its price to "
                "break higher · 🔸 price broke higher but ranked too low to buy · "
                "▫️ ranked only_")
     return "\n".join(out)
@@ -734,7 +747,8 @@ def cmd_pending_orders(_=None):
         sp = positions.bucket_cfg()["stop_pct"]
         total += val
         risk += val * sp / 100
-        out.append(f"*{r['symbol']}* ({SIZE.get(r['cluster'], r['cluster'])})")
+        out.append(f"*{r['symbol']}* "
+                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}")
         out += _fields(
             # `filled` is n/a and `entry` is an ESTIMATE off the last close --
             # the fill happens at tomorrow's open, which nobody knows yet.

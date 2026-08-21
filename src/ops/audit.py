@@ -357,6 +357,29 @@ def main():
         _dt = _time.time() - _t0
         if _dt > 2.0:
             _slow.append(f"{_name} {_dt:.1f}s")
+    # A command that names a held stock must say WHICH BOOK holds it. Two books
+    # run the same signals on the same names, so an untagged symbol is not
+    # merely terse -- it is ambiguous about whose money is in it. /pending-orders
+    # shipped untagged and was reported by the operator; /clusters was worse,
+    # marking the POOL's KENNAMET with a legend that read "the bucket owns it
+    # now". Both were found by hand, which is why this is a check.
+    _live_syms = {r["symbol"] for r in positions.summary(conn, which=None)["rows"]
+                  if r["status"] in ("pending", "open")}
+    _words = ("Bucket", "Pool", "BUCKET", "POOL")
+    _untagged = []
+    if _live_syms and len(positions.BUCKETS) > 1:
+        for _name in sorted(set(tg.COMMANDS) - tg.ALIASES):
+            try:
+                _t = tg.COMMANDS[_name](None)
+            except Exception:
+                continue
+            if any(s in _t for s in _live_syms) and not any(w in _t for w in _words):
+                _untagged.append(_name)
+    check("every command naming a held stock says which book holds it",
+          not _untagged,
+          f"{len(_live_syms)} live symbol(s), all attributed"
+          if not _untagged else f"untagged: {', '.join(_untagged)}")
+
     check("no command takes longer than 2s to answer", not _slow,
           "slowest well under 2s" if not _slow else " | ".join(_slow))
 
