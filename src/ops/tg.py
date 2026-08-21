@@ -535,6 +535,59 @@ def cmd_clusters(_=None):
     return "\n".join(out)
 
 
+# Short forms for the ranking screens. The long labels stay canonical in
+# selection.FEATURE_LABELS and are still what /help and the prose use; these are
+# the same words with the filler removed, because eight of them on one line is
+# the difference between a line a person scans and one they skip. Still plain
+# words -- rules.md R2 is not relaxed, only tightened.
+SHORT = {"rs": "6-mo gain", "deliv": "shares kept",
+         "liq": "easy to trade", "near_high": "near high"}
+
+
+def _rank_lines(picks, held, ref=None):
+    """-> the numbered ranking, two lines a stock.
+
+    One line names the stock and what it is doing; one carries the four numbers
+    strongest-first. It used to be six lines a stock -- status spelled out as a
+    sentence, size group repeated from the header, "score out of 100" -- which
+    is thirty lines for five names on a phone.
+
+    `ref` names WHAT THE SCORE IS A PERCENTILE OF, and it is printed beside the
+    number rather than left to a footer. The score is relative by construction:
+    /bucket ranks a stock inside its own size band (637 micro caps), /pool ranks
+    it against all 1,275 eligible shares, so YUKEN reads 85 on one screen and 78
+    on the other. Same stock, same features, different denominator. Two meanings
+    of "score" printed as bare numbers on two screens is the collision rules.md
+    R1 forbids -- the `rank2`-beside-`rank 5` failure -- and it was reported by
+    the operator within a day of the pool screen existing. None = the stock's
+    own band.
+    """
+    out = []
+    for n, r in enumerate(picks, 1):
+        st = held.get(r["symbol"])
+        state = ("🟢 held" if st == "open" else
+                 "🟡 buying at the next open" if st == "pending" else
+                 "⚪ waiting for breakout")
+        band = SIZE.get(r["cluster"], r["cluster"])
+        # On /bucket the size band IS the reference set, so it is named once as
+        # the reference rather than twice on one line. On /pool they differ --
+        # the band is what the stock is, the reference is what it was scored
+        # against -- and both are needed.
+        head = (f"score {r['score']:.0f} vs {band}" if ref is None
+                else f"{band} · score {r['score']:.0f} vs {ref}")
+        out.append(f"*{n}. {r['symbol']}* — {head} · {state}")
+        # Strongest first, so the line answers why THIS name and not the one
+        # below it. A run-on sentence naming the strong features cannot: it
+        # never says which was strongest.
+        nums = [f"{SHORT[f]} {v:.0f}"
+                for f, v in sorted((r.get("ranks") or {}).items(),
+                                   key=lambda kv: -kv[1]) if f in SHORT]
+        if nums:
+            out.append("    " + " · ".join(nums))
+        out.append("")
+    return out
+
+
 def cmd_bucket(_=None):
     """The stocks the bucket chose this session, and why."""
     import clusters, features, learning, selection, positions
@@ -559,30 +612,12 @@ def cmd_bucket(_=None):
     mix = selection.TAKE_PER_CLUSTER
     out = [_title("THE BUCKET",
                   " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),
-           f"_The {sum(mix.values())} best-scored. Each is bought only once its "
-           f"price breaks above its recent high; until then that money stays in "
-           f"cash._", ""]
+           f"_Top {sum(mix.values())} by score, {sum(mix.values())} best in "
+           f"each size band. Bought when the price breaks above its recent "
+           f"high._", ""]
     picks = _chosen(rows, mix)
     shown = {r["symbol"] for r in picks}
-    for n, r in enumerate(picks, 1):
-        st = held.get(r["symbol"])
-        state = ("🟢 the bucket owns it" if st == "open" else
-                 "🟡 buying at tomorrow's open" if st == "pending" else
-                 "⚪ waiting for the price to break higher")
-        out.append(f"*{n}. {r['symbol']}*  {state}")
-        # The four numbers, one per line, instead of the run-on sentence `why`
-        # builds. "among the best 30% for near its recent high, 6-month price
-        # gain, easy to trade, shares actually kept" is 90 characters that do
-        # not say WHICH was strongest, so it cannot answer the only question
-        # anyone asks of this screen: why this stock and not the one below it.
-        # The numbers can (rules.md R2).
-        out += ["    " + l for l in _fields(
-            ("size group", SIZE.get(r["cluster"], r["cluster"])),
-            ("score out of 100", f"{r['score']:.0f}"),
-            *[(FEATURE[f], f"{v:.0f}")
-              for f, v in sorted((r.get("ranks") or {}).items(),
-                                 key=lambda kv: -kv[1]) if f in FEATURE])]
-        out.append("")
+    out += _rank_lines(picks, held)
     if not picks:
         out.append("_No candidates today._")
     # Stocks bought on an EARLIER evening, still running, and no longer in
@@ -595,26 +630,78 @@ def cmd_bucket(_=None):
     earlier = sorted(s for s in held if s not in shown)
     if earlier:
         out += [f"*Also held, bought earlier*  {', '.join(earlier)}",
-                "_Tonight's ranking no longer puts these in the top 5, and that "
-                "changes nothing: each one runs to its own stop, target or "
-                "10-day limit. /open-orders for the detail._", ""]
+                "_Off tonight's top 5, still running to their own stop, target "
+                "or 10-day limit. /open-orders for detail._", ""]
     # The POOL, named separately and never mixed into the ranking above. This
     # screen is the BUCKET's list; a pool holding shown green among these rows
     # would say the bucket owns a name it does not.
     if pool_held:
         out += [f"*The pool holds*  {', '.join(sorted(pool_held))}",
-                "_The pool ranks every eligible share together and takes the "
-                "best five, so its five need not match the bucket's. "
-                "/open-orders shows both._", ""]
+                "_A separate book, ranked without size bands. /pool for its "
+                "own list._", ""]
     live = sum(1 for s in shown if s in held)
-    out += [f"_Each number is a place out of 100 against the other shares in the "
-            f"same size group -- 100 is the best. The score is their average, "
-            f"with '{FEATURE['deliv']}' counted {WEIGHTS.get('deliv', 1):g}x. "
-            f"Nothing is bought below its 200-day average price._",
-            f"_{live} of these {sum(mix.values())} is bought; the rest are "
-            f"waiting for their price to break higher._" if live == 1 else
-            f"_{live} of these {sum(mix.values())} are bought; the rest are "
-            f"waiting for their price to break higher._"]
+    out += [_score_note(WEIGHTS, "its own size band"),
+            f"_{live} of {sum(mix.values())} bought, "
+            f"{sum(mix.values()) - live} waiting._"]
+    return "\n".join(out)
+
+
+def _score_note(weights, against):
+    """-> the one line explaining what the numbers are. Shared, so the bucket
+    and the pool cannot end up describing the score differently."""
+    return (f"_Each number is a place out of 100 against {against} — 100 is "
+            f"best. Score is their average, shares kept counted "
+            f"{weights.get('deliv', 1):g}x. Nothing is bought below its 200-day "
+            f"average price._")
+
+
+def cmd_pool(_=None):
+    """The pool's five: ranked without size bands."""
+    import features, learning, selection, positions
+    WEIGHTS = learning.load_weights()
+    corpus = features.load_corpus()
+    days = sorted({d for s in corpus.values() for d in s.days})
+    as_of = days[-1]
+    seats = positions.BUCKETS[positions.POOLED]["seats"] or selection.MAX_POSITIONS
+    # Set the pool's rule for this call and put it back. A leak would re-rank
+    # the BUCKET's own screens for the rest of the process.
+    _was = selection.RANKING
+    try:
+        selection.RANKING = positions.BUCKETS[positions.POOLED]["ranking"]
+        rows = selection.build(corpus, as_of)
+        # rows[:seats], NOT allocate(). allocate() applies the breakout trigger,
+        # so on an evening where four of the five have not broken out yet this
+        # screen would list one name and imply the pool chose one. Rank first,
+        # trigger second (CLAUDE.md): the trigger decides WHEN a chosen stock is
+        # bought, not whether it was chosen. _chosen() carries the same note --
+        # /clusters and /bucket disagreed for exactly this reason once.
+        picks = rows[:seats]
+    finally:
+        selection.RANKING = _was
+    assert selection.RANKING == _was
+    held = {r["symbol"]: r["status"]
+            for r in positions.summary(which=positions.POOLED)["rows"]
+            if r["status"] in ("open", "pending")}
+    from collections import Counter
+    split = Counter(r["cluster"] for r in picks)
+    out = [_title("THE POOL",
+                  " + ".join(f"{split[k]} {SIZE.get(k, k)}"
+                             for k in ("micro", "small") if split[k])
+                  or "nothing tonight"),
+           f"_Top {seats} by score across every eligible share, no size quota. "
+           f"The split lands wherever the ranking puts it._", ""]
+    out += _rank_lines(picks, held, ref="all shares")
+    shown = {r["symbol"] for r in picks}
+    earlier = sorted(s for s in held if s not in shown)
+    if earlier:
+        out += [f"*Also held, bought earlier*  {', '.join(earlier)}",
+                "_Off tonight's top 5, still running to their own stop, target "
+                "or 10-day limit._", ""]
+    live = sum(1 for s in shown if s in held)
+    out += [_score_note(WEIGHTS, "every eligible share"),
+            f"_{live} of {seats} bought, {seats - live} waiting._",
+            "_Runs beside the bucket on its own Rs 3,00,000. /bucket for the "
+            "quota book._"]
     return "\n".join(out)
 
 
@@ -1159,6 +1246,7 @@ def cmd_help(_=None):
             "/closed-orders — finished, and what each one made or lost\n\n"
             "*Why these stocks?*\n"
             "/bucket — the 5 chosen this session, with the reason for each\n"
+            "/pool — the pool\'s 5, ranked with no size quota\n"
             "/clusters — the full ranking they were chosen from\n\n"
             "*Is any of this actually working?*\n"
             "/findings — every result recorded, and what it can prove\n"
@@ -1178,6 +1266,7 @@ def cmd_help(_=None):
 # /help, which is a better outcome than silently teaching the banned word.
 COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
             "/bucket": cmd_bucket,
+            "/pool": cmd_pool,
             "/pending_orders": cmd_pending_orders,
     "/pending-orders": cmd_pending_orders,
             "/open_orders": cmd_open_orders, "/open-orders": cmd_open_orders,
