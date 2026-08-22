@@ -179,6 +179,13 @@ and those gaps are under one standard error too.
 
 ## Every design decision was re-checked with error bars
 
+**READ THE NON-EQUITY SECTION BELOW FIRST.** Everything in this section tagged
+`20260819-postlock` was measured on a corpus holding 87 delisted ETFs, and the
+live reference has since moved from +7.59% to +2.42% (L61). The `remeasure.py`
+rows are re-run under `20260820-nonequity3` and restated inline; the
+`trigger_test`, `rank_test`, `weight_test` and `impact_test` tables are NOT
+re-run and their levels should not be quoted.
+
 A CAGR gap between two backtests is not evidence unless the per-trade edge
 behind it clears its own noise. Checked at current settings:
 
@@ -213,7 +220,45 @@ gaps. Per-trade returns have a standard deviation near 16%, so at ~200 trades
 nothing under about 3 points per trade is resolvable. The CAGR gaps are real
 arithmetic on one path; they are not proof that one rule picks better trades.
 
-**One verdict did change, and it changed the live justification.** The trigger
+**Re-measured again after the non-equity fix** (same file, batch
+20260820-nonequity3). The live bucket is now **+2.42% / 32.5% DD / 193 trades /
+46% win / +1.07% +/- 1.12% per trade**, and this table replaces the one above:
+
+| variant | CAGR | maxDD | n | per trade | vs live | t |
+|---|---|---|---|---|---|---|
+| **live 3/2 10d breakout** | **+2.42%** | **32.5%** | **193** | **+1.07%** | -- | -- |
+| hold 15d (the old rule) | +2.22% | 34.7% | 184 | +1.10% | -0.04% | -0.02 |
+| mix 2 micro / 3 small | +6.47% | 34.0% | 203 | +1.92% | -0.86% | -0.55 |
+| no trigger | +2.58% | 43.0% | 291 | +1.12% | -0.06% | -0.03 |
+
+**Every gap is still inside the noise, and this time the ordering did NOT
+survive.** Removing 87 ETFs cost 5.17 CAGR points, more than every gap in the
+post-guard table, and two verdicts moved:
+
+- **10-day vs 15-day hold collapsed to nothing.** +2.27 CAGR points post-guard,
+  **+0.20** now, at t = -0.02. The two are indistinguishable on this corpus;
+  10 days keeps a 2.2-point drawdown advantage and that is the whole of its
+  remaining case.
+- **The trigger's CAGR argument evaporated, and reverted to what it was
+  before the guard.** Post-guard it read +7.59% against -2.20% for no trigger,
+  and L59 recorded that as the trigger no longer needing the tail argument. It
+  reads **+2.42% against +2.58%** now -- the trigger COSTS 0.16 points again,
+  exactly the shape of the original justification. It is back to being a risk
+  rule, and there it is emphatic: 32.5% drawdown against 43.0%, on 98 fewer
+  trades.
+- **3/2 vs 2/3 flipped for the fourth time**, now trailing by 4.05 points where
+  it led by 2.34. Four settings, four answers, none of them significant. It is
+  the clearest knob-inside-the-noise this project has, and it stays at 3/2 for
+  the reason it always has: re-choosing on a number that moves whenever
+  anything else moves is churn, not evidence.
+
+That the levels move and the rankings do not was the L59 prediction. **Half of
+it failed here** -- the levels moved and so did two rankings -- which is what
+it looks like when a correction is larger than the gaps it sits on top of. Note
+that BOTH flips were caused by data corrections, not by any rule changing.
+
+**One verdict did change, and it changed the live justification** (and the
+non-equity fix has since changed it back -- see the table above). The trigger
 was previously kept DESPITE costing a point of CAGR (+11.45 breakout vs +12.53
 none), on worst-block alone. Post-guard `trigger_test` reads breakout +7.59%
 against none **-2.20%**, and breakout is the only one of seven to clear the
@@ -222,13 +267,17 @@ and new figures are not directly comparable (different hold as well as the
 guard), but the SIGN of the CAGR gap flipped, so the setting no longer rests on
 the tail argument. Nothing about the live bucket changes; its reason improves.
 
-**The one claim that DOES survive is the important one, and the guard made it
-stronger.** Rank depth predicts return: regressing 1,015 trades across six
-disjoint cohorts gives **-1.18% per cohort step (std err 0.29%, t = -4.10)**,
-and the top cohort beats the deepest by **+6.63% +/- 1.79%** per trade
-(t = 3.71). Pre-guard the same regression read -0.90% +/- 0.35% (t = -2.56) on
-1,068 trades. Every one of the five deeper cohorts is now CAGR-negative and
-none matches the top. So the SCORE works;
+**The one claim that DOES survive is the important one, and neither correction
+touched it.** Rank depth predicts return. Re-run on the corrected universe
+(`rank_test`, batch 20260820-nonequity3, 1,062 trades across six disjoint
+cohorts): **-1.12% per cohort step (std err 0.28%, t = -3.95)**, top cohort
+beating the deepest by **+5.64% +/- 1.52%** per trade (t = +3.72). Post-guard
+on the contaminated universe it read -1.18% +/- 0.29% (t = -4.10) on 1,015
+trades; pre-guard, -0.90% +/- 0.35% (t = -2.56) on 1,068. **The slope barely
+moved** -- 0.06% -- while the live CAGR fell by two thirds, which is the most
+useful thing in this file: the ETFs inflated the LEVEL and did not manufacture
+the SIGNAL. Every one of the five deeper cohorts is CAGR-negative
+and none matches the top. So the SCORE works;
 the knobs around it are noise. That is the right way round -- it means the edge
 lives in stock selection, not in parameter choices that a search would overfit.
 
@@ -289,6 +338,83 @@ error-bar table, the rank-depth slope and the impact sensitivity above, plus
 held: the rankings and shapes survived, the levels did not, and the one thing
 that moved was the trigger's justification. Any figure quoted without a
 post-guard batch tag is the old, phantom-filled one.
+
+## The non-equity gap (L61), and what it cost
+
+`universe.non_equity_symbols()` built its denylist as `traded - master` with
+BOTH sides read off the same newest snapshot. A fund therefore had to be
+trading TODAY to be eligible for the denylist at all, so every fund that had
+already delisted stayed in the historical universe -- inside the micro and
+small clusters this book buys. The docstring reasoned carefully about delisted
+COMPANIES, which are rightly kept against survivorship bias; delisted FUNDS
+inherited that protection and should never have had it.
+
+| universe | CAGR | maxDD | n | per trade |
+|---|---|---|---|---|
+| control: funds in | +7.59% | 31.0% | 195 | +2.15% +/- 1.08% |
+| **funds removed (live)** | **+2.42%** | **32.5%** | **193** | **+1.07% +/- 1.12%** |
+
+**68% of the recorded CAGR came from instruments this strategy does not
+trade** -- 22 of 195 trades were gold, silver and index ETFs. Drawdown got
+WORSE while return fell by two thirds, which is how you can tell the removed
+trades were disproportionately winners. As with L58 the
+per-trade gap does not clear its error bar (+1.10% +/- 2.35%, t = +0.47) and
+as with L58 that is irrelevant: error bars decide which RULE to prefer, not
+whether a silver ETF is a small-cap company.
+
+**The concentration is the finding.** Zero fund trades in the first quarter of
+the history, 1.4% in the second, 9.4% in the third, and **36.4% in
+2024-11-28..2026-08-20** at +4.38% +/- 2.73%. The recent record -- the part
+that most looks like the strategy working -- was substantially a
+precious-metals rally reached through ETFs.
+
+**The fix has two halves, and only one of them is code.** The denylist is now
+a union over every snapshot holding both files of that day's `traded - master`:
+still point-in-time, but it never forgets, so a fund seen once stays
+classified after it delists. `LICNETFSEN` proves that half is needed -- it
+traded as a fund on 2026-08-14 and was gone by 2026-08-20.
+
+The other half could not be derived. **7 of 1,699 snapshots hold a company
+master and all 7 fall in one week**, so nothing on disk says what a 2021 symbol
+was, and `ever traded minus the master` is 828 symbols of which most are dead
+COMPANIES. `data/non_equity_history.json` is the classified answer for 100 of
+them, built by `src/ops/classify_non_equity.py` from a name test AND a
+price-tracking test, because each fails alone and they cover each other: the
+name rule takes 12 real companies (DECNGOLD is a gold MINER, JETFREIGHT merely
+contains "ETF"), and every one of those 12 tracks a fund at 0.51 or below. The
+conjunction takes **0 of 2,334 labelled companies**, labels supplied by NSE
+rather than by judgement. `--validate` re-derives all of it.
+
+A THIRD signal was needed and only checking the output found it. With the name
+and tracking tiers shipped, the corrected book still bought Bharat Bond ETFs:
+they are invisible to tracking because they barely move (EBBETF0425 correlates
+0.10 with its best match). Stillness is the evidence instead -- the quietest
+company on the exchange is PGHH at 1.372% daily sd and NO labelled company
+falls under 0.50%, where those funds sit at 0.011-0.24%. Tier C is an
+instrument word AND sd < 0.50%, never stillness alone, because a suspended
+stock is also still.
+
+**Three rules of thumb came out of building it.** A token is not safe because
+it is safe against companies that STILL EXIST -- METAL and ENERGY score zero
+against the master and take TATAMETALI and SWANENERGY out of the delisted
+population. Zero false positives is not the same as a safe rule: DIV, CONSU
+and VALUE each scored zero while leaving DIVISLAB 0.009 under the bar. And a
+classifier is finished when the OUTPUT is clean, not when the validation
+passes -- run `classify_non_equity.py --report` and read what is left in.
+
+**What is deliberately LEFT IN.** 528 candidates stay in the universe, because
+a wrongly deleted company is the worse error and is invisible once made. Ten of
+those have both an instrument-ish name and enough history to reach the corpus
+and no snapshot that can speak for them -- IDBIGOLD sits at 0.5966 against a
+0.60 bar, and TIMESGTY is Times Guaranty, a real company that merely contains
+"ESG". None is bought by the corrected book: it trades 121 symbols, the 15
+absent from the master are all real delisted or renamed companies, and none
+reads as an instrument. Verified, not assumed -- that check is what found the
+Bharat Bond ETFs.
+
+**The baseline was NOT re-recorded.** `audit.py` fails on the drift on
+purpose; `--rebaseline` is a deliberate separate step. `data/breakout/baseline.json`
+still says +7.59% and is known to be wrong.
 
 ## Market impact
 

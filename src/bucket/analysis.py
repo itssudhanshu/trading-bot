@@ -194,12 +194,21 @@ def load_occupancy():
 # Mean return per trade in the historical baseline, and the spread around it.
 # The reference point for "how many trades before this means anything".
 #
-# 2.15 is the POST-GUARD edge (L58/L59, batch 20260819-postlock, n=195). It read
-# 3.07 while the engine still filled circuit-locked bars, and understating this
-# number flatters the project twice: a smaller edge needs MORE trades to detect,
-# so the honest wait is ~213 trades and ~2.8 years, not ~105 and ~1.5.
-BACKTEST_EDGE = 2.15
-TRADE_SD = 16.0     # measured 15.1 post-guard; kept at 16 as the conservative one
+# 1.07 is the edge after the non-equity fix (L61, batch 20260820-nonequity3,
+# n=193). The series of this one number is the whole story of this project's
+# corrections, and each step DOWN made the honest wait longer:
+#
+#     3.07  original                        ~105 trades to resolve
+#     2.15  after the circuit-lock guard    ~213 trades   (L58/L59)
+#     1.07  after the non-equity fix         859 trades   (L61)
+#
+# Overstating it flatters the project twice -- once on the return, and once on
+# how soon anyone could know. A smaller edge needs MORE trades to detect, and
+# 859 at this book's recorded pace (~29/year) is ~30 years -- not a horizon
+# any forward test reaches. That is the honest number and it is meant to be
+# uncomfortable.
+BACKTEST_EDGE = 1.07
+TRADE_SD = 16.0     # measured 15.6 here; kept at 16 as the conservative one
 
 # The day engine.gate() was first CALLED. Every finding recorded before it filled
 # circuit-locked bars -- about half the CAGR and 37 of 232 trades were fills the

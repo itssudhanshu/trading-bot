@@ -161,12 +161,16 @@ property of the market; *"lookback=47 worked"* is overfitting.
 
 ## Status
 
-No strategy has established an edge. The recorded baseline is **+7.59% CAGR,
-31.0% max drawdown, 195 trades over 1,698 sessions** with impact at c=1.0, and
-`audit.py` fails if it stops reproducing -- or if the exit rules change without
-the baseline being re-recorded deliberately (`--rebaseline`). It is a BACKTEST,
-and not evidence the approach works forward. Forward paper trades closed: 0. Run
-`overview.py` for the current figures rather than trusting this paragraph.
+No strategy has established an edge. `data/breakout/baseline.json` still records
+**+7.59% CAGR, 31.0% max drawdown, 195 trades**, and that figure is known to be
+wrong: the point-in-time non-equity denylist could only recognise a fund that
+was still trading, so delisted ETFs sat in the historical universe and the
+bucket bought 22 of them. Measured without them the same rules give **+2.42%
+CAGR, 32.5% max drawdown, 193 trades** (L61, batch `20260820-nonequity3`), and
+`audit.py` fails on the drift on purpose -- re-recording is a deliberate step
+(`--rebaseline`). It is a BACKTEST either way, and not evidence the approach
+works forward. Forward paper trades closed: 0. Run `overview.py` for the
+current figures rather than trusting this paragraph.
 
 The harness has found several real defects in its own results — an unreachable
 target rule, ETF contamination, a float-precision R:R rejection, R-multiple

@@ -87,10 +87,15 @@ def gates(s):
     g = [("Point-in-time data", "PASS" if s["days"] > 1000 and not s["gaps"] else "GAPS",
           f"{s['days']} sessions {s['span'][0]}..{s['span'][1]}, "
           f"{len(s['gaps'])} unexplained gaps")]
+    # Hardcoded, and it sat two lines above the comment below warning against
+    # exactly that -- it still read the 20260819-postlock figures after L61
+    # moved them. Restated here rather than made live because rank_test.py is a
+    # six-way parallel backtest and cannot run inside a status report; the
+    # batch tag is what makes the staleness visible next time.
     g.append(("Ranking predicts return", "PASS",
-              "trend across 6 rank cohorts, 1015 trades: -1.18% per step "
-              "(std err 0.29, t -4.10); top vs deepest +6.63% +/- 1.79, t 3.71 "
-              "[batch 20260819-postlock; rank_test.py prints this]"))
+              "trend across 6 rank cohorts, 1062 trades: -1.12% per step "
+              "(std err 0.28, t -3.95); top vs deepest +5.64% +/- 1.52, t 3.72 "
+              "[batch 20260820-nonequity3; rank_test.py prints this]"))
     g.append(("Costs modelled realistically", "PASS",
               "brokerage, STT, exchange, SEBI, GST, stamp, DP charges, 20% STCG"))
     # The c=1.0 figure is READ from the recorded baseline, not restated here.
@@ -100,19 +105,30 @@ def gates(s):
     g.append(("Market impact modelled", "PASS",
               "sqrt(participation) x volatility on both sides; baseline "
               f"{_bl.get('cagr', float('nan')):+.2f}% at c=1.0 "
-              "(+11.90% assuming free fills)"))
+              "(the c=0 comparison is not restated: impact_test has not been "
+              "re-run since L61 and the old +11.90% described a universe "
+              "holding 87 ETFs)"))
     b = s["bucket"]
     # How long until forward trades can settle anything, at the bucket's own
-    # turnover. Roughly 3 positions on 15-day holds is ~52 trades a year.
+    # turnover. Use the REALISED pace from the recorded baseline -- trades
+    # divided by years -- not occupancy x (250/hold). That product is what the
+    # book would do if every position it held ran the full hold and it were
+    # always at mean occupancy, and it reads ~78/year against a realised 28.
+    # Nearly three times too fast, in the one line whose job is to say how long
+    # the honest wait is. An optimistic denominator here flatters the project
+    # in exactly the direction L58 and L61 already flattered it.
     try:
         import analysis, selection
-        occ = (analysis.load_occupancy() or {}).get("mean", 3.0)
-        per_yr = occ * (250 / selection.HOLD_DAYS)
+        yrs = (_bl.get("sessions") or 0) / 250
+        per_yr = ((_bl.get("n") or 0) / yrs) if yrs > 0.5 else None
+        if not per_yr:
+            occ = (analysis.load_occupancy() or {}).get("mean", 3.0)
+            per_yr = occ * (250 / selection.HOLD_DAYS)
         need = analysis.trades_needed(analysis.BACKTEST_EDGE)
         g.append(("Enough trades to judge", "PENDING",
                   f"{need} trades needed at the backtest's "
-                  f"{analysis.BACKTEST_EDGE:.1f}% edge; ~{per_yr:.0f}/year, "
-                  f"so ~{need / per_yr:.1f} years"))
+                  f"{analysis.BACKTEST_EDGE:.1f}% edge; ~{per_yr:.0f}/year "
+                  f"at the recorded pace, so ~{need / per_yr:.0f} years"))
     except Exception:
         pass
     g.append(("Forward paper evidence",

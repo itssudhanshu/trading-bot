@@ -2593,3 +2593,221 @@ other way is exactly why the bars were fixed in advance.
 
 Nine hypotheses. Nothing adopted. `ANN_FEATURES` stays empty, `TRIGGER` stays
 `breakout`, and sizing stays equal-weight.
+
+---
+
+## L69 — The denylist could only see funds that were still trading (decisive)
+
+`universe.non_equity_symbols()` built its denylist as `traded - master`, and
+**both sides came from the same, newest snapshot**. That is correct for a fund
+that still trades. For one that had already delisted it is structurally blind:
+the fund is absent from today's bhavcopy, so it never enters `traded`, so it
+never enters the denylist, and it appears in the tradeable universe on every
+historical date — inside the micro and small clusters this book actually buys.
+
+The docstring reasoned carefully about delisted COMPANIES, which are rightly
+kept to avoid survivorship bias. Delisted FUNDS inherited that protection and
+should never have had it.
+
+**Measured** (`src/research/universe_test.py`, batch 20260820-nonequity3):
+
+| universe | CAGR | maxDD | n | per trade |
+|---|---|---|---|---|
+| control: funds in | **+7.59%** | 31.0% | 195 | +2.15% +/- 1.08% |
+| funds removed (live) | **+2.42%** | 32.5% | 193 | +1.07% +/- 1.12% |
+
+**68% of the recorded CAGR came from instruments the strategy does not trade.**
+22 of 195 trades (11.3%) were gold, silver and index ETFs — AXISILVER,
+AXISGOLD, SILVERETF, GOLDSHARE, ICICIGOLD, HDFCMFGETF, GOLDETFADD, UTIBANKETF,
+KOTAKALPHA. Drawdown got slightly WORSE, so this was not a risk that paid; it
+was a different asset class.
+
+**The edge per trade halved, and that is the number with consequences.** It has
+now gone 3.07% -> 2.15% (circuit-lock guard) -> **1.07%** (here), and the
+trades needed to resolve it scale with the square of that: 105 -> 213 ->
+**859**. At this book's recorded pace of ~29 trades a year that is ~30 years.
+`analysis.BACKTEST_EDGE` carries the live value and the status report reads it,
+so the honest wait is quoted, not the flattering one.
+
+**The per-trade gap does not clear its error bar and that is irrelevant**, for
+the same reason as L58: the removed trades beat the rest by +1.10% +/- 2.35%
+(t = +0.47, inside the noise). Error bars decide which RULE to prefer. They do
+not decide whether a silver ETF is a small-cap company. It is not one at any
+t-statistic.
+
+**Where it sat is the finding, not the total.** Split into four equal blocks:
+
+| block | trades | of which funds |
+|---|---|---|
+| 2019-10-01..2021-06-18 | 26 | 0 (0.0%) |
+| 2021-06-21..2023-03-03 | 72 | 1 (1.4%) |
+| 2023-03-06..2024-11-27 | 53 | 5 (9.4%), +0.39% +/- 0.90% |
+| **2024-11-28..2026-08-20** | 44 | **16 (36.4%), +4.38% +/- 2.73%** |
+
+All of it is recent, and it is the precious-metals rally reached through ETFs.
+More than a third of the last block's trades were funds. Anyone reading the
+recent record as evidence the strategy works was reading a commodity trade.
+
+### Why the obvious fix does not work
+
+Build the denylist from the UNION of every snapshot's `equity_master.csv`, and
+classify a fund using a master from when it traded. **Check the coverage first:
+7 of 1,699 snapshots hold a master, and all 7 fall inside one week**
+(2026-08-14..2026-08-20). Their union adds 15 names over the newest, every one
+a delisted company. There is no point-in-time record of what a 2021 symbol was.
+
+### What was built instead, in two halves
+
+**The mechanism, which prevents recurrence.** The denylist is now a UNION over
+every snapshot holding BOTH files, of that day's `traded - master`. Both sides
+still come from the same day, so it stays point-in-time; it just never forgets.
+This is not hypothetical: `LICNETFSEN` traded as a fund on 2026-08-14 and was
+gone by 2026-08-20, and only the union still knows what it was. Cost is one
+pass per master-day — 5 here, 0.04s.
+
+**The history, which cannot be derived and had to be classified.**
+`data/non_equity_history.json`, 100 funds, built by
+`src/ops/classify_non_equity.py` from two signals that fail separately and
+work together:
+
+- **name alone** catches 64% of known funds and **12 real companies** —
+  DECNGOLD is a gold MINER, JETFREIGHT merely contains "ETF", PNBGILTS is a
+  primary dealer. Deleting those is the survivorship bias the module exists to
+  avoid, in the other direction.
+- **tracking alone** (best correlation of daily returns against a reference
+  fund) has zero false positives above 0.92 but only 25% recall there, and
+  below 0.90 it starts eating INFY and TCS, which dominate ITBEES.
+- **together**: every one of the 12 name false positives tracks at 0.51 or
+  below. The gold miner does not move like gold. At an instrument-word AND
+  tracking >= 0.60 the conjunction takes **0 of 2,334 labelled companies** and
+  the closest survivor sits 0.089 under the bar.
+
+**A third signal was needed, and only checking found it.** With the first two
+tiers shipped, the corrected book still bought `EBBETF0423` and `EBBETF0425` --
+Bharat Bond ETFs. They are invisible to tracking because they barely move:
+EBBETF0425's best correlation against any reference is 0.10. **Stillness is the
+evidence instead.** The quietest company on the exchange is PGHH at 1.372%
+daily return sd; 0 of 2,214 labelled companies fall under 0.50%, and the bond,
+gilt, SDL and liquid funds sit at 0.011% to 0.24%. A share of an operating
+company does not move 0.15% a day. Tier C is an instrument word AND sd < 0.50%
+over at least 120 sessions -- never stillness alone, because a suspended stock
+whose close is carried forward is also very still.
+
+**The check that caught it was "which symbols does the corrected book actually
+trade", not a selftest.** Both tiers passed their validation and the artifact
+looked complete; the residue is where the misses live, and the only way to see
+them is to look at what still gets bought.
+
+**Two more stale copies fell out of running `overview.py` afterwards**, both
+in the status report, both the L60 disease again:
+
+- The "Ranking predicts return" gate hardcoded `1015 trades: -1.18% per step
+  ... [batch 20260819-postlock]` — **two lines above a comment that exists
+  specifically to warn against hardcoding a live number there.** The comment
+  was added when this same gate block printed a stale `+10.85%`. Writing the
+  warning did not stop the line above it from being a copy.
+- "Enough trades to judge" computed the trading pace as
+  `occupancy x (250 / HOLD_DAYS)` = ~78 trades a year. The realised pace in the
+  recorded baseline is ~29. That product assumes the book is always at mean
+  occupancy AND every position runs the full hold, so it is nearly three times
+  too fast — **in the one line whose entire job is to say how long the honest
+  wait is.** With the corrected edge it read "~11 years" where the realised
+  pace gives ~30. It now divides the recorded n by the recorded years.
+
+Both flattered the project, both in the same direction as the two corrections
+themselves. **A number that is derived optimistically is not more honest than
+a number that is copied.**
+
+**A wart, recorded because the ledger cannot be edited.** The two-tier build
+was measured and STORED before tier C existed, so `data/breakout/simulations.jsonl`
+carries six rows tagged `20260820-nonequity` (18:37-18:44, live arm +2.79% /
+n=192) that describe a universe nobody shipped. `simulations.jsonl` is
+append-only, so they stay. The shipped figures are tagged
+**`20260820-nonequity3`** -- three tiers, 100 funds -- and that suffix is the
+only thing separating them. **Bump the batch tag when the code under it
+changes, not when the experiment ends**: a tag that spans two builds is exactly
+the thing the tag exists to prevent, and here it took a rename after the fact
+to repair.
+
+Labels come from NSE, not from judgement: positives are the 343 symbols in
+today's EQ bhavcopy that today's master omits; negatives are the 2,568 in the
+master. `--validate` re-derives every number above.
+
+**Two rejections worth keeping.** A token is not safe because it is safe
+against companies that still exist: METAL and ENERGY score zero against the
+master and take TATAMETALI and SWANENERGY out of the DELISTED population, which
+is the population that matters. And **zero false positives is not the same as a
+safe rule** — DIV, CONSU and VALUE each scored zero while leaving DIVISLAB
+0.009 under the bar. A rule that is correct by 0.009 is correct by luck; they
+were dropped and a margin floor now fails the validation at 0.05.
+
+### What is deliberately left in
+
+528 candidates stay in the universe, because a wrongly deleted company is the
+worse error and is invisible once made. Most are dead companies. Of the ones
+whose name reads like an instrument, 32 have enough history to reach the corpus
+and 22 of those are denied anyway by a snapshot that still lists them, leaving
+**10 of real residual risk** -- IDBIGOLD (tracks silver at 0.60, just under the
+bar), KOTAKMNC, NETFDIVOPP, IBMFNIFTY, NAVINIFTY, ICICI5GSEC, GSEC10ABSL,
+NIFTYEES, NETFLTGILT, and TIMESGTY, which is Times Guaranty, a real company
+that only contains "ESG" inside its own name. `--report` prints the list.
+
+**Verified rather than assumed:** the corrected book trades 121 distinct
+symbols, 15 of them absent from the master union, and every one of those 15 is
+a real delisted or renamed company (CIGNITITEC, SINTEX, MIRCELECTR, TIPSINDLTD,
+SCAPDVR...). Nothing it buys reads as an instrument any more.
+
+### What this invalidates
+
+Every figure tagged `20260819-postlock` was measured on a corpus holding 87 of
+these funds, exactly as every pre-guard figure was measured on phantom fills.
+L59's prediction was that the levels move and the rankings survive. Re-running
+`remeasure.py` under `20260820-nonequity3`, **half of that prediction failed**:
+
+| variant | CAGR | maxDD | n | per trade | vs live | t |
+|---|---|---|---|---|---|---|
+| **live 3/2 10d breakout** | **+2.42%** | **32.5%** | **193** | **+1.07%** | -- | -- |
+| hold 15d (the old rule) | +2.22% | 34.7% | 184 | +1.10% | -0.04% | -0.02 |
+| mix 2 micro / 3 small | +6.47% | 34.0% | 203 | +1.92% | -0.86% | -0.55 |
+| no trigger | +2.58% | 43.0% | 291 | +1.12% | -0.06% | -0.03 |
+
+Every gap is still inside the noise, and **two verdicts moved**, because 5.17
+CAGR points is larger than every gap the post-guard table was decided on:
+
+- **10-day vs 15-day hold went from +2.27 CAGR points to +0.20**, at t = -0.02.
+  The two are indistinguishable on this corpus; 10 days keeps a 2.2-point
+  drawdown edge and that is now its entire case.
+- **The trigger's CAGR argument evaporated, reverting to the pre-guard shape.**
+  L59 recorded that it had stopped needing the tail argument, reading +7.59%
+  against -2.20%. It reads +2.42% against +2.58% now — the trigger COSTS 0.16
+  points again and is back to being justified on risk alone, where it is
+  emphatic: 32.5% drawdown against 43.0%, on 98 fewer trades.
+- **3/2 vs 2/3 flipped for the fourth time**, trailing by 4.05 where it led by
+  2.34. Four settings, four answers, none significant. Left at 3/2.
+
+**Both flips were caused by a DATA correction, not by any rule changing.** The
+trigger's justification has now told three different stories about the same
+unchanged constant. That is what a knob inside the noise looks like when the
+ground moves under it.
+
+**`rank_test` was re-run too, and the one claim that matters survives.**
+Per-trade return against rank-cohort depth reads **-1.12% per step +/- 0.28%,
+t = -3.95 on 1,062 trades**, against -1.18% +/- 0.29%, t = -4.10 on 1,015 on
+the contaminated universe. The slope moved by 0.06% while the headline CAGR
+fell by two thirds. **The ETFs inflated the level; they did not manufacture the
+signal.** All five deeper cohorts stay CAGR-negative
+(+2.42 / -5.82 / -7.19 / -10.66 / -21.47 / -18.74) and 0 of 5 match the top.
+This is the same shape L58 found: a data correction that guts the headline and
+leaves the selection claim standing is evidence the claim was about selection.
+
+`trigger_test`, `weight_test` and `impact_test` are **not yet re-run and their
+numbers should not be quoted**.
+
+**The baseline was not re-recorded.** `audit.py` fails on it deliberately
+(`CAGR +7.59% -> +2.42%, moved 5.17`) and `--rebaseline` is a separate,
+deliberate step for the operator.
+
+**The clone gate is unaffected.** `tests/clone_reproduces.py` compares a clone
+against a LIVE breakout run in a child process, not against `baseline.json` —
+both sides move together. It prints the recorded baseline as information and
+already labels drift "audit.py's question, not this one".

@@ -3,9 +3,15 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-19 — every knob re-measured against the circuit-lock
-guard (L58/L59), and the strategy moved into `strategies/breakout/`.
+Last updated: 2026-08-23 — the point-in-time non-equity gap (L69). The
+denylist could only ever see funds that were still trading, so 87 delisted
+ETFs sat inside the historical micro and small clusters. Removing them takes
+the backtest from **+7.59% to +2.42% CAGR**. **The baseline has NOT been
+re-recorded** — `audit.py` fails on it deliberately and `--rebaseline` is the
+operator's call.
 
+The three strategies were also renamed for what they do: `sprout` → `breakout`,
+`thicket` → `sentiment`, `trellis` → `patterns`.
 ---
 
 ## The approach (this is the whole system)
@@ -47,12 +53,45 @@ There is no TDS on resident equity delivery.
 
 ## Historical baseline
 
-**+7.59% CAGR, 31.0% max drawdown, 195 trades** over 1698 sessions
-(2019-10-01 to 2026-08-19), with impact at c=1.0, at the adopted 10-day hold,
-**after the circuit-lock guard** (L58). It is a BACKTEST. It is not evidence the
-approach works forward.
+**RECORDED: +7.59% CAGR, 31.0% max drawdown, 195 trades.** That is what
+`data/breakout/baseline.json` still says, and it is **known to be wrong** as of
+2026-08-20.
 
-Per trade: +2.15% +/- 1.08 (std err 1.08, t 1.99, n=195).
+**MEASURED NOW: +2.42% CAGR, 32.5% max drawdown, 193 trades**, per trade
++1.07% +/- 1.12% (batch 20260820-nonequity3). The gap is L61: the non-equity
+denylist was built from one snapshot, so it could only see funds that were
+still trading, and 87 delisted ETFs stayed in the historical universe. 22 of
+the recorded 195 trades were gold, silver and index ETFs, 16 of them in the
+last block alone — **68% of the recorded CAGR was never this strategy's.**
+Drawdown got slightly worse, so it was not a risk that paid; it was a
+different asset class.
+
+**The edge per trade is now +1.07%, and that is the number with teeth.** It
+has gone 3.07% -> 2.15% -> 1.07% across two corrections, and trades needed to
+resolve it scale with the square: 105 -> 213 -> **859**, about 30 years at
+this book's recorded pace of ~29 trades a year (`overview.py` computes this
+from the baseline rather than from an occupancy estimate -- see L61). Forward paper trades remain the only
+thing that shortens that, and the count is still zero.
+
+The recorded figure was NOT overwritten. `audit.py` fails on the drift on
+purpose:
+
+    [FAIL] baseline drift is proportionate to new data
+           corpus grew 1 session(s); CAGR +7.59% -> +2.42% (moved 5.17)
+
+(The message says "new data" because that check owns drift generally; the
+cause here is the fix, not the extra session.)
+
+Re-record it deliberately, in its own step, once the correction is accepted:
+
+    python3 src/ops/audit.py --rebaseline
+
+Everything below and everything in CLAUDE.md tagged `20260819-postlock` was
+measured on the contaminated universe. `remeasure.py` has been re-run under
+`20260820-nonequity3`; `trigger_test`, `rank_test`, `weight_test` and
+`impact_test` have NOT, and their numbers should not be quoted until they are.
+
+It is a BACKTEST either way. It is not evidence the approach works forward.
 
 This replaced **+14.14% / 25.8% / 232** on the same corpus -- the figure the
 audit itself printed when the guard broke the recorded baseline. (+14.18% /
@@ -164,9 +203,10 @@ contaminate the one evidence stream a search cannot reach (L47; PBO 0.929 in
 L41).
 
 **But the deeper cohorts buy ranks the score already marks as worse** --
--1.18% per rank step, +6.63% between the top cohort and the deepest across six
-disjoint cohorts (1,015 trades, post-guard; -0.90% and +6.41% pre-guard, so the
-guard STRENGTHENED this) -- and knowingly trading picks you believe are
+-1.12% per rank step, +5.64% between the top cohort and the deepest across six
+disjoint cohorts (1,062 trades, batch 20260820-nonequity3; -1.18% and +6.63%
+post-guard, -0.90% and +6.41% pre-guard -- two data corrections and the slope
+has barely moved) -- and knowingly trading picks you believe are
 worse in order to gather evidence faster is not a trade this book makes. So
 they were removed (L56). `overview.py` still carries the note "two positions
 opened by the retired deeper buckets"; the cohort machinery now survives only
@@ -244,7 +284,7 @@ rolling back if any of them fails.
 `origin` records which ranking produced a position: NULL for the score's own
 picks, `rank-cohort` for the two recovered from the retired deeper buckets. The
 bucket label is gone, but those two bought ranks the score marks as worse
-(-1.18%/step), so when they close they must not read as evidence for a
+(-1.12%/step), so when they close they must not read as evidence for a
 selection that did not make them. Nothing filters on it yet.
 
 The bucket now holds 4 of 5: HAPPYFORGE, GMMPFAUDLR (small), SAHYADRI, YUKEN
@@ -350,7 +390,7 @@ evidence at all about the levels.
 |---|---|---|
 | correlation cap on holdings | +8.99% at 0.7, +7.87% at 0.3 | monotonically worse, and drawdown rose too |
 | position floor (min 2/3/4) | +11.45 / +12.86 / +10.71% | all worse than no floor; non-monotonic = noise |
-| no trigger, always hold 5 | **-2.20% post-guard** (was +8.88%, DD 31.4%) | the one row here that HAS been re-run (L59): it now loses money outright, against +7.59% live, and loses on worst block too. Pre-guard it trailed by 2 points; the gap is 9.8 |
+| no trigger, always hold 5 | **+2.58%** (L61 batch; -2.20% post-guard, +8.88% pre) | the one row here that has been re-run twice, and it has given a different verdict each time. It now roughly TIES the +2.42% live bucket on return and loses badly on risk: 43.0% drawdown against 32.5%, on 291 trades against 193. The trigger is a risk rule again |
 | scan every 1-3 sessions | -1.21% to +11.12% | drawdown tripled at daily scanning |
 | unequal sizing (invvol / conviction) | 0.435 / 0.431 CAGR-DD | equal weight wins risk-adjusted |
 | constant total exposure | impossible | needs Rs 225k in one name; risk rule caps at Rs 60k |

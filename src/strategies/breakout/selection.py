@@ -200,18 +200,26 @@ TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
 # mislabelled.
 MIN_POSITIONS = 0
 
-TRIGGER = "breakout"    # trigger_test, re-run after the circuit-lock guard
-                        # (L58): +7.59% against -2.20% for no trigger, and the
-                        # only one of seven to clear the promotion bar. It now
-                        # wins on worst block too (-126.7% vs -163.4%).
+TRIGGER = "breakout"    # KEPT ON RISK, not on return. remeasure, batch
+                        # 20260820-nonequity3: breakout +2.42% CAGR / 32.5% DD
+                        # / n=193, no trigger +2.58% / 43.0% / n=291. The
+                        # trigger COSTS 0.16 CAGR points and buys a 10.5-point
+                        # smaller drawdown on 98 fewer trades. Per trade the
+                        # two are indistinguishable (-0.06% +/- 1.88%, t=-0.03).
                         #
-                        # This comment used to read "near-identical CAGR to no
-                        # trigger (+11.45 vs +12.53)", i.e. the trigger was kept
-                        # DESPITE costing a point of CAGR, on worst block alone.
-                        # Those figures filled circuit-locked bars. Not directly
-                        # comparable -- they were measured at the 15-day hold as
-                        # well -- but the sign of the CAGR gap changed, so the
-                        # live setting no longer rests on the tail argument.
+                        # This constant's justification has now flipped twice,
+                        # and the history is the point. It first read
+                        # "near-identical CAGR to no trigger (+11.45 vs
+                        # +12.53)" -- kept DESPITE costing a point, on worst
+                        # block alone. After the circuit-lock guard it read
+                        # +7.59% against -2.20% and L59 recorded that the rule
+                        # no longer needed the tail argument. After the
+                        # non-equity fix (L61) it is back to costing a little
+                        # and paying for it in drawdown. That whole swing came
+                        # from two DATA corrections and none from a rule
+                        # change, which is what a knob inside the noise looks
+                        # like when the ground moves under it. The setting has
+                        # never changed; only the story told about it has.
 
 
 def build(corpus, as_of, capital=CAPITAL, trigger=None):

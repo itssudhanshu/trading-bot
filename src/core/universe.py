@@ -96,24 +96,41 @@ def _ban_symbols(txt) -> set:
 
 _NON_EQUITY = None
 
+# Funds that stopped trading before any snapshot here held a company master.
+# Nothing in data/raw/ can classify them -- see the module note on
+# non_equity_symbols -- so they are derived once, with evidence, by
+# src/ops/classify_non_equity.py and recorded. Read as data, never regenerated
+# on the fly: it encodes a judgement about instruments that no longer exist.
+HISTORY = ROOT / "data" / "non_equity_history.json"
 
-def non_equity_symbols() -> set:
-    """EQ-series symbols that are not operating companies -- ETFs, liquid funds,
-    index trackers. NSE lists them in EQ but omits them from the company master.
 
-    Derived from the newest snapshot holding equity_master.csv and applied to
-    every date. That is deliberately a denylist, not a company allowlist: a
-    company delisted in 2023 is absent from today's master AND today's bhavcopy,
-    so it never lands here. Requiring master membership instead would silently
-    delete every delisted name from history -- textbook survivorship bias.
+def _seen_non_equity() -> set:
+    """-> every symbol any snapshot ever showed trading EQ while its own
+    master omitted it.
+
+    BOTH sides come from the SAME day, which is what makes it point-in-time:
+    a symbol is judged by the master that was current when it traded.
+
+    It is a UNION over days, and that is the whole fix. Reading only the
+    newest snapshot meant a symbol had to be trading TODAY to be eligible for
+    the denylist at all, so every fund that had already delisted was invisible
+    -- and re-entered the historical universe as though it were a company. The
+    live bucket bought 22 gold, silver and index ETFs that way. Accumulating
+    also stops it recurring: LICNETFSEN traded as a fund on 2026-08-14 and was
+    gone by 2026-08-20, and only the union still knows what it was.
+
+    Cost is one pass per snapshot that HOLDS a master, not per snapshot: 5 of
+    1,699 here. It grows by one a day once daily.py is saving masters, so if
+    this ever shows up in a profile the answer is to cache the per-day sets,
+    not to go back to reading one snapshot.
     """
-    global _NON_EQUITY
-    if _NON_EQUITY is not None:
-        return _NON_EQUITY
-    _NON_EQUITY = set()
-    d = master_snapshot()
-    if d is not None:
+    out = set()
+    if not RAW.exists():
+        return out
+    for d in sorted(p for p in RAW.iterdir() if p.is_dir()):
         master_f, bhav_f = d / "equity_master.csv", d / "bhavcopy_delivery.csv"
+        if not (master_f.exists() and bhav_f.exists()):
+            continue
         master = {r["SYMBOL"].strip()
                   for r in csv.DictReader(io.StringIO(master_f.read_text(errors="replace")))
                   if r.get("SYMBOL")}
@@ -121,7 +138,41 @@ def non_equity_symbols() -> set:
                   for r in csv.DictReader(io.StringIO(bhav_f.read_text(errors="replace")),
                                           skipinitialspace=True)
                   if r.get("SYMBOL") and r.get("SERIES", "").strip() in TRADEABLE_SERIES}
-        _NON_EQUITY = traded - master
+        out |= traded - master
+    return out
+
+
+def historical_non_equity() -> dict:
+    """-> {symbol: evidence} from HISTORY, or {} if the file is absent."""
+    if not HISTORY.exists():
+        return {}
+    return json.loads(HISTORY.read_text()).get("symbols", {})
+
+
+def non_equity_symbols() -> set:
+    """EQ-series symbols that are not operating companies -- ETFs, liquid funds,
+    index trackers. NSE lists them in EQ but omits them from the company master.
+
+    Two sources, because one snapshot cannot answer for every date:
+
+      seen     every symbol that traded EQ on a day whose own master omitted
+               it, unioned over all such days. Point-in-time and permanent: a
+               fund seen once stays classified after it delists.
+      history  funds that delisted BEFORE the first snapshot with a master.
+               Only 7 snapshots here hold one and they span a single week, so
+               their union says nothing about 2021. HISTORY is the evidenced
+               answer for those; see src/ops/classify_non_equity.py.
+
+    Still a denylist, never a company allowlist. A company delisted in 2023 is
+    absent from today's master AND today's bhavcopy; requiring master
+    membership would silently delete every delisted name from history --
+    textbook survivorship bias. THAT is why the historical half has to be
+    classified on evidence rather than derived by subtraction: `ever traded
+    minus the master` is 828 symbols and most of them are dead companies.
+    """
+    global _NON_EQUITY
+    if _NON_EQUITY is None:
+        _NON_EQUITY = _seen_non_equity() | set(historical_non_equity())
     return _NON_EQUITY
 
 
@@ -180,12 +231,13 @@ def load(day: date, exclude_non_equity=True) -> dict:
 
 
 def _selftest():
-    global RAW
+    global RAW, HISTORY
     import tempfile
-    original = RAW
+    original, original_history = RAW, HISTORY
     try:
         with tempfile.TemporaryDirectory() as td:
             RAW = Path(td)
+            HISTORY = Path(td) / "no-such-history.json"
             d = date(2026, 1, 1)
             snap = RAW / d.isoformat()
             snap.mkdir(parents=True)
@@ -244,8 +296,53 @@ def _selftest():
             assert "SOMEETF" not in load(d), "non-company must be excluded from the universe"
             assert "SOMEETF" in load(d, exclude_non_equity=False), "opt-out must still return it"
             _NON_EQUITY = None
+
+            # THE POINT-IN-TIME GAP. A fund that delisted before the newest
+            # snapshot is absent from the newest bhavcopy, so `traded - master`
+            # read off that snapshot alone can never see it -- and it re-enters
+            # the historical universe as a company. Both files exist on d, so
+            # the union over days is what remembers OLDETF.
+            (snap / "bhavcopy_delivery.csv").write_text(
+                (snap / "bhavcopy_delivery.csv").read_text()
+                + "OLDETF, EQ, 01-Jan-2026, 20, 20, 21, 19, 20, 20, 20, 100, 1.0, 5, 50, 50.0\n"
+                + "DEADCO, EQ, 01-Jan-2026, 30, 30, 31, 29, 30, 30, 30, 100, 1.0, 5, 50, 50.0\n")
+            (snap / "equity_master.csv").write_text(
+                (snap / "equity_master.csv").read_text() + "DEADCO,Dead Co Ltd,EQ\n")
+            newer = RAW / "2026-01-05"          # OLDETF and DEADCO both gone
+            newer.mkdir(parents=True)
+            (newer / "bhavcopy_delivery.csv").write_text(
+                "SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, "
+                "LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, "
+                "NO_OF_TRADES, DELIV_QTY, DELIV_PER\n"
+                "GOOD, EQ, 05-Jan-2026, 100, 101, 105, 99, 104, 104, 102, 1000, 10.5, 50, 600, 60.0\n")
+            (newer / "equity_master.csv").write_text(
+                "SYMBOL,NAME OF COMPANY, SERIES\nGOOD,Good Ltd,EQ\n")
+            assert master_snapshot() == newer, "newest snapshot with both files"
+            _NON_EQUITY = None
+            deny = non_equity_symbols()
+            assert "OLDETF" in deny, \
+                "a fund seen on an earlier master day must stay classified"
+            assert "SOMEETF" in deny, "the still-listed fund must not be lost"
+            assert "DEADCO" not in deny, \
+                "a DELISTED COMPANY must not be denied -- that is survivorship bias"
+            assert "OLDETF" not in load(d), "the fund must leave the historical universe"
+            assert "DEADCO" in load(d), "the dead company must stay in it"
+
+            # The historical artifact carries funds that delisted before any
+            # master existed, so nothing in data/raw/ can reach them.
+            HISTORY = Path(td) / "history.json"
+            HISTORY.write_text(json.dumps({"symbols": {"ANCIENTETF": {"tier": "A"}}}))
+            _NON_EQUITY = None
+            assert "ANCIENTETF" in non_equity_symbols(), "HISTORY must be applied"
+            assert set(historical_non_equity()) == {"ANCIENTETF"}
+            HISTORY = Path(td) / "gone.json"
+            _NON_EQUITY = None
+            assert historical_non_equity() == {}, "a missing artifact must not raise"
+            assert "OLDETF" in non_equity_symbols(), \
+                "the snapshot-derived half must stand without the artifact"
+            _NON_EQUITY = None
     finally:
-        RAW = original
+        RAW, HISTORY = original, original_history
     print("universe selftest ok")
 
 
