@@ -2406,3 +2406,62 @@ Pooled holds **2.11** names against 3.10. That cuts directly against L64, where
 more concurrent positions resolvably reduced block drawdown (t = -2.40). Pooled
 gets a slightly better whole-path maxDD while holding a third fewer names, which
 is the one genuinely puzzling number in the table and is not explained here.
+---
+
+## L66 — Announcement sentiment: independent of momentum, and still empty
+
+**H6, pre-registered and committed before the graded scorer met a single
+return.** Two questions in one test: does reading the filing TEXT add what the
+category label cannot, and is any of it just momentum wearing a different hat?
+
+Measured on **1,792 randomly sampled trades** with a scoreable filing history.
+
+| feature | spread | std err | t | verdict |
+|---|---|---|---|---|
+| category only (`ann_tone`, H2's feature) | +1.24% | 0.73% | +1.71 | inside the noise |
+| **graded (category + filing text)** | **−0.86%** | **0.79%** | **−1.08** | inside the noise |
+
+**Adding the text flipped the sign.** Not "helped less than hoped" — reversed.
+Whatever the lexicon reads in a filing summary is noise, and noise added to an
+already-unresolved signal degrades it. That is consistent with something
+measured earlier and not connected at the time: **87 of 91 filings score
+silent**, because the corpus is overwhelmingly procedural boilerplate ("has
+informed the Exchange regarding…"). The four that do score are a general finance
+lexicon reading formal legal phrasing, and it reads it badly.
+
+### The prediction that was written down, and was wrong
+
+Before the run, in the file and in the message announcing it: *condition 3 is the
+one most likely to fail — if announcement sentiment tracks momentum, it tells you
+what the price already told you.*
+
+    correlation(graded score, 6-month momentum)  = +0.036
+    correlation(category only, 6-month momentum) = −0.018
+
+**Essentially zero.** The echo hypothesis is refused outright, and the stated
+prior was simply wrong. The value of having written it down first is that it
+cannot now be quietly reframed as what was expected all along.
+
+### Which makes this a cleaner answer than a failure
+
+The two hypotheses are separable, and both are refused:
+
+- **Is it redundant with momentum?** No — r = 0.036. It is genuinely
+  independent information.
+- **Does it predict returns?** No — t = −1.08, and the sign flips once the text
+  is read.
+
+So announcement sentiment is not a worse version of momentum. It is orthogonal
+to momentum **and carries no return information in this universe**. That is a
+stronger statement than "it did not clear the bar", and it closes the line of
+enquiry rather than leaving it open for a differently-tuned retry.
+
+`ANN_FEATURES` stays empty. The scorer stays as an operator's view — where it
+reads today's filings for a person, which was always its better use.
+
+### What survives
+
+The category-only arm reproduced H2 to the digit (+1.24%, t = +1.71, 264/357).
+Same seed and same sampling, so this is consistency rather than independent
+confirmation — but it does mean the tercile split and the sign split pick out the
+same groups, and neither measurement is an artefact of how the split was drawn.
