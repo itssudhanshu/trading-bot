@@ -46,6 +46,7 @@ import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401  -- puts the source dirs on sys.path
 import json
+import re
 import sys
 from bisect import bisect_left, bisect_right
 from datetime import date, datetime, time, timedelta
@@ -322,6 +323,160 @@ def backfill(start=None, end=None, pause=1.5, log=print):
     log(f"backfill done: {kept} announcements from {len(weeks)} weeks")
     return kept
 
+
+
+# --- scoring ----------------------------------------------------------------
+# DETERMINISTIC, and that is the point. The three sources this follows all
+# reduce to the same shape -- score each item on a bounded scale, aggregate as
+# positive minus negative, map to a label -- and two of the three do it without
+# a model in the loop:
+#
+#   gandalf1819/Stock-Market-Sentiment-Analysis  counts positive minus negative
+#       words from the Bing lexicon, per article.
+#   FinBERT (Araci 2019)  softmax over {positive, neutral, negative}, then
+#       SentimentScore = P(pos) - P(neg) in [-1, 1], aggregated per ticker per day.
+#   tradeinsight-info/investment-analysis-skills  a model scores each headline
+#       in [-1, 1]; mean x 10; bands at +/-3 and +/-7.
+#
+# This takes the first two's determinism and the third's bands. Same input, same
+# number, every time -- which is what a model in the loop cannot give, and what
+# a result has to have before it can ever be measured against returns.
+#
+# The lexicon is FINANCE-specific on purpose. General-purpose word lists rate
+# "liability", "cost" and "charge" negative; in a filing they are vocabulary,
+# not sentiment. These follow Loughran-McDonald, the standard finance list,
+# built precisely because generic lexicons misread accounting language.
+LEX_POS = frozenset("""
+advance advanced advances award awarded bags beat beats benefit benefited best
+better boost boosted breakthrough commissioned complete completed contract
+contracts deliver delivered demand doubled efficient enhance enhanced exceed
+exceeded exceeds expand expanded expansion favorable gain gained gains grew
+grow growing growth high higher highest improve improved improvement improving
+increase increased increases jump jumped launch launched lead leading maiden
+milestone opportunity optimistic order orders outperform outperformed peak
+positive premium profit profitable profits progress raise raised rally record
+records recover recovered recovery reward rise rises rising robust rose secured
+soar soared solid strength strengthen strong stronger strongest succeed success
+successful surge surged surpassed turnaround upgrade upgraded upside win winning
+wins won
+""".split())
+
+LEX_NEG = frozenset("""
+adverse adversely against arrears bankruptcy breach breached cancel cancelled
+caution concern concerns crisis critical cut cuts decline declined declines
+decrease decreased default defaults delay delayed delays deteriorate
+deteriorated difficult diminished disappointing dispute downgrade downgraded
+downturn drop dropped fail failed failure fall fallen falling fell fine fined
+fraud halt halted hit impairment inability insolvency insolvent investigation
+lawsuit liquidation litigation lose loses losing loss losses lost lower lowered
+lowest miss missed misses negative penalty plunge plunged poor pressure probe
+protest qualified reject rejected resign resignation resigned restructuring
+shortfall shut shutdown slow slowdown slump slumped strike struggling
+subdued suspend suspended suspension terminate terminated tumble tumbled
+uncertain uncertainty unable weak weaker weakness worse worst write-off writeoff
+""".split())
+
+# A negator within this many words flips the polarity of what follows. Without
+# it "not profitable" scores positive and "no growth" scores positive, which is
+# the single most common way a bag-of-words scorer reads a headline backwards.
+NEGATORS = frozenset("no not never none cannot without fails failed lack "
+                     "lacks lacking barring absent nor".split())
+NEGATION_WINDOW = 3
+
+# The five bands, from the third source. Kept identical so a reader who knows
+# that vocabulary reads this without a translation.
+BANDS = ((7.0, "Very Bullish"), (3.0, "Bullish"),
+         (-3.0, "Neutral"), (-7.0, "Bearish"))
+
+
+def band(score):
+    """-> one of the five labels for a score in [-10, +10]."""
+    if score is None:
+        return "No data"
+    if score >= 7.0:
+        return "Very Bullish"
+    if score >= 3.0:
+        return "Bullish"
+    if score > -3.0:
+        return "Neutral"
+    if score > -7.0:
+        return "Bearish"
+    return "Very Bearish"
+
+
+_WORD = re.compile(r"[A-Za-z][A-Za-z\-]+")
+
+
+def text_tone(text):
+    """-> polarity in [-1, +1] from the finance lexicon, or 0.0 for no hits.
+
+    `(pos - neg) / (pos + neg)`, which is the aggregation all three sources
+    reduce to. Normalised by the number of MATCHED words rather than by the
+    length of the text: a long filing is not less certain than a short headline
+    saying the same thing, it is just longer.
+    """
+    words = [w.lower() for w in _WORD.findall(text or "")]
+    pos = neg = 0
+    for i, w in enumerate(words):
+        hit = 1 if w in LEX_POS else (-1 if w in LEX_NEG else 0)
+        if not hit:
+            continue
+        lo = max(0, i - NEGATION_WINDOW)
+        if any(x in NEGATORS for x in words[lo:i]):
+            hit = -hit
+        if hit > 0:
+            pos += 1
+        else:
+            neg += 1
+    n = pos + neg
+    return 0.0 if not n else (pos - neg) / n
+
+
+def score_announcement(row, tone_of=None):
+    """-> polarity in [-1, +1] for one filing.
+
+    The frozen category table leads and the text adjusts. A category carries a
+    stated, pre-registered meaning; the summary text is evidence about THIS
+    instance of it. Where the table has no opinion the text stands alone, which
+    is how "Updates" -- the largest category in the corpus -- gets read at all.
+    """
+    tone_of = load_tone() if tone_of is None else tone_of
+    cat = float(tone_of.get(row.get("desc", ""), 0))
+    txt = text_tone(row.get("text", ""))
+    if cat and txt:
+        return max(-1.0, min(1.0, 0.7 * cat + 0.3 * txt))
+    return cat or txt
+
+
+# How much evidence it takes to reach the far bands. The plain mean over every
+# item -- what the three sources do -- is wrong for THIS corpus, and the first
+# run showed it: every stock came back Neutral between +0.00 and +2.50, because
+# ~90% of filings are procedural and correctly score 0, so one insolvency notice
+# among thirteen becomes one-thirteenth of a signal.
+#
+# A filing that says nothing is not an observation of neutrality; it is an
+# absence of observation, and averaging absences with observations is the same
+# error as scoring an empty channel zero. But the opposite -- averaging only the
+# items that DID say something -- swings to the other extreme, where a single
+# mildly positive filing reads Very Bullish.
+#
+# So: sum the items that carry signal, divide by (PRIOR + how many there were).
+# One item at +1 reaches +3.3, mildly Bullish; three reach +6.0; six reach +7.5.
+# The far bands have to be earned by agreement across several items, and a
+# lone data point cannot buy one.
+PRIOR = 2.0
+
+
+def aggregate(scores):
+    """-> a channel score in [-10, +10], or None when nothing carried signal.
+
+    None, not 0.0. "Nothing was said" and "what was said was balanced" are
+    different facts and must not print the same.
+    """
+    sig = [s for s in scores if s]
+    if not sig:
+        return None
+    return round(sum(sig) / (PRIOR + len(sig)) * 10, 2)
 
 def _selftest():
     sessions = [date(2019, 11, 4), date(2019, 11, 5), date(2019, 11, 6),
