@@ -557,7 +557,31 @@ SHORT = {"rs": "6-mo gain", "deliv": "shares kept",
          "liq": "easy to trade", "near_high": "near high"}
 
 
-def _rank_lines(picks, held, ref=None):
+def _mood_of(symbols, as_of):
+    """-> {symbol: stock_sentiment}. Never raises; an empty dict is fine.
+
+    Wrapped because every screen that uses it has a job that matters more. The
+    picks are the point and the mood is context, and context must not be able to
+    take a screen down with it.
+    """
+    try:
+        import sentiment
+        return {s: sentiment.stock_sentiment(s, as_of) for s in symbols}
+    except Exception:
+        return {}
+
+
+def _mood_tag(m):
+    """-> a compact suffix for one stock, or '' when there is nothing to say."""
+    if not m:
+        return ""
+    if m["composite"] is None:
+        return " · nothing said"
+    warn = "⚠️ " if m["composite"] <= -3.0 else ""
+    return f" · {warn}{m['band']} {m['composite']:+.1f}"
+
+
+def _rank_lines(picks, held, ref=None, mood=None):
     """-> the numbered ranking, two lines a stock.
 
     One line names the stock and what it is doing; one carries the four numbers
@@ -588,7 +612,8 @@ def _rank_lines(picks, held, ref=None):
         # against -- and both are needed.
         head = (f"score {r['score']:.0f} vs {band}" if ref is None
                 else f"{band} · score {r['score']:.0f} vs {ref}")
-        out.append(f"*{n}. {r['symbol']}* — {head} · {state}")
+        out.append(f"*{n}. {r['symbol']}* — {head} · {state}"
+                   + _mood_tag((mood or {}).get(r["symbol"])))
         # Strongest first, so the line answers why THIS name and not the one
         # below it. A run-on sentence naming the strong features cannot: it
         # never says which was strongest.
@@ -630,7 +655,8 @@ def cmd_bucket(_=None):
            f"high._", ""]
     picks = _chosen(rows, mix)
     shown = {r["symbol"] for r in picks}
-    out += _rank_lines(picks, held)
+    out += _rank_lines(picks, held,
+                       mood=_mood_of([r["symbol"] for r in picks], as_of))
     if not picks:
         out.append("_No candidates today._")
     # Stocks bought on an EARLIER evening, still running, and no longer in
@@ -703,7 +729,8 @@ def cmd_pool(_=None):
                   or "nothing tonight"),
            f"_Top {seats} by score across every eligible share, no size quota. "
            f"The split lands wherever the ranking puts it._", ""]
-    out += _rank_lines(picks, held, ref="all shares")
+    out += _rank_lines(picks, held, ref="all shares",
+                       mood=_mood_of([r["symbol"] for r in picks], as_of))
     shown = {r["symbol"] for r in picks}
     earlier = sorted(s for s in held if s not in shown)
     if earlier:
@@ -1291,7 +1318,8 @@ def cmd_help(_=None):
             "*Why these stocks?*\n"
             "/bucket — the 5 chosen this session, with the reason for each\n"
             "/pool — the pool\'s 5, ranked with no size quota\n"
-            "/clusters — the full ranking they were chosen from\n\n"
+            "/clusters — the full ranking they were chosen from\n"
+            "/sentiment — what the exchange and the papers said about them\n\n"
             "*Is any of this actually working?*\n"
             "/findings — every result recorded, and what it can prove\n"
             "/review — tonight\'s read: holdings, evidence, suggestions\n\n"
@@ -1308,7 +1336,56 @@ def cmd_help(_=None):
 # /picks was a second name for /bucket, so the same screen had two names and
 # the codebase had two vocabularies. An unknown command already answers with
 # /help, which is a better outcome than silently teaching the banned word.
+def cmd_sentiment(_=None):
+    """What the exchange and the papers have said about tonight's names.
+
+    Context, never signal. Nine pre-registered tests found nothing here that
+    predicts return, risk or trend (L61, L66, L67, L68), so this screen exists
+    to tell a person WHY a name is in the list -- not to decide which names get
+    there. `ANN_FEATURES` is empty and stays empty.
+    """
+    import clusters, features, selection
+    corpus = features.load_corpus()
+    as_of = max(d for x in corpus.values() for d in x.days)
+    picks = selection.allocate(selection.build(corpus, as_of))
+    if not picks:
+        picks = [{"symbol": s} for lst in clusters.pick(corpus, as_of).values()
+                 for s, _ in lst[:3]]
+        note = "_Nothing triggered tonight, so these are the top of the ranking._"
+    else:
+        note = "_Tonight's chosen stocks._"
+    syms = [r["symbol"] for r in picks]
+    mood = _mood_of(syms, as_of)
+    if not mood:
+        return _title("WHAT IS BEING SAID", str(as_of)) + "\n\n_unavailable_"
+
+    out = [_title("WHAT IS BEING SAID", str(as_of)), "", note, ""]
+    ranked = sorted(syms, key=lambda s: (mood[s]["composite"] is None,
+                                         -(mood[s]["composite"] or 0)))
+    for s in ranked:
+        m = mood[s]
+        score = "—" if m["composite"] is None else f"{m['composite']:+.1f}"
+        out.append(f"*{s}* — {m['band']} {score}")
+        out.append(f"    exchange {m['n_announcements']} filings · "
+                   f"papers {m['n_news']} headlines")
+        for sc, who, what in (m["top"] or [])[:2]:
+            out.append(f"    [{sc:+.1f}] {who}: {what[:90]}")
+        out.append("")
+    # WITHOUT this a reader sees five Bullish rows and counts five good stocks.
+    # Measured: about 9 in 10 scored items are positive, so Bullish is the
+    # resting state. Said in the same breath as the labels (rules.md R5).
+    out += ["_Most company news is positive — roughly 9 in 10 items — so "
+            "*Bullish* is the normal state here, and *Bearish* is the one worth "
+            "opening. 'Nothing said' means the filings were routine paperwork, "
+            "not that opinion was split._",
+            "",
+            "_This is context, not a reason to buy. Nine tests found nothing "
+            "here that predicts what a stock does next._"]
+    return "\n".join(out)
+
+
 COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
+            "/sentiment": cmd_sentiment,
             "/bucket": cmd_bucket,
             "/pool": cmd_pool,
             "/pending_orders": cmd_pending_orders,

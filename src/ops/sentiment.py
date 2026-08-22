@@ -89,8 +89,37 @@ NEWS_WINDOW = 7
 
 # Words that are not a company's identity. Matching on "Limited" would return
 # every headline in the archive.
+#
+# The list grew after a real miss: "Healthcare Global Enterprises" matched
+# "Global Market: European shares little changed as bond yields rise" on the
+# word GLOBAL, and two Eurozone bond stories were scored as coverage of an
+# Indian hospital chain. Every word below appears in company names AND in
+# ordinary market copy, which is exactly what makes it useless for telling them
+# apart.
 _STOP = {"limited", "ltd", "ltd.", "the", "india", "indian", "company",
-         "industries", "corporation", "corp", "enterprises", "&", "and"}
+         "industries", "corporation", "corp", "enterprises", "&", "and",
+         "global", "international", "national", "group", "holdings",
+         "technologies", "technology", "services", "systems", "solutions",
+         "products", "projects", "ventures", "resources", "trading",
+         "markets", "market", "finance", "financial", "capital", "power",
+         "energy", "steel", "motors", "auto", "bank", "first", "new",
+         # SECTOR nouns. A company is named for its sector and so is every
+         # market wrap about that sector, so one of these can never tell them
+         # apart: "China, Hong Kong stocks rebound as HEALTHCARE and tech
+         # shares rally" was filed against Healthcare Global Enterprises.
+         # A name that reduces to nothing but these has no usable general-feed
+         # match and falls back to the per-company channel, which is exact.
+         "healthcare", "health", "pharma", "pharmaceuticals", "cement",
+         "textiles", "chemicals", "foods", "food", "metals", "mining",
+         "hotels", "infra", "infrastructure", "engineering", "electronics",
+         "telecom", "media", "retail", "agro", "petro", "labs",
+         "laboratories", "constructions", "construction", "cables"}
+
+# How many distinct name-words an untagged headline must match. One is not
+# enough: a single common word is what let a bond story become hospital news.
+# Applied only when the company HAS two usable words -- a one-word name like
+# "Yuken" cannot clear a two-word bar and would otherwise never match at all.
+MIN_NAME_HITS = 2
 
 
 def company_name(symbol):
@@ -124,6 +153,34 @@ def _match_terms(symbol, name):
         if len(w) >= 4 and w not in _STOP:
             terms.add(w)
     return sorted(terms)
+
+
+def _mentions(hay, symbol, terms):
+    """-> True if this text is plausibly ABOUT the company.
+
+    A ticker match settles it on its own -- a ticker is specific. Otherwise the
+    name has to carry the match, and two distinct name-words are needed when
+    two exist, because ONE common word is what let "Global Market: European
+    shares..." be filed as coverage of Healthcare Global Enterprises.
+
+    The ticker form and a name word are two spellings of ONE piece of evidence,
+    not two, so they are counted separately -- an earlier version summed them
+    and then rejected "20 Microns wins order" for having only one hit.
+
+    Deliberately strict. The per-company channel carries exact attribution and
+    is the reliable path; this fallback exists for general market feeds, which
+    mostly should NOT match. A false positive here scores an unrelated story
+    against a stock, which is worse than missing one, because nothing
+    downstream can tell it apart from real coverage.
+    """
+    tick = symbol.lower() if symbol and len(symbol) >= 4 else None
+    if tick and re.search(rf"\b{re.escape(tick)}\b", hay):
+        return True
+    names = [t for t in terms if t != tick]
+    if not names:
+        return False
+    hits = sum(1 for t in names if re.search(rf"\b{re.escape(t)}\b", hay))
+    return hits >= min(MIN_NAME_HITS, len(names))
 
 
 def announcement_evidence(symbol, day, window=ANN_WINDOW):
@@ -175,7 +232,7 @@ def news_evidence(symbol, day, window=NEWS_WINDOW):
                     out.append(r)
                 continue
             hay = f"{r.get('title','')} {r.get('source','')}".lower()
-            if any(re.search(rf"\b{re.escape(t)}\b", hay) for t in terms):
+            if _mentions(hay, symbol, terms):
                 out.append(r)
     out.sort(key=lambda r: r.get("captured_at", ""), reverse=True)
     return out
@@ -312,7 +369,51 @@ def _selftest():
     assert re.search(r"\biol\b", "biological growth") is None
     assert "iol" not in _match_terms("IOL", "IOL Chemicals Limited"), \
         "a 3-letter ticker leaked into the match terms"
-    assert "chemicals" in _match_terms("IOL", "IOL Chemicals Limited")
+    # This asserted that "chemicals" survived as a term. It no longer does, and
+    # the change is deliberate: a sector noun cannot separate a company from a
+    # wrap about its sector. "IOL Chemicals" is therefore a name with NOTHING
+    # usable -- a 3-letter ticker plus a sector word -- and it correctly falls
+    # back to the per-company channel, which attributes exactly. Asserting the
+    # PROPERTY (nothing generic survives) rather than the old membership.
+    assert _match_terms("IOL", "IOL Chemicals Limited") == [], \
+        _match_terms("IOL", "IOL Chemicals Limited")
+    # A name with one distinctive word keeps it.
+    assert _match_terms("IOL", "IOL Krishival Limited") == ["krishival"]
+
+    # --- a generic word must not carry a match on its own -------------------
+    # "Healthcare Global Enterprises" matched a Eurozone bond story on GLOBAL.
+    # Every word of this name is generic -- a sector noun plus two corporate
+    # fillers -- so NOTHING survives, and that is the intended answer. An
+    # earlier version of this block asserted "healthcare" survived; the sector
+    # fix invalidated it, and the property worth asserting is that no generic
+    # word carries a match, not which particular one used to.
+    t = _match_terms("HCG", "Healthcare Global Enterprises Limited")
+    assert t == [], t
+    # and a one-word name must still be matchable on that one word
+    assert _match_terms("YUKEN", "Yuken India Limited") == ["yuken"], \
+        _match_terms("YUKEN", "Yuken India Limited")
+
+    # the real miss, both directions
+    hcg = _match_terms("HCG", "Healthcare Global Enterprises Limited")
+    assert not _mentions("global market: european shares little changed",
+                         "HCG", hcg), "a bond story matched a hospital chain"
+    # Every word of this name is generic, so it has NO usable general-feed
+    # match and relies on the per-company channel. That is the correct answer,
+    # not a gap: one sector noun cannot separate a company from a wrap about
+    # its sector.
+    assert not _mentions("stocks rebound as healthcare and tech shares rally",
+                         "HCG", hcg), "a sector wrap matched a company"
+    assert hcg == [], hcg
+    # ...while a distinctive single word still works
+    assert _mentions("yuken india wins export order", "YUKEN",
+                     _match_terms("YUKEN", "Yuken India Limited"))
+    # a ticker settles it alone; a name word plus the ticker spelling is ONE
+    # piece of evidence, not two
+    m20 = _match_terms("20MICRONS", "20 Microns Limited")
+    assert _mentions("20 microns wins order", "20MICRONS", m20), \
+        "two spellings of one name were counted as two hits"
+    assert _mentions("20microns q1 results", "20MICRONS", m20)
+    assert not _mentions("cement stocks rally", "20MICRONS", m20)
 
     # --- news matching is word-boundary, and reads captured_at not pubDate ---
     global NEWS
