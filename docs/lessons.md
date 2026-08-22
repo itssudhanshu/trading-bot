@@ -2465,3 +2465,72 @@ The category-only arm reproduced H2 to the digit (+1.24%, t = +1.71, 264/357).
 Same seed and same sampling, so this is consistency rather than independent
 confirmation — but it does mean the tercile split and the sign split pick out the
 same groups, and neither measurement is an artefact of how the split was drawn.
+
+---
+
+## L67 — asc_triangle's drawdown: structurally real, mostly exposure, not adopted
+
+**H7, pre-registered.** The awkward part was written into the file before the
+run: `asc_triangle` was tested *because* its H5 drawdown looked good — 10.4%
+against breakout's 31.0% — which is choosing what to test after seeing which arm
+won. Two structural corrections made it legal anyway: every trigger was measured
+rather than the one that looked good, and the bar was Bonferroni-corrected
+across all ten comparisons to **|t| ≥ 2.81**, the tightest in this project.
+
+Method imported from `drawdown_test.py`, not rebuilt: disjoint six-month blocks,
+drawdown computed inside each, arms compared over the same calendar blocks so
+the comparison is paired and regime drops out.
+
+### asc_triangle vs breakout, 12 blocks
+
+| | |
+|---|---|
+| mean block-drawdown difference | **−3.92% ± 1.62, t = −2.41** |
+| median difference | −2.35% (same sign as the mean) |
+| blocks improved | **83%** |
+| leave-one-out \|t\| | **2.82** — *strengthens* when the biggest block is dropped |
+| per-trade return cost | +1.83% vs +2.09%, t = −0.19 |
+
+**Conditions (b) and (d) pass convincingly.** This is emphatically *not* one bad
+episode: five of six blocks improved, the median agrees with the mean, and
+removing the largest-magnitude block makes the statistic stronger rather than
+collapsing it. That is the opposite of the failure mode L62 warned about.
+
+### And it is still not adopted, on two conditions that both failed narrowly
+
+    a  |t| 2.41 against a bar of 2.81          FAIL
+    c  correlation(occupancy, block DD) 0.712  FAIL (threshold 0.70)
+
+t = 2.41 would clear this project's usual |t| > 2. The bar was 2.81 *because ten
+arms were searched*, and it was fixed before the run. r = 0.712 misses its
+threshold by 0.012. **Moving either number now is the single most tempting act
+available and would invalidate the whole exercise.** They stay.
+
+### The exposure story, visible by eye
+
+| trigger | occupancy | mean block DD |
+|---|---|---|
+| cup_handle | 0.37 | 2.15 |
+| asc_triangle | 2.46 | 2.98 |
+| pullback | 2.67 | 6.15 |
+| breakout | 3.10 | 6.90 |
+| none | 4.31 | 9.42 |
+
+Hold less, draw down less. **A trigger buys comfort by not trading, and that is
+available free at any time without a pattern detector.** The prediction written
+down before the run — that condition (c) would be the one to fail — was correct
+this time; the equivalent prediction for H6 was wrong. Both are on the record.
+
+### The residual, recorded as a question and NOT as a finding
+
+Exposure explains about half the variance (r² ≈ 0.51), not all of it. And one
+row does not fit the trend: `vol+breakout` holds **fewer** positions than
+asc_triangle (1.99 vs 2.46) and draws down **more** (5.26 vs 2.98). So
+asc_triangle sits below the exposure line rather than on it, which the exposure
+story alone does not explain.
+
+That is interesting and it is **not a result**. Building a residual statistic now
+— after seeing which arm beat the trend — is the post-hoc spiral this whole file
+exists to resist. It is written down as a hypothesis for a fresh, separately
+pre-registered test, on the explicit understanding that noticing it here buys it
+nothing.
