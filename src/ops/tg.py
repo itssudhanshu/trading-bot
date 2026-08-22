@@ -1344,10 +1344,20 @@ def cmd_sentiment(_=None):
     to tell a person WHY a name is in the list -- not to decide which names get
     there. `ANN_FEATURES` is empty and stays empty.
     """
-    import clusters, features, selection
+    import clusters, features, positions, selection
     corpus = features.load_corpus()
     as_of = max(d for x in corpus.values() for d in x.days)
     picks = selection.allocate(selection.build(corpus, as_of))
+    # A screen naming a held stock must say WHICH BOOK holds it. Two books run
+    # the same signals on the same names, so an untagged symbol is not merely
+    # terse -- it is ambiguous about whose money is in it. The audit checks this
+    # and caught this command shipping untagged, exactly as it caught
+    # /pending-orders before.
+    _main = {r["symbol"] for r in positions.summary()["rows"]
+             if r["status"] in ("open", "pending")}
+    _pool = {r["symbol"] for r in
+             positions.summary(which=positions.POOLED)["rows"]
+             if r["status"] in ("open", "pending")}
     if not picks:
         picks = [{"symbol": s} for lst in clusters.pick(corpus, as_of).values()
                  for s, _ in lst[:3]]
@@ -1365,7 +1375,10 @@ def cmd_sentiment(_=None):
     for s in ranked:
         m = mood[s]
         score = "—" if m["composite"] is None else f"{m['composite']:+.1f}"
-        out.append(f"*{s}* — {m['band']} {score}")
+        who = ([w for w, held in (("Bucket", _main), ("Pool", _pool))
+                if s in held])
+        tag = f" · 🟢 held by the {' and the '.join(who)}" if who else ""
+        out.append(f"*{s}* — {m['band']} {score}{tag}")
         out.append(f"    exchange {m['n_announcements']} filings · "
                    f"papers {m['n_news']} headlines")
         for sc, who, what in (m["top"] or [])[:2]:

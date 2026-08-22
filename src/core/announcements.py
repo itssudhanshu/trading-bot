@@ -261,11 +261,25 @@ def store_parsed(records):
     return {k: len(v) for k, v in by.items()}
 
 
+_TIMELINE: dict = {}
+
+
 def timeline(symbol):
-    """-> parsed rows for a symbol, or [] if never built."""
+    """-> parsed rows for a symbol, or [] if never built.
+
+    Cached, keyed on the file's mtime. Re-reading and re-parsing per call made
+    every screen that scores five stocks read five files five times, and the
+    audit's "no command answers slower than 2s" guard caught it. mtime rather
+    than a timer: the file changes when a backfill runs, not when a clock ticks
+    -- the same reasoning as features._CORPUS.
+    """
     p = PARSED / f"{symbol}.jsonl"
     if not p.exists():
         return []
+    key = (str(p), p.stat().st_mtime, p.stat().st_size)
+    got = _TIMELINE.get(symbol)
+    if got is not None and got[0] == key:
+        return got[1]
     out = []
     for line in p.read_text().splitlines():
         if line.strip():
@@ -274,6 +288,7 @@ def timeline(symbol):
             except json.JSONDecodeError:
                 continue
     out.sort(key=lambda x: (x["visible_from"], x["an_dt"]))
+    _TIMELINE[symbol] = (key, out)
     return out
 
 
