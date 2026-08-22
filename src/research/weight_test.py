@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The last unmeasured knob: is deliv worth 1.5?
 
-`data/sprout/weights.json` carries deliv at 1.5 with this justification:
+`data/breakout/weights.json` carries deliv at 1.5 with this justification:
 
     "unconditioned spread +1.22% on 954 randomly-sampled trades; confirmed by
      simulation (+24.10% CAGR / 27.0% DD vs +12.66% / 38.9% neutral)"

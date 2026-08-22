@@ -77,9 +77,13 @@ decision *against*, not "the live setting". `weight_test.py` controls on neutral
 python3 tests/run_selftests.py
 ```
 
-- The audit's headline must still read `CAGR +7.59% vs +7.59%, n=195 vs 195`.
-  If a change moved it deliberately, re-record the baseline with
-  `python3 src/ops/audit.py --rebaseline` — deliberately, in its own step.
+- The audit's headline must still reproduce: `CAGR +x vs +x, n=y vs y`, both
+  sides equal, whatever the current baseline is. Read the number from
+  `data/breakout/baseline.json` rather than from memory — this line used to name
+  +7.59% / n=195, which stopped being true the day L61 landed and would have
+  had a reader "fixing" a correct audit failure. If a change moved it
+  deliberately, re-record with `python3 src/ops/audit.py --rebaseline` —
+  deliberately, in its own step.
 - A test that fails after a deliberate change is **re-derived, not
   overwritten**. Assert the property, not the number.
 - Write the finding into `docs/lessons.md` with its evidence and sample size,

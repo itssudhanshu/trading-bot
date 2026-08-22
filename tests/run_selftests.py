@@ -2,7 +2,7 @@
 """Run every module's --selftest, then the audit. One command.
 
 This project keeps its checks INSIDE the module they protect -- `python3
-src/strategies/sprout/selection.py --selftest` asserts the exit rules, and it
+src/strategies/breakout/selection.py --selftest` asserts the exit rules, and it
 lives next to them so it cannot drift out of sight. That convention is good and
 is not changing. What was missing is a way to run them ALL, which meant the
 sweep was a hand-typed shell loop, retyped from memory each time, and a module
@@ -46,7 +46,7 @@ NO_SELFTEST = {
 def targets():
     """-> every module that should be swept, in a stable order."""
     seen, out = set(), []
-    for d in paths.SRC:                       # src/strategies/sprout, src/core, ...
+    for d in paths.SRC:                       # src/strategies/breakout, src/core, ...
         for p in sorted((paths.ROOT / d).glob("*.py")):
             if p.name.startswith("_") or p.name in seen:
                 continue

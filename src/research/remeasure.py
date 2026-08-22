@@ -1,4 +1,5 @@
-"""Re-measure the knobs that were decided on phantom fills (L58).
+"""Re-measure the knobs that were decided on phantom fills (L58), and again
+after the non-equity gap (L61).
 
 Every CAGR in CLAUDE.md's error-bar table was measured before the circuit-lock
 guard, so 8.7% of the fills behind those numbers could not have been got. The
@@ -21,9 +22,17 @@ import sys
 
 import features, selection, simulate
 
-BATCH = "20260819-postlock"
+# Re-run under a NEW tag whenever the universe or the engine moves. The
+# 20260819-postlock figures were measured on a corpus holding 80 ETFs that the
+# point-in-time denylist could not see (L61), so they describe a different book
+# and must not be compared row-for-row with these.
+# -nonequity3 = all THREE classifier tiers. The plain "20260820-nonequity"
+# rows in simulations.jsonl (18:37-18:44) are a superseded two-tier build that
+# still had Bharat Bond ETFs in the universe; the ledger is append-only so they
+# stay, and the tag is what says which is which.
+BATCH = "20260820-nonequity3"
 
-# The live bucket, exactly as src/strategies/sprout/selection.py runs it. Not simulate.run's
+# The live bucket, exactly as src/strategies/breakout/selection.py runs it. Not simulate.run's
 # defaults, which still carry the old 15-day hold.
 LIVE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
             hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS,

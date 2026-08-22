@@ -78,6 +78,12 @@ def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict
     quietly returns a different universe (2,740 symbols instead of 2,486, the
     surplus being ETFs and liquid funds), so every downstream number is wrong
     with nothing to show for it. See L36.
+
+    The same applies to the HISTORICAL half of the denylist. The snapshots can
+    only classify a fund that traded on a day whose master survives here, which
+    starts in Aug 2026; data/non_equity_history.json is the evidenced answer
+    for everything before that, and without it those funds re-enter the
+    universe silently. See L61.
     """
     days_now = trading_days(start, end)
     key = (start, end, min_bars, require_master,
@@ -95,6 +101,16 @@ def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict
             "    python -c \"from snapshot import SOURCES, fetch, RAW; "
             "s,b = fetch(SOURCES['equity_master'][0]); "
             "(RAW/'<newest-day>'/'equity_master.csv').write_bytes(b)\"\n"
+            "Pass require_master=False only for a deliberately unfiltered load."
+        )
+    if require_master and not universe.HISTORY.exists():
+        raise RuntimeError(
+            f"{universe.HISTORY} is missing, so every fund that delisted "
+            "before the first company master would re-enter the historical "
+            "universe as a company -- silently, exactly as they did before "
+            "L61, which cost the backtest 5 CAGR points. "
+            "Rebuild it deliberately:\n"
+            "    python3 src/ops/classify_non_equity.py --write\n"
             "Pass require_master=False only for a deliberately unfiltered load."
         )
     out = {}

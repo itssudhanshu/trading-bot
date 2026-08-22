@@ -6,7 +6,7 @@
       "Bash(python3 src/ops/audit.py)",
       "Bash(python3 src/ops/overview.py)",
       "Bash(python3 src/ops/daily.py:*)",
-      "Bash(python3 src/strategies/sprout/clusters.py)",
+      "Bash(python3 src/strategies/breakout/clusters.py)",
       "Bash(env -u PYTHONPATH python3:*)",
       "Bash(git status)",
       "Bash(git diff:*)",
@@ -18,9 +18,9 @@
       "Read(./.env)",
       "Read(./data/upstox_token.json)",
       "Bash(git push:*)",
-      "Edit(./data/sprout/strategies.jsonl)",
-      "Edit(./data/sprout/trade_features.jsonl)",
-      "Edit(./data/sprout/findings.jsonl)",
+      "Edit(./data/breakout/strategies.jsonl)",
+      "Edit(./data/breakout/trade_features.jsonl)",
+      "Edit(./data/breakout/findings.jsonl)",
       "Bash(rm:*)"
     ]
   }

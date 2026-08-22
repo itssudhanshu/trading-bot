@@ -1,6 +1,6 @@
-# sprout
+# breakout
 
-The one live strategy. **Sprout** = small companies just starting to move.
+The one live strategy. **Breakout** = small companies just starting to move.
 
 The name is deliberately not `breakout` or `momentum`: both of those are terms
 already used *inside* this strategy (the entry trigger, the `rs` feature), and
@@ -28,7 +28,7 @@ Every term above is defined in `docs/glossary.md`.
 | `entry.py` | The breakout trigger itself |
 | `learning.py` | The score weights, and the pass that proposes moving them |
 
-Its data lives in `data/sprout/` — weights, the recorded baseline, the trade
+Its data lives in `data/breakout/` — weights, the recorded baseline, the trade
 ledger, and stored backtest results. Nothing outside this strategy writes there.
 
 ## What does NOT live here
@@ -39,12 +39,19 @@ particular strategy — which is what makes a second strategy possible.
 
 ## Current measured state
 
-**+7.59% CAGR / 31.0% max drawdown / 195 trades / 47% win / +2.15% ± 1.08% per
-trade**, batch `20260819-postlock`, impact constant c=1.0.
+**+2.42% CAGR / 32.5% max drawdown / 193 trades / 46% win / +1.07% ± 1.12% per
+trade**, batch `20260820-nonequity3`, impact constant c=1.0.
 
-Not one of its settings is proven — every knob scores t < 0.5. The one claim
-that clears its error bar is that the score's *ranking* works: −1.18% of return
-per step down the rank list (t = −4.10). See `docs/performance-change.md`.
+`data/breakout/baseline.json` still records the older +7.59% / 31.0% / 195 and
+the audit fails on the difference on purpose: the point-in-time non-equity
+denylist could only see funds that were still trading, so delisted ETFs sat in
+the historical universe and the bucket bought 22 of them (L61). Re-recording
+the baseline is a deliberate separate step.
+
+Not one of its settings is proven — every knob scores t < 0.6. The one claim
+that clears its error bar is that the score's *ranking* works: −1.12% of return
+per step down the rank list (t = −3.95), and it survived both corrections
+almost unchanged. See `docs/performance-change.md`.
 
 **Zero forward paper trades so far.** Nothing here is established.
 

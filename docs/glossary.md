@@ -12,9 +12,9 @@ alphabetically, because that is how you will need them.
 
 | Term | Plain English |
 |---|---|
-| **CAGR** | The yearly growth rate, smoothed out. "+7.59%" means the money grew as if it gained 7.59% every year. It hides the bumpy ride completely. |
-| **maxDD** / **DD** | *Maximum drawdown.* The worst fall from a high point before recovering. 31% on Rs 3,00,000 means at the ugliest moment you were down about Rs 93,000. |
-| **n** | How many trades a number is based on. `n=195` means 195 complete buy-and-sell round trips. A small `n` means weak proof, whatever the number says. |
+| **CAGR** | The yearly growth rate, smoothed out. "+2.42%" means the money grew as if it gained 2.42% every year. It hides the bumpy ride completely. |
+| **maxDD** / **DD** | *Maximum drawdown.* The worst fall from a high point before recovering. 32.5% on Rs 3,00,000 means at the ugliest moment you were down about Rs 97,500. |
+| **n** | How many trades a number is based on. `n=193` means 193 complete buy-and-sell round trips. A small `n` means weak proof, whatever the number says. |
 | **win %** | The share of trades that made money. 47% means fewer than half won — which is fine, *if* the winners are bigger than the losers. |
 | **per trade** / **edge** | The average profit of a single trade, in percent. This is the real engine. CAGR is just this, repeated and compounded. |
 | **worst block** | The worst six-month stretch, added up. Answers "how bad does a bad patch get?", which an average cannot. |
@@ -30,7 +30,7 @@ here has been a number that was real arithmetic and still not evidence.
 
 | Term | Plain English |
 |---|---|
-| **std err** (standard error) | The "give or take" on a number. `+2.15% ± 1.08%` means the true value is probably somewhere between about +0.1% and +4.3%. A number without this is half a number. |
+| **std err** (standard error) | The "give or take" on a number. `+1.07% ± 1.12%` means the true value is probably somewhere between about −1.2% and +3.3% — which includes **zero**, i.e. "no edge at all" has not been ruled out. A number without this is half a number. |
 | **t** | Signal divided by noise. Under 2 means "this could easily be luck". Over 2 means "probably real". Nearly every setting in this project scores under 0.5. |
 | **RESOLVED** / **inside the noise** | "Inside the noise" = we genuinely cannot tell this apart from luck. "Resolved" = we can. The words are used literally, never as hedging. |
 | **sd** (standard deviation) | How wildly individual trades scatter around the average. Here it is about 16%, which is enormous — and that is *why* proving anything needs roughly 200+ trades. |
@@ -101,10 +101,15 @@ three words for one thing has already caused a wrong build.
 
 | Term | Plain English |
 |---|---|
-| **corpus** | The full stored price history the simulations read — about 2,491 stocks over 1,698 trading days. |
+| **corpus** | The full stored price history the simulations read — about 2,404 stocks over 1,699 trading days. |
 | **bhavcopy** | The official daily price file NSE publishes. The raw ingredient for everything. |
 | **session** / **trading day** | One day the market was open. Weekends and holidays do not count. |
 | **universe** | Every stock eligible to be considered before any filtering. |
+| **ETF** / **fund** | A share-like thing you can buy on the same exchange, that owns a *basket* — an index, or gold, or bonds — instead of being a company. It has a ticker and a price and looks exactly like a stock in the price file. This strategy is not meant to hold any of them. |
+| **denylist** | The list of tickers that trade like shares but are not companies, so the strategy never buys them. NSE's own company list is what says which is which. |
+| **the non-equity gap** | The bug where that list could only recognise a fund that was *still trading today*. Any fund that had already closed looked like an ordinary small company to every historical test, and the strategy bought 22 of them. Fixing it took the recorded result from +7.59% to +2.42% a year. |
+| **tracks** | How closely something's daily ups and downs copy a known fund's. Near 1.00 means it *is* that basket. It is how a gold ETF is told apart from a gold **mining company**, which has a similar name and moves nothing like gold. |
+| **still** | Barely moving day to day. Bond and cash funds move about 0.1% a day; the calmest real company on the exchange moves 1.4%. Anything that quiet is not a share. |
 | **selftest** | A small check inside a file that fails loudly if the logic in that file breaks. Run before trusting anything. |
 | **audit** | The 30-check sweep that confirms the whole system still behaves as documented, including that the headline result still reproduces. |
 | **baseline** | The recorded headline number. If a code change moves it, the audit fails on purpose, and re-recording must be a deliberate act. |
