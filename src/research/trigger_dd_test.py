@@ -82,7 +82,7 @@ Recommend a trigger on drawdown ONLY if ALL of:
 Anything else is reported as "inside the noise" IN THOSE WORDS, and the live
 trigger does not move.
 
-    STRATEGY=trellis python3 src/research/trigger_dd_test.py
+    STRATEGY=patterns python3 src/research/trigger_dd_test.py
 """
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
@@ -164,9 +164,9 @@ def _verdict(t):
 
 
 def main():
-    if paths.STRATEGY != "trellis":
-        print(f"this test belongs to trellis; STRATEGY={paths.STRATEGY}.")
-        print("run:  STRATEGY=trellis python3 src/research/trigger_dd_test.py")
+    if paths.STRATEGY != "patterns":
+        print(f"this test belongs to patterns; STRATEGY={paths.STRATEGY}.")
+        print("run:  STRATEGY=patterns python3 src/research/trigger_dd_test.py")
         return 1
 
     corpus = features.load_corpus()

@@ -79,9 +79,9 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
 
     `time_exit` = f(series, i, position, held, hold) -> False | True | reason.
     Replaces the flat `held >= hold` time exit with a rule that can read the
-    chart -- trellis uses it to hold past day 10 while the up-structure is
+    chart -- patterns uses it to hold past day 10 while the up-structure is
     intact. Default None is the flat comparison, byte for byte, which is what
-    keeps sprout's baseline reproducing at 7.59 / 195 with this hook present.
+    keeps breakout's baseline reproducing at 7.59 / 195 with this hook present.
 
     `atr_stop` = k places the stop k x ATR(14) below the fill instead of a flat
     `stop_pct`. A fixed percentage asks a 6%-daily-vol microcap and a 2%-vol
@@ -168,7 +168,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                     else:
                         # The time exit. `time_exit` replaces the flat day
                         # count with a rule that can read the chart; when it is
-                        # None -- always, for sprout -- this is exactly the
+                        # None -- always, for breakout -- this is exactly the
                         # `held >= hold` comparison it replaced.
                         #
                         # Returning a STRING names the exit in the mix instead

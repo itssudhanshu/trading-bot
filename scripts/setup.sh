@@ -95,7 +95,7 @@ cat <<'NOTE'
   collected is a permanent hole. Collection is idempotent and content-verified,
   so running it on both machines is safe and is the point.
 
-  data/sprout/ is different: strategies.jsonl and trade_features.jsonl are
+  data/breakout/ is different: strategies.jsonl and trade_features.jsonl are
   APPEND-ONLY and a mixed ledger cannot be un-mixed. One machine writes the
   bucket's record.
 NOTE

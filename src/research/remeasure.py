@@ -23,7 +23,7 @@ import features, selection, simulate
 
 BATCH = "20260819-postlock"
 
-# The live bucket, exactly as src/strategies/sprout/selection.py runs it. Not simulate.run's
+# The live bucket, exactly as src/strategies/breakout/selection.py runs it. Not simulate.run's
 # defaults, which still carry the old 15-day hold.
 LIVE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
             hold=selection.HOLD_DAYS, max_pos=selection.MAX_POSITIONS,

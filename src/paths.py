@@ -12,7 +12,7 @@ Also puts the source directories on sys.path, so `import features` keeps
 working from anywhere. That preserves the project's convention that any module
 can be run directly for its selftest:
 
-    python3 src/strategies/sprout/clusters.py --selftest
+    python3 src/strategies/breakout/clusters.py --selftest
 
 THIS FILE LIVES IN src/ AND THAT IS LOAD-BEARING. Every module bootstraps with
 
@@ -24,7 +24,7 @@ the directory holding this file. When this file sat at the repo root and the
 source moved under src/, all of those lines silently pointed one level too
 shallow -- and every selftest still passed, because the shell that ran them had
 PYTHONPATH=. exported. Putting paths.py in src/ fixes them all at once;
-src/strategies/sprout sits one deeper and uses parents[2].
+src/strategies/breakout sits one deeper and uses parents[2].
 """
 import os
 import sys
@@ -48,7 +48,7 @@ RAW = DATA / "raw"
 # out loud, and the wrong one cannot be reached by accident.
 #
 #     STRATEGY=other python3 src/ops/audit.py
-STRATEGY = os.environ.get("STRATEGY", "sprout")
+STRATEGY = os.environ.get("STRATEGY", "breakout")
 STRATEGIES = ROOT / "src" / "strategies"
 SDIR = STRATEGIES / STRATEGY
 

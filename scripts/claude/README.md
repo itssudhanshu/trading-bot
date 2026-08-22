@@ -58,7 +58,7 @@ The split that matters: `src/ops/sentiment.py` decides **what was visible** and
 the skill decides **what it means**. The first half has to be reproducible and
 is -- same date in, same evidence out, with the 15:30 visibility rule applied.
 The second half is a model's judgement and cannot be, which is exactly why the
-skill is forbidden from feeding any measured result. thicket's `ann_tone` is the
+skill is forbidden from feeding any measured result. sentiment's `ann_tone` is the
 measured version: frozen, deterministic, and currently off at t = 1.71 against a
 bar of 2.6.
 

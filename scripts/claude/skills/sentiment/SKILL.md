@@ -62,7 +62,7 @@ score, not a filter. Two reasons, both hard:
 - The scoring below is a model's judgement. Ask twice, get two numbers. This
   repo's audit fails when a recorded number moves, and rightly.
 
-thicket already has the measured version: `ann_tone` in `clusters.py`, a frozen
+sentiment already has the measured version: `ann_tone` in `clusters.py`, a frozen
 category→sign table, deterministic, and currently switched off because it read
 t = 1.71 against a bar of 2.6. **This skill is the operator's view of today. It
 is not evidence and must never be quoted as any.**
@@ -78,7 +78,7 @@ python3 src/ops/sentiment.py SYMBOL
 For today's candidates:
 
 ```bash
-STRATEGY=thicket python3 src/ops/sentiment.py --picks
+STRATEGY=sentiment python3 src/ops/sentiment.py --picks
 ```
 
 That script decides only **what was visible**, which is the half that must be
@@ -135,7 +135,7 @@ Two more that look like news and are not, both seen in real captures:
 The scoring is done for you, deterministically:
 
 ```bash
-STRATEGY=thicket python3 src/ops/sentiment.py --table
+STRATEGY=sentiment python3 src/ops/sentiment.py --table
 ```
 
 Each item scores in [−1, +1] — the frozen category table leading and a finance

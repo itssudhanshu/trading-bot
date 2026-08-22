@@ -742,7 +742,7 @@ if __name__ == "__main__":
         # anything at all about a microcap -- day one matched ZERO headlines to
         # YUKEN from the general feeds alone.
         #
-        # No STRATEGY is set by the scheduler, so the picks are sprout's, which
+        # No STRATEGY is set by the scheduler, so the picks are breakout's, which
         # is the live book. That is the right list: capture news for what is
         # actually being looked at.
         print(f"newswatch -> {NEWS}")

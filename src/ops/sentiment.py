@@ -57,14 +57,14 @@ channel still has no history, and a backtest reading it would be reading the
 future. The announcement channel does have history, which is what makes this
 scorer a candidate for a pre-registered test rather than only a view.
 
-Nothing here has been measured against returns. thicket's `ann_tone` -- the
+Nothing here has been measured against returns. sentiment's `ann_tone` -- the
 nearest thing that has -- read t = 1.71 against a bar of 2.6 and is switched
 off. Treat a number from this file as a description of today, not as evidence.
 
 The selftest asserts no research or strategy module imports this file.
 
     python3 src/ops/sentiment.py 20MICRONS
-    STRATEGY=thicket python3 src/ops/sentiment.py --picks
+    STRATEGY=sentiment python3 src/ops/sentiment.py --picks
     python3 src/ops/sentiment.py --selftest
 """
 import sys as _sys, pathlib as _pl
@@ -600,7 +600,7 @@ def main(argv):
     if not args:
         print(__doc__.strip().splitlines()[0])
         print("\n  python3 src/ops/sentiment.py SYMBOL [--day YYYY-MM-DD]")
-        print("  STRATEGY=thicket python3 src/ops/sentiment.py --picks")
+        print("  STRATEGY=sentiment python3 src/ops/sentiment.py --picks")
         return 1
     day = None
     for a in argv:

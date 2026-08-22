@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""The sprout bucket: Rs 3,00,000 across two size clusters.
+"""patterns: breakout's bucket, with an exit that can read the chart.
+
+A clone of breakout, identical to it until STRUCTURAL_EXIT is switched on.
+clone_reproduces.py asserts that with the knob off this reproduces whatever
+breakout produces RIGHT NOW, measured side by side rather than against a number
+recorded weeks ago.
+
+The breakout bucket: Rs 3,00,000 across two size clusters.
 
 RULES (fixed here, measured not guessed)
   universe   20 per cluster: micro / small, by median turnover. The universe
@@ -201,6 +208,84 @@ TAKE_PER_CLUSTER = {"micro": 3, "small": 2}
 MIN_POSITIONS = 0
 
 TRIGGER = "breakout"    # trigger_test, re-run after the circuit-lock guard
+
+# --- patterns's new rule SHAPE, OFF by default ------------------------------
+# The live exit is -10% / +20% / 10 days flat. 10-vs-15 days was measured and
+# came back at t = 0.28: inside the noise. That is worth a new SHAPE rather than
+# another number, because if the honest answer is "it depends on the chart",
+# no fixed day count could ever have found it.
+#
+# The rule: past day HOLD_DAYS, keep holding while the up-structure is intact.
+# Frozen in advance (spec 5.1). An exit condition left to judgement is the same
+# hindsight hole this project warns about for pattern detectors.
+#
+# MEASURED AND REJECTED, 2026-08-20 (exit_shape_test, batch 20260820-patterns):
+# +0.34% per trade against the flat control at t = 0.22, against a bar of 2.6.
+# Holding 30 days flat -- no structure at all -- gained +1.42%, four times as
+# much, so this is a worse way of holding longer rather than a way of reading
+# structure. It stays here, off, because the code is the record of what was
+# tried; it does not stay because it works.
+STRUCTURAL_EXIT = False
+
+STRUCT_EMA = 20         # close must be above its own 20-day average
+STRUCT_LOOKBACK = 5     # ... and must not have made a lower high over this many
+STRUCT_ATR_MULT = 1.5   # ... and ATR(14) must not have expanded by more than
+                        #     this against the entry-day reading
+
+# An uncapped structural hold is a DIFFERENT strategy, not a variant of this
+# one: a name in a lasting uptrend would never exit and the bucket would stop
+# turning over. The spec did not name a cap; it needed one.
+STRUCT_MAX_HOLD = 30
+
+_ATR = {}
+
+
+def _atr_at(s, i):
+    a = _ATR.get(s.symbol)
+    if a is None:
+        a = _ATR[s.symbol] = features.atr(s.high, s.low, s.close, 14)
+    return a[i] if 0 <= i < len(a) else None
+
+
+def structure_intact(s, i, p):
+    """-> True while the move that was bought is still visibly working.
+
+    Conditions 1 and 2 are STRUCTURE, not distance, and that is deliberate: a
+    rule that exits at a fixed distance below the high is a trailing stop, and
+    trailing stops were measured across six configurations at both 3% and 10%
+    stops and every one LOWERED expectancy -- lifting win rate 42% -> 48% while
+    collapsing target hits 20% -> 8%, by stopping the book out of the winners
+    that pay for everything else.
+    """
+    ema = features.ema(s.close, STRUCT_EMA)
+    e = ema[i] if 0 <= i < len(ema) else None
+    if e is None or s.close[i] <= e:
+        return False
+    k = STRUCT_LOOKBACK
+    if i - 2 * k + 1 < 0:
+        return False
+    if max(s.high[i - k + 1:i + 1]) < max(s.high[i - 2 * k + 1:i - k + 1]):
+        return False
+    j = s.index_of(p["entry_day"])
+    a_now, a_in = _atr_at(s, i), (_atr_at(s, j) if j is not None else None)
+    if a_now is not None and a_in and a_now > STRUCT_ATR_MULT * a_in:
+        return False
+    return True
+
+
+def time_exit(s, i, p, held, hold):
+    """-> False to hold, True/reason to exit. Passed to simulate.run.
+
+    With STRUCTURAL_EXIT off this is exactly `held >= hold`, which is what
+    simulate.run does when handed no hook at all.
+    """
+    if held < hold:
+        return False
+    if not STRUCTURAL_EXIT:
+        return True
+    if held >= STRUCT_MAX_HOLD:
+        return "time-capped"
+    return False if structure_intact(s, i, p) else "structure"
                         # (L58): +7.59% against -2.20% for no trigger, and the
                         # only one of seven to clear the promotion bar. It now
                         # wins on worst block too (-126.7% vs -163.4%).

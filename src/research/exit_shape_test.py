@@ -2,7 +2,7 @@
 """H4: does an exit that reads the chart beat a flat day count?
 
 PRE-REGISTERED 2026-08-20, before the structural exit was ever run end to end.
-Spec: docs/superpowers/specs/2026-08-20-thicket-trellis-design.md, section 6.
+Spec: docs/superpowers/specs/2026-08-20-sentiment-patterns-design.md, section 6.
 
 THE QUESTION
 ------------
@@ -49,7 +49,7 @@ Adopting requires ALL of:
 
 Anything short of that is reported in these words: inside the noise.
 
-    STRATEGY=trellis python3 src/research/exit_shape_test.py
+    STRATEGY=patterns python3 src/research/exit_shape_test.py
 """
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
@@ -62,7 +62,7 @@ import features
 import selection
 import simulate
 
-BATCH = "20260820-trellis"
+BATCH = "20260820-patterns"
 BAR = 2.6                      # fixed before the run; may be tightened, never relaxed
 
 # Read the live constants. NEVER copy them: impact_test.py carried a copy saying
@@ -103,9 +103,9 @@ def _verdict(t):
 
 
 def main():
-    if paths.STRATEGY != "trellis":
-        print(f"this test belongs to trellis; STRATEGY={paths.STRATEGY}.")
-        print("run:  STRATEGY=trellis python3 src/research/exit_shape_test.py")
+    if paths.STRATEGY != "patterns":
+        print(f"this test belongs to patterns; STRATEGY={paths.STRATEGY}.")
+        print("run:  STRATEGY=patterns python3 src/research/exit_shape_test.py")
         return 1
 
     corpus = features.load_corpus()

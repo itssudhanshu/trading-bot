@@ -1,7 +1,7 @@
 {
  "frozen": "2026-08-20",
- "batch": "20260820-thicket",
- "note": "Pre-registered category->sign mapping for thicket's ann_tone feature. Written BEFORE the backfill finished and before any per-trade return was computed, which is the only thing that makes it evidence rather than a hindsight machine. Signs are assigned by what an announcement MEANS economically, never by what the stock did afterwards. The rule for assigning one: +1 or -1 only where a reasonable analyst would not argue about the direction. Everything else is 0, which is most of the 108 categories seen in the validated month -- the majority are procedural filings that carry no directional information, and pretending otherwise would be inventing signal. A category absent from this table also scores 0: absence is ignorance, not bad news. This file may be EXTENDED by a commit that predates the run using it. It may never be edited to make a red result go green.",
+ "batch": "20260820-sentiment",
+ "note": "Pre-registered category->sign mapping for sentiment's ann_tone feature. Written BEFORE the backfill finished and before any per-trade return was computed, which is the only thing that makes it evidence rather than a hindsight machine. Signs are assigned by what an announcement MEANS economically, never by what the stock did afterwards. The rule for assigning one: +1 or -1 only where a reasonable analyst would not argue about the direction. Everything else is 0, which is most of the 108 categories seen in the validated month -- the majority are procedural filings that carry no directional information, and pretending otherwise would be inventing signal. A category absent from this table also scores 0: absence is ignorance, not bad news. This file may be EXTENDED by a commit that predates the run using it. It may never be edited to make a red result go green.",
  "tone": {
   "Corporate Insolvency Resolution Process": -1,
   "Defaults on Payment of Interest/Principal": -1,

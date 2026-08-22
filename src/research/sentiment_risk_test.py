@@ -69,7 +69,7 @@ Nothing here, on its own. A pass licenses a fresh out-of-sample or forward test,
 never a change to the live book on this data -- the same rule H7 carried, and for
 the same reason: too much has now been asked of one price history.
 
-    STRATEGY=thicket python3 src/research/sentiment_risk_test.py
+    STRATEGY=sentiment python3 src/research/sentiment_risk_test.py
 """
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
@@ -189,9 +189,9 @@ def _verdict(t):
 
 
 def main():
-    if paths.STRATEGY != "thicket":
-        print(f"this test belongs to thicket; STRATEGY={paths.STRATEGY}.")
-        print("run:  STRATEGY=thicket python3 src/research/sentiment_risk_test.py")
+    if paths.STRATEGY != "sentiment":
+        print(f"this test belongs to sentiment; STRATEGY={paths.STRATEGY}.")
+        print("run:  STRATEGY=sentiment python3 src/research/sentiment_risk_test.py")
         return 1
 
     corpus = F.load_corpus()

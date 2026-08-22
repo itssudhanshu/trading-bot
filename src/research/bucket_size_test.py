@@ -5,7 +5,7 @@ IS THIS A LEGAL EXPERIMENT? Stated up front because it is arguable. Bucket size
 LOOKS like a knob, and CLAUDE.md forbids another pass over the knobs. Two things
 separate it from hold length and the 3/2 mix:
 
-  1. It has never been measured. Not once. `data/sprout/simulations.jsonl` holds
+  1. It has never been measured. Not once. `data/breakout/simulations.jsonl` holds
      six runs and not one records `max_pos`. The knob prohibition exists because
      re-running an exhausted dial produces a different winner each time; a dial
      with ZERO passes has no winner to re-produce. There is no prior result here

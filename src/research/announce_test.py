@@ -2,7 +2,7 @@
 """H1-H3: do corporate announcements carry information the price features do not?
 
 PRE-REGISTERED 2026-08-20, before the announcement backfill finished.
-Spec: docs/superpowers/specs/2026-08-20-thicket-trellis-design.md, section 6.
+Spec: docs/superpowers/specs/2026-08-20-sentiment-patterns-design.md, section 6.
 
 THE THREE HYPOTHESES
 --------------------
@@ -46,12 +46,12 @@ A NOTE ON A CONSTANT THIS FILE DELIBERATELY DOES NOT COPY
 fund_test.py opens `HOLD, STOP, TARGET = 15, 10.0, 20.0`. The live hold has
 been 10 since L51/L52. That is the stale-copy shape L60 documents and
 impact_test.py already suffered for three months. This file reads
-selection.HOLD_DAYS instead. fund_test.py is left alone -- it belongs to sprout,
-and the operator's condition for this work is that sprout does not move -- but
+selection.HOLD_DAYS instead. fund_test.py is left alone -- it belongs to breakout,
+and the operator's condition for this work is that breakout does not move -- but
 its published fundamentals result was measured at a hold the bucket stopped
 using.
 
-    STRATEGY=thicket python3 src/research/announce_test.py
+    STRATEGY=sentiment python3 src/research/announce_test.py
 """
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
@@ -65,7 +65,7 @@ import clusters
 import features as F
 import selection
 
-BATCH = "20260820-thicket"
+BATCH = "20260820-sentiment"
 BAR = 2.6
 
 # Read the live rules. Never copy them; see the docstring.
@@ -196,9 +196,9 @@ def report(rows):
 
 
 def main():
-    if paths.STRATEGY != "thicket":
-        print(f"this test belongs to thicket; STRATEGY={paths.STRATEGY}.")
-        print("run:  STRATEGY=thicket python3 src/research/announce_test.py")
+    if paths.STRATEGY != "sentiment":
+        print(f"this test belongs to sentiment; STRATEGY={paths.STRATEGY}.")
+        print("run:  STRATEGY=sentiment python3 src/research/announce_test.py")
         return 1
 
     corpus = F.load_corpus()

@@ -14,7 +14,7 @@ python3 tests/run_selftests.py
 
 ```
 src/paths.py                           ROOT, DATA and which strategy is live
-src/strategies/sprout/                 THE STRATEGY: clusters selection entry learning
+src/strategies/breakout/                 THE STRATEGY: clusters selection entry learning
 src/core/                              universe features engine live_source fundamentals
 src/bucket/                            positions analysis -- the bucket and its evidence
 src/research/                          simulate and the *_test.py experiments
@@ -22,7 +22,7 @@ src/ops/                               agent daily tg overview + snapshot backfi
 tests/run_selftests.py                 runs every selftest and the audit
 scripts/                               setup.sh run_listener.sh deploy/ claude/
 docs/                                  glossary.md lessons.md rules.md STATE.md
-data/sprout/                           the strategy's weights, baseline, trade ledger
+data/breakout/                           the strategy's weights, baseline, trade ledger
 data/                                  raw/ plus shared state and logs
 .env.example                           the keys to fill in; .env is gitignored
 ```
@@ -118,7 +118,7 @@ on those bars. See `docs/performance-change.md`.
 python3 src/ops/snapshot.py                     # today's capture
 python3 src/ops/snapshot.py --catchup           # recover missed days, report what cannot be
 python3 src/ops/backfill.py --years 4           # historical bars
-python3 src/strategies/sprout/clusters.py       # today's selection, per cluster
+python3 src/strategies/breakout/clusters.py       # today's selection, per cluster
 python3 src/ops/daily.py                        # evening: fill, exit, re-select
 python3 src/ops/daily.py --fill-live            # morning: fill pending at the open
 python3 src/ops/audit.py                        # 35 cross-checks against the real system

@@ -4,7 +4,7 @@ Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
 Last updated: 2026-08-19 — every knob re-measured against the circuit-lock
-guard (L58/L59), and the strategy moved into `strategies/sprout/`.
+guard (L58/L59), and the strategy moved into `strategies/breakout/`.
 
 ---
 
@@ -80,10 +80,10 @@ A book holding 1 stock is normal, not broken.
 
 ## Where the code lives (2026-08-19)
 
-The strategy is named **sprout**. Its RULES are the four files in
-`src/strategies/sprout/` -- `clusters.py` (size bands and the score),
+The strategy is named **breakout**. Its RULES are the four files in
+`src/strategies/breakout/` -- `clusters.py` (size bands and the score),
 `selection.py` (the bucket and the exit rules), `entry.py` (the breakout
-trigger), `learning.py` (the weights). Its OUTPUTS are `data/sprout/` --
+trigger), `learning.py` (the weights). Its OUTPUTS are `data/breakout/` --
 `weights.json`, `baseline.json`, `trade_features.jsonl`, `strategies.jsonl`,
 `simulations.jsonl`, `findings.jsonl`, `occupancy_baseline.json`.
 
@@ -104,7 +104,7 @@ directory holding `paths.py`. While that file sat at the root and the source did
 not, all 23 of those lines pointed one level too shallow -- and every selftest
 still passed, because the shell running them exported `PYTHONPATH=.` and the
 children inherited it. Moving the file fixed 23 modules with no edits;
-`src/strategies/sprout` is one deeper and uses `parents[2]`. The sweep now
+`src/strategies/breakout` is one deeper and uses `parents[2]`. The sweep now
 strips `PYTHONPATH` from its children so it can never pass on the operator's
 shell again:
 
@@ -132,7 +132,7 @@ decision to take deliberately, with the `origin` column, not by a folder move.
 
 ## The live books — two, `main` and `pooled`
 
-Since **2026-08-21** two books run forward side by side inside sprout, on the
+Since **2026-08-21** two books run forward side by side inside breakout, on the
 same signals, the same stops and Rs 3,00,000 each:
 
 | key | shown as | rule |
@@ -252,22 +252,22 @@ The bucket now holds 4 of 5: HAPPYFORGE, GMMPFAUDLR (small), SAHYADRI, YUKEN
 
 ## Two more strategies exist, and neither changes anything (2026-08-21)
 
-`thicket` and `trellis` live beside `sprout` under `src/strategies/`, with their
-own `data/<name>/`. **Both are behavioural clones of sprout with every new rule
+`sentiment` and `patterns` live beside `breakout` under `src/strategies/`, with their
+own `data/<name>/`. **Both are behavioural clones of breakout with every new rule
 switched off**, so neither alters the live bucket, and `tests/clone_reproduces.py`
-asserts each still reproduces whatever sprout produces *right now* — measured
+asserts each still reproduces whatever breakout produces *right now* — measured
 side by side in child processes rather than against a number recorded weeks ago.
 
 | strategy | what it adds | switch | state |
 |---|---|---|---|
-| thicket | NSE corporate announcements as a score input | `clusters.ANN_FEATURES` | off; nothing cleared the bar |
-| trellis | structural exit, and named chart patterns | `selection.STRUCTURAL_EXIT`, `TRIGGER` | off; nothing cleared the bar |
+| sentiment | NSE corporate announcements as a score input | `clusters.ANN_FEATURES` | off; nothing cleared the bar |
+| patterns | structural exit, and named chart patterns | `selection.STRUCTURAL_EXIT`, `TRIGGER` | off; nothing cleared the bar |
 
-**The operator's condition was that sprout must not be impacted**, and that is
-enforced rather than promised: `tests/sprout_untouched.py` runs in the sweep and
-hashes sprout's rules, weights and headline, refuses a file being added to
-`sprout/`, checks no strategy or research module can *reach* the live order book,
-and confirms a non-sprout `STRATEGY` resolves its data outside `data/sprout`.
+**The operator's condition was that breakout must not be impacted**, and that is
+enforced rather than promised: `tests/breakout_untouched.py` runs in the sweep and
+hashes breakout's rules, weights and headline, refuses a file being added to
+`breakout/`, checks no strategy or research module can *reach* the live order book,
+and confirms a non-breakout `STRATEGY` resolves its data outside `data/breakout`.
 
 ### The data that arrived with them
 
@@ -301,7 +301,7 @@ may never feed a measured result and why its selftest asserts no research or
 strategy module imports it.
 
     python3 src/ops/sentiment.py 20MICRONS
-    STRATEGY=thicket python3 src/ops/sentiment.py --picks
+    STRATEGY=sentiment python3 src/ops/sentiment.py --picks
 
 It is an operator's view of today. `ann_tone` is the measured version.
 

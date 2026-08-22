@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""thicket: sprout's selection, plus what the company told the exchange.
+"""sentiment: breakout's selection, plus what the company told the exchange.
 
-A clone of sprout, and identical to it until ANN_FEATURES is switched on. That
+A clone of breakout, and identical to it until ANN_FEATURES is switched on. That
 default is the whole design: a rule that is live before it is measured has
 already changed the answer, and tests/clone_reproduces.py asserts that with the
 knob off this file still produces +7.59% / 31.0% / 195.
@@ -134,9 +134,9 @@ RS_SKIP = 0
 # universe. MAX_SCREEN drops that fraction of the cluster before scoring.
 MAX_SCREEN = None
 
-# --- thicket's new input, OFF by default -----------------------------------
-# NSE corporate announcements as a score input, the one thing sprout's score
-# cannot see. Empty means this file behaves exactly as sprout does; a test
+# --- sentiment's new input, OFF by default -----------------------------------
+# NSE corporate announcements as a score input, the one thing breakout's score
+# cannot see. Empty means this file behaves exactly as breakout does; a test
 # switches it on by name:
 #
 #     clusters.ANN_FEATURES = ("ann_burst",)
@@ -234,7 +234,7 @@ def score(corpus, symbols, as_of, with_ranks=False):
             return {}
     # The one list of scored features, built once and used for ranking, for the
     # weighted sum and for the detail. With ANN_FEATURES empty this is exactly
-    # sprout's tuple, which is what lets the clone reproduce to the digit.
+    # breakout's tuple, which is what lets the clone reproduce to the digit.
     scored = ("rs", "deliv", "liq", "near_high") + tuple(ANN_FEATURES)
     ranks = {f: _pct_rank({k: v[f] for k, v in raw.items()})
              for f in ("rs", "deliv", "liq", "near_high")}

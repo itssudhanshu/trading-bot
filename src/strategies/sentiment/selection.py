@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The sprout bucket: Rs 3,00,000 across two size clusters.
+"""The breakout bucket: Rs 3,00,000 across two size clusters.
 
 RULES (fixed here, measured not guessed)
   universe   20 per cluster: micro / small, by median turnover. The universe

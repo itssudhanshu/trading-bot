@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What the forward run must show, written down before it has anything to show.
 
-Two buckets now run side by side inside sprout -- `main` (rank inside each band,
+Two buckets now run side by side inside breakout -- `main` (rank inside each band,
 fill a 3/2 quota) and `pooled` (rank everything, take the best five). This file
 fixes, in advance, what would count as the backtest being RIGHT and what would
 count as it being WRONG, so that in three months the numbers are read against a

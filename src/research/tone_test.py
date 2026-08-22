@@ -3,7 +3,7 @@
 of it just momentum wearing a different hat?
 
 PRE-REGISTERED 2026-08-22, before the graded score was run against any return.
-Spec: docs/superpowers/specs/2026-08-20-thicket-trellis-design.md, section 6.
+Spec: docs/superpowers/specs/2026-08-20-sentiment-patterns-design.md, section 6.
 
 WHY THIS IS NOT A RE-RUN OF H2
 ------------------------------
@@ -59,7 +59,7 @@ Adoption requires ALL FOUR:
   3. |correlation with rs| < 0.30 -- otherwise it is momentum restated
   4. both size groups carry the same sign
 
-    STRATEGY=thicket python3 src/research/tone_test.py
+    STRATEGY=sentiment python3 src/research/tone_test.py
 """
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
@@ -73,7 +73,7 @@ import clusters
 import features as F
 import selection
 
-BATCH = "20260822-thicket-h6"
+BATCH = "20260822-sentiment-h6"
 BAR = 2.64
 MAX_ECHO = 0.30            # above this, the score is momentum restated
 
@@ -188,9 +188,9 @@ def _verdict(t):
 
 
 def main():
-    if paths.STRATEGY != "thicket":
-        print(f"this test belongs to thicket; STRATEGY={paths.STRATEGY}.")
-        print("run:  STRATEGY=thicket python3 src/research/tone_test.py")
+    if paths.STRATEGY != "sentiment":
+        print(f"this test belongs to sentiment; STRATEGY={paths.STRATEGY}.")
+        print("run:  STRATEGY=sentiment python3 src/research/tone_test.py")
         return 1
 
     corpus = F.load_corpus()

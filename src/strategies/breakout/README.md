@@ -1,10 +1,24 @@
-# sprout
+# breakout
 
-The one live strategy. **Sprout** = small companies just starting to move.
+The one live strategy. **Breakout** = small companies just starting to move.
 
-The name is deliberately not `breakout` or `momentum`: both of those are terms
-already used *inside* this strategy (the entry trigger, the `rs` feature), and
-`docs/rules.md` R1 forbids overloading a word already in use.
+**Renamed from `sprout` on 2026-08-23, reversing an earlier decision recorded
+right here.** That decision said the name must not be `breakout`, because the
+word was already the entry trigger and R1 forbids overloading a term in use.
+
+The operator overruled it, and the argument is better than the one it replaced.
+R1 forbids two names for one thing, or one name for two DIFFERENT things -- the
+`rank2`-beside-`rank 5` failure it was written for. Here the meaning is the same
+at both levels: this strategy trades breakouts, and its trigger detects one. A
+word used twice for one concept is not a collision, it is consistency, and
+`sprout` had the real defect -- it told a reader nothing (R2).
+
+Checked rather than assumed: `import sentiment` still resolves to
+`src/ops/sentiment.py` and not to the strategy directory of the same name, and
+`paths._selftest` reports the right active strategy with two inactive.
+
+The sibling strategies renamed with it: `thicket` -> `sentiment`,
+`trellis` -> `patterns`.
 
 ## What it does
 
@@ -28,7 +42,7 @@ Every term above is defined in `docs/glossary.md`.
 | `entry.py` | The breakout trigger itself |
 | `learning.py` | The score weights, and the pass that proposes moving them |
 
-Its data lives in `data/sprout/` — weights, the recorded baseline, the trade
+Its data lives in `data/breakout/` — weights, the recorded baseline, the trade
 ledger, and stored backtest results. Nothing outside this strategy writes there.
 
 ## What does NOT live here

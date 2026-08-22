@@ -1877,21 +1877,21 @@ tick now requires a registered job as well as a fresh stamp.
 
 ## L61 — A second strategy, and the control arm that stopped a false finding
 
-Two new strategies were built as behavioural clones of sprout: **thicket**
-(NSE corporate announcements as a score input) and **trellis** (chart patterns
-as an exit shape and a trigger). Both are born identical to sprout, with every
-new rule shipped off by default, and both reproduce sprout to the digit with
+Two new strategies were built as behavioural clones of breakout: **sentiment**
+(NSE corporate announcements as a score input) and **patterns** (chart patterns
+as an exit shape and a trigger). Both are born identical to breakout, with every
+new rule shipped off by default, and both reproduce breakout to the digit with
 the knobs off — 7.59 / 31.0 / 195, exactly, on the same corpus.
 
-**The operator set one condition: sprout must not be impacted.** That was
+**The operator set one condition: breakout must not be impacted.** That was
 written into a design document first, which makes it an intention, not a rule.
-It is now `tests/sprout_untouched.py` in the selftest sweep: sprout's four rule
+It is now `tests/breakout_untouched.py` in the selftest sweep: breakout's four rule
 files, its learned weights and its recorded headline are hashed against a
-committed manifest; no file may be added to `sprout/` either; no module under
-`strategies/` or `research/` may import the live order book; and a non-sprout
-`STRATEGY` must resolve `paths.SDATA` outside `data/sprout`. The behavioural
+committed manifest; no file may be added to `breakout/` either; no module under
+`strategies/` or `research/` may import the live order book; and a non-breakout
+`STRATEGY` must resolve `paths.SDATA` outside `data/breakout`. The behavioural
 half is left to `audit.py`, which already re-runs the backtest — that is the
-check that catches a *shared* module edited so sprout buys something different,
+check that catches a *shared* module edited so breakout buys something different,
 which leaves every hash intact and every import clean.
 
 ### The finding: H4, and why it is a negative
@@ -1921,7 +1921,7 @@ established either.
 
 That arm existed because "a structural win could be nothing more than holding
 longer" was foreseeable *before* the run, and was written into the
-pre-registration. Without it this would have been trellis's first finding.
+pre-registration. Without it this would have been patterns's first finding.
 **A control that only rules out doing nothing is not enough. The arm that
 matters is the stupid version of your own idea.**
 
@@ -1958,10 +1958,10 @@ not evidence the bhavcopy was the requested day. The fix judges a feed on its
 newest item, which generalises to the next feed that dies.
 
 **A gate that compares against a stored number drifts.** `clone_reproduces.py`
-compared clones against `data/sprout/baseline.json` and broke the first time it
+compared clones against `data/breakout/baseline.json` and broke the first time it
 mattered: the daily agent fetched a session mid-afternoon, the corpus went 1698
 → 1699, and the gate would have failed on something unrelated to whether the
-fork was clean. It now re-runs sprout in a child process and compares
+fork was clean. It now re-runs breakout in a child process and compares
 like-for-like. Two backtests instead of one, and it cannot drift.
 
 ### H1–H3: announcements, and the number that shows why the bar goes first
@@ -1982,7 +1982,7 @@ Bonferroni across five pre-registered tests — and that number was written into
 the spec and into two test modules on 2026-08-20, *before the backfill had
 finished downloading* and long before any return was computed.
 
-Set the bar after seeing +2.20 and announcements are thicket's first finding.
+Set the bar after seeing +2.20 and announcements are sentiment's first finding.
 Set it before and they are not. Same data, same arithmetic, opposite
 conclusion; the only difference is which was written first. That is the
 argument for pre-registration demonstrated on this project's own data instead of
@@ -2073,7 +2073,7 @@ it, and the hypothesis died on its own error bar anyway.
 puts it at t = 0.65. Thirty draws from a distribution with 16% per-trade spread
 will throw up a mean like that routinely. It was registered as description with
 no adoption path *before* it was run, which is the only reason it is a curiosity
-here rather than trellis's headline.
+here rather than patterns's headline.
 
 **And one thing is left deliberately undecided.** asc_triangle and cup_handle
 both show ~10% maximum drawdown against breakout's 31%. That is a large move in

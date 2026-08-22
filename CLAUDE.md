@@ -333,9 +333,9 @@ output without a glossary.
 
 ## One strategy per directory
 
-The live strategy is named **sprout** and its rules live in
-`src/strategies/sprout/` (`clusters.py`, `selection.py`, `entry.py`,
-`learning.py`), its outputs in `data/sprout/` (weights, baseline, trade ledger,
+The live strategy is named **breakout** and its rules live in
+`src/strategies/breakout/` (`clusters.py`, `selection.py`, `entry.py`,
+`learning.py`), its outputs in `data/breakout/` (weights, baseline, trade ledger,
 stored results). Everything else -- price data, the fill-and-cost engine, the
 backtest harness, the order book, the bot, the audit -- is shared and knows
 nothing about any particular strategy.
@@ -371,7 +371,7 @@ source did not, all 23 of those lines pointed one level too shallow -- and every
 selftest passed anyway, because the shell running them exported `PYTHONPATH=.`
 and the children inherited it. The sweep now strips `PYTHONPATH` from its
 children; a check that passes because of the operator's shell is not a check.
-`src/strategies/sprout` sits one deeper and uses `parents[2]`.
+`src/strategies/breakout` sits one deeper and uses `parents[2]`.
 
 Anything that SPAWNS a script rather than importing it must go through
 `paths.script()` -- `agent.py` runs `python3 <path>` in a subprocess whose

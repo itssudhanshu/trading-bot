@@ -1,14 +1,14 @@
-# thicket and trellis — design
+# sentiment and patterns — design
 
 Date: 2026-08-20
 Status: spec, awaiting operator review. No code written.
 
-Two new strategies, each a behavioural clone of `sprout` at birth:
+Two new strategies, each a behavioural clone of `breakout` at birth:
 
 | strategy | what it adds | kind of experiment (CLAUDE.md) |
 |---|---|---|
-| **thicket** | NSE corporate announcements as a score input | a new input the score cannot see |
-| **trellis** | chart patterns as an exit shape and a trigger | a new rule shape |
+| **sentiment** | NSE corporate announcements as a score input | a new input the score cannot see |
+| **patterns** | chart patterns as an exit shape and a trigger | a new rule shape |
 
 Neither is a knob. Hold length, the 3/2 mix, the score weights and the trigger
 have all been measured and all sit at |t| < 1.3; another pass over them produces
@@ -51,32 +51,32 @@ reasoning cannot be audited. Stdlib only; no scraping framework is needed.
 `paths.py` puts only the active strategy on `sys.path`, so one is live at a
 time:
 
-    STRATEGY=thicket python3 src/ops/audit.py
-    STRATEGY=trellis python3 src/ops/audit.py
+    STRATEGY=sentiment python3 src/ops/audit.py
+    STRATEGY=patterns python3 src/ops/audit.py
 
 Each gets `src/strategies/<name>/` (rules) and `data/<name>/` (outputs).
-Neither may ever write into `data/sprout/`: `strategies.jsonl` and
+Neither may ever write into `data/breakout/`: `strategies.jsonl` and
 `trade_features.jsonl` are append-only and a mixed ledger cannot be un-mixed.
 
-If both ideas lived in one strategy and it beat sprout, we could not say which
+If both ideas lived in one strategy and it beat breakout, we could not say which
 of them did it. Separating them is what makes each result attributable.
 
 ### 1.2 The clone contract
 
-Each new strategy starts as a **behavioural clone of sprout**: same score, same
+Each new strategy starts as a **behavioural clone of breakout**: same score, same
 bucket, same exits, same trigger. Every new rule ships **off by default**,
 switched on only by a test — the idiom `clusters.py` already uses for `RS_SKIP`
 and `MAX_SCREEN`, which exist precisely so that a change to selection cannot
 silently alter a live bucket and invalidate measurements taken before it.
 
-Each clone is born with sprout's `weights.json` **copied verbatim** into its
+Each clone is born with breakout's `weights.json` **copied verbatim** into its
 own `data/<name>/` — `rs` 1.0, `deliv` 1.5, `liq` 1.0, `near_high` 1.0. Without
 those learned weights the clone would not reproduce the baseline and the
 acceptance test below could not pass. New features enter the score at **weight
 0** and are moved only by a test that clears §6.2.
 
 **Acceptance test, and it gates everything downstream:** with all new knobs off,
-each clone must reproduce sprout's recorded baseline exactly —
+each clone must reproduce breakout's recorded baseline exactly —
 **+7.59% CAGR / 31.0% max drawdown / 195 trades**. Not approximately. If it does
 not, the fork is wrong and no finding built on it means anything. This runs in
 the selftest sweep, not by hand.
@@ -84,12 +84,12 @@ the selftest sweep, not by hand.
 ### 1.3 The cost of cloning, and how it is contained
 
 Three near-identical rule directories is real duplication, and a fix applied to
-sprout will not propagate. This is accepted deliberately — sharing rule code
-between strategies would mean changing sprout silently changes thicket, and
-results recorded against thicket would stop being reproducible.
+breakout will not propagate. This is accepted deliberately — sharing rule code
+between strategies would mean changing breakout silently changes sentiment, and
+results recorded against sentiment would stop being reproducible.
 
 It is contained by `tests/diff_strategies.py`: prints every difference between
-each clone and sprout, and **fails if a difference is not declared** in that
+each clone and breakout, and **fails if a difference is not declared** in that
 strategy's `DIVERGENCE` table. Drift becomes visible; divergence stays
 deliberate.
 
@@ -108,7 +108,7 @@ with the rest:
 
 ## 2. The visibility rule
 
-One function, and it carries the integrity of thicket:
+One function, and it carries the integrity of sentiment:
 
 > An announcement is visible to the signal computed on day *i* only if its
 > timestamp is **strictly before day *i*'s 15:30 close**. Anything later becomes
@@ -128,7 +128,7 @@ merely by coverage.
 
 ---
 
-## 3. thicket — announcements as a score input
+## 3. sentiment — announcements as a score input
 
 ### 3.1 Features
 
@@ -182,7 +182,7 @@ like a polite client or it does not ship.
 
 ---
 
-## 5. trellis — chart patterns
+## 5. patterns — chart patterns
 
 ### 5.1 Structural time exit
 
@@ -236,7 +236,7 @@ only fire on charts that already worked.
 
 ## 6. Pre-registration
 
-Batch tags: `20260820-thicket`, `20260820-trellis`. A figure without a batch tag
+Batch tags: `20260820-sentiment`, `20260820-patterns`. A figure without a batch tag
 cannot be compared to anything.
 
 ### 6.1 Hypotheses, controls, endpoints
@@ -314,7 +314,7 @@ every figure, and anything under |t| = 2.6 is written down in those words:
 - Free-text sentiment scoring of `attchmntText`. The category table is the
   first cut; a lexicon adds many degrees of freedom for unclear gain and can be
   proposed later as its own pre-registered experiment.
-- Any change to `sprout`, to `engine.py` risk invariants, or to the live bucket.
+- Any change to `breakout`, to `engine.py` risk invariants, or to the live bucket.
 
 ---
 
@@ -325,8 +325,8 @@ green and the audit headline still reading `+7.59% vs +7.59%, n=195 vs 195`.
 
 1. **Foundation** — `announcements.py` + visibility rule + a one-month slice to
    validate the parser, then the full backfill; `newswatch.py` starts capturing.
-2. **thicket** — clone, acceptance test, tone table frozen, H1–H3.
-3. **trellis** — clone, acceptance test, detectors frozen, H4–H5.
+2. **sentiment** — clone, acceptance test, tone table frozen, H1–H3.
+3. **patterns** — clone, acceptance test, detectors frozen, H4–H5.
 
 The one-month slice comes before the 356-week backfill deliberately: validating
 a parser on 0.5 GB you already pulled is how you find out you must pull it

@@ -37,7 +37,7 @@ WHAT IS AND IS NOT DECIDED HERE
 -------------------------------
 This module is SHARED data infrastructure, like price bars. It knows nothing
 about any strategy. It computes features; it does not decide whether they are
-worth scoring. `thicket` decides that, and only a test that clears the
+worth scoring. `sentiment` decides that, and only a test that clears the
 promotion bar can move a weight off zero.
 
     python3 src/core/announcements.py --selftest
