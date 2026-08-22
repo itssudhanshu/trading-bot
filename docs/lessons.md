@@ -2534,3 +2534,62 @@ That is interesting and it is **not a result**. Building a residual statistic no
 exists to resist. It is written down as a hypothesis for a fresh, separately
 pre-registered test, on the explicit understanding that noticing it here buys it
 nothing.
+
+---
+
+## L68 — Sentiment and risk: the gate closed, and two near-misses are what noise looks like
+
+**H8–H11, all four pre-registered in one commit before any ran**, with the bar
+fixed at |t| ≥ 2.84 for the maximum family of eleven, and a gate: H10 (sizing)
+and H11 (stand-aside) would run only if H8 or H9 cleared. On 3,702 sampled
+trades — 961 negative, 723 positive, 1,910 neutral control.
+
+| hypothesis | diff | std err | t | verdict |
+|---|---|---|---|---|
+| H8 negative → volatility | −0.056% | 0.057% | −0.98 | inside the noise |
+| **H9 negative → stop-out rate** | **−4.16pp** | 1.65pp | **−2.52** | inside the noise |
+
+**Gate CLOSED.** H10 and H11 were not run and the family stays at nine tests.
+That is the gate doing its job: sizing by a signal, or standing aside on one,
+needs the signal to exist, and building either after this would have been sizing
+by noise.
+
+### The prior was wrong again, and the direction is the interesting part
+
+Written down before the run: *negative sentiment RAISES volatility and RAISES
+the stop-out rate* — following H6 and the literature on negative asymmetry.
+
+Both came back **opposite**. Negative-sentiment names stopped out **less** often
+than the neutral majority: 21.2% against 25.4%.
+
+Three predictions have now been recorded in advance and read back: wrong on H6
+(momentum would explain it — r came back 0.036), right on H7 (exposure would),
+wrong here. That record is only worth having because each was written first, and
+two of three being wrong is the honest reason to distrust a stated mechanism
+that has not been measured.
+
+### The internal inconsistency, which argues for noise
+
+H9 moved and H8 did not. If negative sentiment reduced stop-outs by reducing
+volatility, H8 would show it — and H8 is flat at t = −0.98. H6 separately found
+negative tone carries nothing on **return** (−0.03%, t = −0.05).
+
+So the claim would have to be: same volatility, same mean return, materially
+fewer stop-outs. That is not impossible — it would require a differently shaped
+return distribution — but it has no mechanism behind it and no supporting
+channel. Absent one, the simplest reading is that it is noise.
+
+### Two near-misses are what noise looks like at nine tests
+
+The largest |t| values this family has produced are **2.52 (H9)** and **2.41
+(H7)**, against bars of 2.84 and 2.81.
+
+That pattern is not a run of tantalising almost-findings. Across nine two-sided
+tests under a true null, the largest |t| observed is expected to land around
+2.1–2.3, and values near 2.5 are entirely ordinary. **Seeing the top two results
+sit just under a correctly-set bar is the signature of a bar that is doing its
+job, not of an effect being narrowly missed.** The temptation to read them the
+other way is exactly why the bars were fixed in advance.
+
+Nine hypotheses. Nothing adopted. `ANN_FEATURES` stays empty, `TRIGGER` stays
+`breakout`, and sizing stays equal-weight.
