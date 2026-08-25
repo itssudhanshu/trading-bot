@@ -3,7 +3,32 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-23 — the point-in-time non-equity gap (L69). The
+Last updated: 2026-08-24 — a THIRD book exists: the etf_trend fund book
+(`src/strategies/etf_trend/`, `data/etf_trend/`, launchd label
+`com.sudhanshu.tradingbot.etf_trend`; renamed from `trend` the same day, before
+its first fill, so no ledger row moved). It trades liquid NSE funds with the
+rules pre-registered in `src/research/trend_fund_test.py` — absolute trend gate
+(close > SMA200, positive ~6-month return), SMA100 trend-break exit, −10%
+stop, 5 equal seats, Rs 3L. **Its backtest FAILED its promotion bar**
+(+1.04% ± 1.08% per trade; edge vs control t = +1.19, L70), so this book is a
+FORWARD EVIDENCE GENERATOR, not a validated strategy: its rules are frozen at
+their registered values and may not be tuned now that trades are accumulating.
+It shares no ledger, order book or scheduler with the equity books; it runs
+after market close on weekdays (18:45 + 19:45 IST) and is idempotent per
+session. Status/queue: `scripts/run_etf_trend_paper.sh --status`. Same day also
+closed the data-integrity family: unadjusted corporate actions touched ONE
+recorded trade in six years (L71) and counterparty-less fills are measured by
+`src/research/suspension_probe.py` with an inert-by-default `tradable` hook in
+`simulate.run`.
+
+A second filings source exists: BSE's published RSS announcements feed
+(`src/core/bse_announcements.py`, agent job "bse" daily after 18:00), covering
+the 228 symbols NSE's feed omits — forward-only by construction, gated at read
+to empty-NSE-timeline symbols so dual-listed filings never count twice.
+Fundamentals now display as a third channel on /sentiment (context, never
+blended). Full probe record in L72a.
+
+Previous: 2026-08-23 — the point-in-time non-equity gap (L69). The
 denylist could only ever see funds that were still trading, so 87 delisted
 ETFs sat inside the historical micro and small clusters. Removing them takes
 the backtest from **+7.59% to +2.42% CAGR**. **The baseline has NOT been

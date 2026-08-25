@@ -2811,3 +2811,149 @@ deliberate step for the operator.
 against a LIVE breakout run in a child process, not against `baseline.json` —
 both sides move together. It prints the recorded baseline as information and
 already labels drift "audit.py's question, not this one".
+
+## L70 — A trend-following fund book: the edge is directional everywhere and resolves nowhere (null)
+
+The operator asked whether ETFs' recent strength warrants a dedicated strategy.
+Pre-registered before running (`src/research/trend_fund_test.py`, batch
+20260824-trendfund2): among the 343 funds with enough history, trend-gated
+entry (close > SMA200, positive ~6-month return), SMA100 trend-break exit,
+-10% stop, 5 seats, Rs 3L at 75% deployment, impact c=1.0 — against a control
+that rotates by the same momentum ranking without any absolute-trend condition.
+
+| arm | CAGR | maxDD | n | per trade |
+|---|---|---|---|---|
+| treatment: trend-gated | +1.96% | 17.8% | 147 | +1.04% +/- 1.08% |
+| control: momentum rotation | -5.95% | 38.0% | 486 | -0.36% +/- 0.47% |
+| **edge** | | | | **+1.40% +/- 1.17%, t = +1.19** |
+
+Per block (exit-day, L61 cuts), treatment minus control:
++0.78 / +0.24 / +4.91 / +2.76 per trade — directionally positive in ALL FOUR,
+at t = +0.39 / +0.29 / +1.06 / +1.15. Treatment alone is indistinguishable
+from zero (+1.04% +/- 1.08%). Metals trades +1.79% +/- 1.47% (n=57), index
++0.57% +/- 1.49% (n=90); bond funds never cracked a top-5 momentum seat.
+
+**Pre-registered bar: FAILED on clause (a)** (full-period |t| >= 2). Clauses
+(b) and (c) passed; the verdict machinery printed NULL and no book was built.
+
+Two honest observations recorded WITHOUT adoption:
+
+- The shape is the trigger's shape all over again: trend-gating roughly HALVED
+  the control's drawdown (17.8% vs 38.0%) while beating it in every block. If
+  this ever returns, it returns as a risk rule, not a return engine.
+- Treatment's own first two blocks were NEGATIVE (-1.06%, -1.29%). The rule
+  did not make money across regimes; it made money in 2023+ and lost slowly
+  before. That is closer to "the metals decade paid" than "trend works".
+
+Process note, kept because it is the L61 pattern in miniature: batch
+20260824-trendfund1's control had NO sell path (no gate, no trend exit, flat
+hold disabled) and took ONE trade in 6.8 years while printing occupancy 4.99 —
+a status that looked healthy and was mechanically dead. The amendment to a
+working rotation exit was made openly, batch-tagged, BEFORE re-running, and no
+bar moved. A control that cannot trade is not a passive control; it is a
+missing arm.
+
+## L71 — Unadjusted corporate actions touched exactly ONE live trade in six years (immaterial)
+
+`src/research/split_audit.py`, batch 20260824-splitaudit1, pre-registered after
+L70's fund scan showed raw closes carry no split adjustment anywhere. Detector
+(registered before results, amended once BEFORE any number printed): |1-day
+move| > 25%, next close persists within 25%, previous bar inside bands, and no
+calendar gap over 7 days to the previous bar -- that last clause arrived when
+the first histogram filled with x0.66-x0.75 "events", which were suspension
+gaps stitched into one bar by the corpus builder, not actions. After the guard
+the ratios cluster exactly where real actions live: x0.10 (x46), x0.20 (x36),
+x0.50 (x32) -- 524 events across 432 of 2,403 symbols.
+
+| arm | CAGR | maxDD | n | per trade |
+|---|---|---|---|---|
+| LIVE (raw) | +2.18% | 32.5% | 194 | +1.01 +/- 1.12 |
+| ADJUSTED (backward-adjusted OHLC) | +1.72% | 38.8% | 201 | +0.94 +/- 1.13 |
+| edge | | | | +0.06% +/- 1.59%, t = +0.04 |
+
+Sanity gate passed: LIVE reproduced the recorded reference (+2.42%, n=193)
+within tolerance, so the delta columns are readable.
+
+**The finding: contamination exists and is one trade wide.** AURIONPRO held
+across its x0.52 action of 2024-06-27 (2744 -> 1435 overnight, verified against
+the bars, then flat at the new basis) booked a -50.48% "stop" that never
+economically happened. One entry out of 194 was scored through an action
+window. The adjusted arm differs by more than that one trade because scores
+shift the whole selection path (+7 trades, different names); at t = +0.04 the
+arms are indistinguishable, which here means THE CORRECTION CHANGES NOTHING.
+
+No rebaseline: the audit's own sanity gate says the recorded levels stand.
+The residue worth remembering: the engine would also mis-fill a stop THROUGH a
+suspension gap (unfillable in reality while suspended) -- same family, not yet
+measured, and rarer than this one.
+
+## L72 — "Nothing said" is usually truth; the real hole is NSE's own feed (10% of symbols)
+
+The operator asked why many stocks show no sentiment. Measured on 2026-08-24
+across the 20 ranked names: 18 have 7-17 filings inside the 30-day window and
+their announcements archive coverage is effectively complete (2,064 of 2,292
+tradeable symbols have filings). For those, "nothing said" is the CORRECT
+reading — the window's filings are procedural and score zero (~90% of the
+corpus does; L68's base rate). No fetch changes that.
+
+The genuine gap is different: **228 of 2,292 tradeable symbols (10%) have ZERO
+filings ever**, and NSE's own corporate-announcements API returns empty for
+them when queried per-symbol directly (verified for KENNAMET, KOVAI and
+ABBOTINDIA — the last a substantial company that certainly files). The raw
+week-files show no alphabetical or size truncation, and the per-symbol query is
+a different code path from the index query, so this is the exchange's feed
+itself lacking them — plausibly BSE-designated filers NSE omits. Fetching them
+means a NEW source (BSE announcements): a real integration decision, not a
+backfill.
+
+What WAS fetchable was fetched: per-company news for the two affected names on
+that day's screens (newswatch.capture_symbols) — KENNAMET moved from "nothing
+said" to Bullish +3.3 on two headlines; KOVAI's one headline scored neutral, so
+it correctly stays silent. Note the news channel has no history before the day
+newswatch first ran, so this channel can never be backfilled — the skill's
+"absent is not quiet" rule applies to it permanently.
+
+## L72a — BSE source built: RSS beat the API 130-to-1; Akamai beat the browser
+
+The operator approved adding BSE as a filings source for the 228 symbols NSE's
+feed omits, and pointed at the RSS route. Measured while building:
+
+- **The app's JSON API is today-only and filtered.** Its own XHR carries
+  strSearch=P (mandatory — empty returns {}), strToDate (NOT EndDate — stale
+  docs cost a day), strType=C, subcategory=-1. With the exact shape it serves
+  8 rows for today and ZERO rows for any past window, in-browser or not;
+  pageno does not walk back in time.
+- **Akamai blocks every non-browser client pattern we tried**: plain urllib
+  passes the wall but is cookie-gated to `{}`; headless Chromium is
+  fingerprint-blocked even with magic/simulate_user; a HEADED browser passes
+  the wall but page-navigation to the API 301s into the Angular SPA. The
+  workable browser pattern (warm page, then in-page fetch) still returned {}
+  where the app's own XHR returned data — not worth chasing further once RSS
+  existed.
+- **The published RSS feed wins outright** (beta.bseindia.com/data/xml/
+  announcements.xml, listed on rss-feed.html): plain urllib, no cookies, no
+  override needed — an INVITED fetch, unlike the API's robots-Disallowed host.
+  1,039 items on the morning of 2026-08-25 against the API's 8.
+
+Built: `src/core/bse_announcements.py` — fetch_day() from RSS, name→symbol
+mapping against the equity master (hits ≥ 2, or one UNIQUE token; precision
+tiebreak after CUB nearly swallowed Union Bank of India), same record shape
+and 15:30 visibility as the NSE archive, idempotent per-symbol stores under
+`data/announcements/bse_parsed/`. sentiment.announcement_evidence reads it
+ONLY when the NSE timeline is empty — a dual-listed filing must never count
+twice. Stamps after the last known session (today's filings, calendar ends
+yesterday) take the stamp's own date as visible_from; this channel is context
+and never a measured input, so the boundary imprecision is priced at zero.
+
+Scheduled: agent job "bse", daily after 18:00 alongside news, closed-set
+extended with the containment case stated (appends only to
+data/announcements/bse*). Fundamentals backfill for the 228: only 14 have an
+XBRL index at all — NSE lacks BOTH filing channels for most of them, which is
+the strongest evidence yet that they are BSE-designated filers. Fundamentals
+now display as a third channel on /sentiment (latest quarter revenue/profit),
+display only — blending a measured-flat input into the composite would need
+pre-registration.
+
+First day: 1,039 fetched, 9 mapped (most of the feed was debt-fund NAVs,
+correctly unmatched). The archive accrues forward; KENNAMET and KOVAI get
+coverage the day they next file.
