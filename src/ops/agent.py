@@ -102,6 +102,14 @@ _JOBS = {
     # future: it has no history, no backtest can ever read it, and every day it
     # does not run is a day of evidence that cannot be recovered later.
     "news":     [_S("ops/newswatch.py")],
+    # BSE announcements for the symbols NSE's feed omits (L72). Forward-only:
+    # the endpoint serves today's feed and nothing else, so every day this does
+    # not run is filings that can never be recovered.
+    "bse":      [_S("core/bse_announcements.py"), "--update"],
+    # NSE filings for everyone else. Resumable and idempotent: it fetches only
+    # complete weeks missing from the raw archive, so a missed day is caught
+    # up rather than lost -- but daily is still the point.
+    "ann":      [_S("core/announcements.py"), "--update"],
 }
 _JOB_NAMES = tuple(_JOBS)
 
@@ -118,6 +126,8 @@ PLAIN = {
     "audit":    "run the self-check",
     "review":   "write tonight's findings",
     "news":     "save today's market headlines",
+    "bse":      "save today's BSE filings for shares NSE does not list",
+    "ann":      "save the week's NSE company filings",
 }
 
 
@@ -212,6 +222,12 @@ def due(now=None):
     # is left until a gap is observed rather than guessed at.
     if st.get("last_news") != str(today) and now.hour >= 18:
         todo.append("news")
+    # BSE filings, same every-day reasoning as news: companies file on
+    # weekends, and the source serves today only -- a missed day is a hole.
+    if st.get("last_bse") != str(today) and now.hour >= 18:
+        todo.append("bse")
+    if st.get("last_ann") != str(today) and now.hour >= 18:
+        todo.append("ann")
     return todo
 
 
@@ -558,17 +574,21 @@ def _selftest():
     # these four scripts and these three flags", and that is what survives.
     allowed = {_S("ops/snapshot.py"), _S("ops/daily.py"), _S("ops/tg.py"),
                _S("ops/audit.py"), _S("ops/newswatch.py"),
-               "--catchup", "--fill-live", "--review"}
+               _S("core/bse_announcements.py"), _S("core/announcements.py"),
+               "--catchup", "--fill-live", "--review", "--update"}
     for job in ("snapshot", "catchup", "pbook", "fill", "review", "audit",
-                "news"):
+                "news", "bse", "ann"):
         for arg in _cmd_for(job)[1:]:
             assert arg in allowed, f"{job} runs unexpected {arg!r}"
     # Extended deliberately for "news", which is the point of a closed set: a
     # job cannot join the agent without someone editing this line and saying so.
     # newswatch.py only ever APPENDS to data/news/ and reads two public feeds,
     # so it cannot touch the bucket, the order book or any strategy's data.
+    # Extended for "bse" on the operator's decision of 2026-08-25: it APPENDS
+    # only to data/announcements/bse*/ and reads BSE's published public feed,
+    # so the same containment holds.
     assert set(_JOB_NAMES) == {"snapshot", "catchup", "pbook", "fill",
-                              "review", "audit", "news"}, _JOB_NAMES
+                              "review", "audit", "news", "bse", "ann"}, _JOB_NAMES
     # A job with no plain name reaches /health as its internal name. Assert the
     # SET matches, so adding a job without naming it fails here rather than
     # printing "pbook" at someone.

@@ -189,8 +189,17 @@ def announcement_evidence(symbol, day, window=ANN_WINDOW):
     Straight through announcements.visible(), so the 15:30 rule applies: an
     announcement filed at 22:56 is not visible on the day it was filed. 60% of
     them arrive after the close, so getting this wrong is not an edge case.
+
+    BSE source (L72): for symbols whose NSE timeline is EMPTY -- the 228 the
+    exchange's feed omits -- the BSE forward archive is read instead. The gate
+    is the empty-NSE-timeline test and nothing else: a dual-listed company
+    files the SAME announcement on both exchanges, and reading both would put
+    one filing in twice.
     """
     rows = announcements.timeline(symbol)
+    if not rows:
+        import bse_announcements
+        rows = bse_announcements.timeline(symbol)
     if not rows:
         return []
     return announcements.visible(rows, day.isoformat(), window=window)

@@ -1,0 +1,92 @@
+[
+ {
+  "symbol": "ABCAPITAL",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 01:30:52",
+  "desc": "NAV as on 24-08-26",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "543472",
+  "match_hits": 2
+ },
+ {
+  "symbol": "ABSLAMC",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 01:30:59",
+  "desc": "NAV as on 24-08-26",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "9011289",
+  "match_hits": 3
+ },
+ {
+  "symbol": "DYCL",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 00:11:33",
+  "desc": ".",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "9008018",
+  "match_hits": 1
+ },
+ {
+  "symbol": "IIFL",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 01:00:52",
+  "desc": "IIFL Finance Limited has informed Stock Exchanges regarding Intimation under Regulation 30 of SEBI (Listing Obligations and Disclosure Requirements) Regulations, 2015.",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "750853",
+  "match_hits": 2
+ },
+ {
+  "symbol": "IIFL",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 01:04:02",
+  "desc": "IIFL Finance Limited has informed the Exchanges regarding Disclosure under Regulation 51 of SEBI (Listing Obligations and Disclosure Requirements) Regualtions, 2015",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "940949",
+  "match_hits": 2
+ },
+ {
+  "symbol": "INVENTURE",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 01:30:53",
+  "desc": "NAV as on 24-08-26",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "9009722",
+  "match_hits": 1
+ },
+ {
+  "symbol": "JASH",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 00:32:12",
+  "desc": "financial results for the period ended 30-Jun-2026 in Machine Readable form/Legible copy",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "544402",
+  "match_hits": 2
+ },
+ {
+  "symbol": "UNIONBANK",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 01:18:58",
+  "desc": "Disclosures under SEBI (LODR) Regulations, 2015",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "532477",
+  "match_hits": 2
+ },
+ {
+  "symbol": "XTRANET",
+  "visible_from": "2026-08-25",
+  "an_dt": "2026-08-25 00:14:15",
+  "desc": "Please find enclosed herewith Audio Recording of Investor Call for quarter ended June 30, 2026",
+  "text": "",
+  "source": "bse",
+  "bse_scrip": "544838",
+  "match_hits": 2
+ }
+]

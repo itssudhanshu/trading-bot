@@ -572,9 +572,91 @@ def _selftest():
     print("announcements selftest ok (visibility rule: 22:56 -> next session)")
 
 
+
+def update(log=print):
+    """Fetch and store every COMPLETED week missing from the raw archive.
+
+    The daily complement of backfill(): backfill rebuilds everything and
+    wipes the parse first; this only ever ADDS weeks that are not on disk,
+    so the per-symbol parse files grow by append and no stored week is ever
+    re-parsed (which would double every row -- see backfill's wipe).
+
+    A week is fetched only when COMPLETE (its end date has passed), so the
+    freshest filings can lag up to a week; the 30-day sentiment window
+    absorbs that, and fetching a partial week would either duplicate rows
+    tomorrow or block its own completion. Resumable for free: fetch_range
+    returns the stored file when one exists.
+    """
+    import time
+    import features
+    sessions = features.trading_days()
+    if not sessions:
+        raise RuntimeError("no trading calendar; data/raw is empty")
+    start, last = sessions[0], sessions[-1]
+    today = date.today()
+
+    have = {}
+    for p in RAW.glob("*-*.json"):
+        try:
+            d0 = datetime.strptime(p.name[:8], "%Y%m%d").date()
+            d1 = datetime.strptime(p.name[9:17], "%Y%m%d").date()
+        except ValueError:
+            continue
+        # A bucket may be covered by a PARTIAL file (backfill's end date once
+        # cut a week at two days). What matters is the covered END, not the
+        # name: skipping on d0 alone left Aug 20-24 unfetched for weeks while
+        # printing "archive current".
+        have[d0] = max(have.get(d0, date.min), d1)
+
+    weeks, d = [], start
+    while d <= min(last, today - timedelta(days=1)):
+        week_end = min(d + timedelta(days=6), last)
+        weeks.append((d, week_end))
+        d += timedelta(days=7)
+
+    fetched = kept = 0
+    new_recs = []
+    for d0, d1 in weeks:
+        if have.get(d0, date.min) >= d1:
+            continue
+        rows = fetch_range(d0, d1)
+        fetched += 1
+        if rows:
+            recs = parse_rows(rows, sessions)
+            # A refetch over a partial file re-serves days already stored.
+            # Drop anything whose (symbol, an_dt, desc) the per-symbol parse
+            # files already carry, or the append would double every row.
+            old = set()
+            for sym in {r["symbol"] for r in recs}:
+                pf = PARSED / f"{sym}.jsonl"
+                if pf.exists():
+                    for line in pf.read_text().splitlines():
+                        if line.strip():
+                            try:
+                                r = json.loads(line)
+                                old.add((r["symbol"], r["an_dt"], r["desc"]))
+                            except json.JSONDecodeError:
+                                continue
+            recs = [r for r in recs
+                    if (r["symbol"], r["an_dt"], r["desc"]) not in old]
+            new_recs.extend(recs)
+            kept += len(recs)
+        log(f"  week {d0}..{d1}: {len(rows)} raw, {kept} kept total")
+        time.sleep(1.5)                 # bulk read of a public archive
+    if new_recs:
+        tally = store_parsed(new_recs)
+        log(f"stored {kept} filings across {len(tally)} symbols")
+    else:
+        log("no missing weeks; archive current")
+    return {"weeks_fetched": fetched, "filings": kept}
+
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         _selftest()
+    elif "--update" in sys.argv:
+        update()
     else:
         print(__doc__.strip().splitlines()[0])
         print(f"\nraw:    {RAW}")
