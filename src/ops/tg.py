@@ -236,6 +236,21 @@ def _rs(x):
     return f"Rs {x:,.0f}"
 
 
+def _spaced(lines):
+    """-> the same lines with clean vertical rhythm: no leading/trailing
+    blanks, and never two in a row. Every screen goes through this on the way
+    out, because per-entry blanks added for readability must not stack with
+    the blanks a section footer already carries."""
+    out = []
+    for ln in lines:
+        if ln == "" and (not out or out[-1] == ""):
+            continue
+        out.append(ln)
+    while out and out[-1] == "":
+        out.pop()
+    return "\n".join(out)
+
+
 def _title(name, sub=""):
     return f"*{name}*" + (f" — {sub}" if sub else "")
 
@@ -363,9 +378,8 @@ def _twin_note(rows):
     dup = sorted(s for s, n in seen.items() if n > 1)
     if not dup:
         return ""
-    return (f"_{', '.join(dup)} is listed twice: the bucket and the pool "
-            f"bought it at different prices or sizes. Two separate records of "
-            f"{_rs(positions.CAPITAL)} each, not one position bought twice._")
+    return (f"_{', '.join(dup)} appears in both books: two separate "
+            f"{_rs(positions.CAPITAL)} records, not one position._")
 
 
 def _lag_note():
@@ -430,8 +444,10 @@ def cmd_wallet(_=None):
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
     import live_source
-    q = live_source.live([r["symbol"] for r in everything["rows"]
-                          if r["status"] in ("open", "pending")])
+    live_syms = [r["symbol"] for r in everything["rows"]
+                 if r["status"] in ("open", "pending")]
+    q = live_source.live(live_syms)
+    mood_all = _mood_of(live_syms, days[-1])
     out = [_title("WALLET"), ""]
     base = analysis.load_occupancy()
     for name, key, rows in _groups(everything["rows"]):
@@ -446,30 +462,46 @@ def cmd_wallet(_=None):
         # NEVER added together. Each bucket is its own Rs 3,00,000 record
         # running the same signals; summing them would report six lakh of
         # capital that does not exist and a profit nobody made.
-        out += [f"*{name.upper()}* — {positions.slice_of(key)}",
-                f"  Value      {_rs(total)}   "
-                f"(Rs {total - selection.CAPITAL:+,.0f}, "
-                f"{total / selection.CAPITAL * 100 - 100:+.2f}%)",
-                f"  Cash       {_rs(cash)}",
-                f"  Invested   {_rs(invested)}  "
-                f"({invested / selection.CAPITAL * 100:.0f}% of capital)",
-                f"  Banked     Rs {realised:+,.0f}   ({closed} finished)",
-                f"  On paper   Rs {unreal:+,.0f}   ({open_n} running"
-                + (f", {pend_n} buying at the next open)" if pend_n else ")")]
+        # The three indented money lines are LOAD-BEARING: audit.py parses
+        # them (Value = Cash + Invested, every bucket) and once went silently
+        # skipped when /wallet was rewritten without them. Keep the labels,
+        # the two-space indent and "Rs <number>" exactly.
+        out.append(f"*{name.upper()}* — banked "
+                   + ("Rs 0" if not realised else f"Rs {realised:+,.0f}")
+                   + f" ({closed} finished) · "
+                   f"{open_n + pend_n}/{selection.MAX_POSITIONS} seats")
+        out.append(f"  Value    {_rs(total)}   "
+                   f"({total / selection.CAPITAL * 100 - 100:+.2f}%)")
+        out.append(f"  Cash     {_rs(cash)}")
+        out.append(f"  Invested {_rs(invested)}")
+        out.append("")
+        # One line per live position: glyph, name, P&L, day count, and what
+        # is being said about it. The book tag is redundant INSIDE its own
+        # book's section, so it prints only for rows from another book.
+        # Detail lives in /open-orders.
+        for r, labels in _merged([x for x in rows
+                                  if x["status"] in ("open", "pending")]):
+            px = ((q.get(r["symbol"]) or {}).get("ltp")
+                  or _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"])
+            pct = (px / r["entry_px"] - 1) * 100 if r["entry_px"] else 0.0
+            held = positions.bars_held(corpus.get(r["symbol"]),
+                                       r["entry_day"], days[-1])
+            icon = "🟢" if pct > 0 else ("🔴" if pct < 0 else "⚪")
+            tag = "" if labels == [name] else _tag(labels)
+            out.append(f"{icon} {r['symbol']}{tag} {pct:+.1f}% "
+                       f"day {held}/{selection.HOLD_DAYS}"
+                       + _mood_tag(mood_all.get(r["symbol"])))
         if base and key == positions.MAIN:
-            held = open_n + pend_n
-            out.append(f"  _Holding {held} of {selection.MAX_POSITIONS}. "
-                       f"Typical is {base['mean']:.2f}; "
-                       f"{base['dist'].get(held, 0):.0f}% of sessions hold "
-                       f"exactly this many._")
+            held_n = open_n + pend_n
+            out.append(f"_Holding {held_n}/{selection.MAX_POSITIONS} "
+                       f"(typical {base['mean']:.2f})._")
         out.append("")
     note = _twin_note(everything["rows"])
     out += [f"_Each runs {_rs(selection.CAPITAL)} of its own on the same "
-            f"signals; they differ only in how the five places are handed "
-            f"out. Never added together._"]
+            f"signals; never added together._"]
     if note:
         out.append(note)
-    return "\n".join(out)
+    return _spaced(out)
 
 
 def _chosen(rows, mix):
@@ -517,12 +549,15 @@ def cmd_clusters(_=None):
                      if x["bucket"] in positions.BUCKETS else 99):
         holders.setdefault(_r["symbol"], []).append(
             positions.label(_r["bucket"]).title())
-    depth = max(selection.TAKE_PER_CLUSTER.values()) * 3
+    depth = 8
     out = [_title("RANKING", f"as of {as_of}"),
-           f"_Of the NSE shares that trade least each day, the "
-           f"{clusters.TRADEABLE_PCT * 100:.0f}% that this strategy will touch, "
-           f"split into two size groups and scored. The bucket buys from the top "
-           f"of each list._", ""]
+           f"_The least-traded {clusters.TRADEABLE_PCT * 100:.0f}% of NSE shares"
+           f", two size groups, scored. The bucket buys from the top._", ""]
+    shown_syms = []
+    for c in clusters.CLUSTERS:
+        inc = [r for r in rows if r["cluster"] == c]
+        shown_syms += [r["symbol"] for r in inc[:depth]]
+    mood = _mood_of(shown_syms, as_of)
     for c in clusters.CLUSTERS:
         take = selection.TAKE_PER_CLUSTER.get(c, 0)
         inc = [r for r in rows if r["cluster"] == c]
@@ -537,15 +572,16 @@ def cmd_clusters(_=None):
             # legend reading "the bucket owns it now" said the bucket held
             # KENNAMET when the POOL did -- a false statement about the live
             # book on the screen that lists the whole ranking.
-            out.append(f"  rank {n}. {mark} {sym}  score {r['score']:.0f}"
-                       f"{_tag(holders.get(sym, [])) if sym in live else ''}")
+            out.append(f"  {n}. {mark} *{sym}* {r['score']:.0f}"
+                       f"{_tag(holders.get(sym, [])) if sym in live else ''}"
+                       + _mood_tag(mood.get(sym)))
+            out.append("")
         if len(inc) > depth:
-            out.append(f"  _...{len(inc) - depth} more, ranked too low to buy_")
+            out.append(f"  _...{len(inc) - depth} more_")
         out.append("")
-    out.append("_🟢 held now, by the book named · 🔵 chosen, waiting for its price to "
-               "break higher · 🔸 price broke higher but ranked too low to buy · "
-               "▫️ ranked only_")
-    return "\n".join(out)
+    out.append("_🟢 held · 🔵 chosen, waiting for breakout · 🔸 broke out but "
+               "ranked too low · ▫️ ranked only_")
+    return _spaced(out)
 
 
 # Short forms for the ranking screens. The long labels stay canonical in
@@ -553,8 +589,18 @@ def cmd_clusters(_=None):
 # the same words with the filler removed, because eight of them on one line is
 # the difference between a line a person scans and one they skip. Still plain
 # words -- rules.md R2 is not relaxed, only tightened.
-SHORT = {"rs": "6-mo gain", "deliv": "shares kept",
-         "liq": "easy to trade", "near_high": "near high"}
+SHORT = {"rs": "gain", "deliv": "kept",
+         "liq": "liquid", "near_high": "near-high"}
+
+
+def _day_short(iso):
+    """-> '18 Aug' from an ISO date string. Telegram fonts are proportional;
+    '2026-08-18' costs ten characters to say what three do."""
+    try:
+        d = datetime.fromisoformat(str(iso))
+        return f"{d.day} {d.strftime('%b')}"
+    except (ValueError, TypeError):
+        return str(iso)
 
 
 def _mood_of(symbols, as_of):
@@ -572,7 +618,13 @@ def _mood_of(symbols, as_of):
 
 
 def _mood_tag(m):
-    """-> a compact suffix for one stock, or '' when there is nothing to say."""
+    """-> a compact suffix for one stock, or '' when there is nothing to say.
+
+    EVERY stock line carries its state, no exceptions (operator decision
+    after the silent variant read as missing data). 'Nothing said' is the
+    one name for a stock with no verdict; Bearish keeps its warning glyph.
+    An EMPTY tag means the lookup itself failed -- rarer, and different.
+    """
     if not m:
         return ""
     if m["composite"] is None:
@@ -582,7 +634,7 @@ def _mood_tag(m):
 
 
 def _rank_lines(picks, held, ref=None, mood=None):
-    """-> the numbered ranking, two lines a stock.
+    """-> the numbered ranking, ONE line a stock.
 
     One line names the stock and what it is doing; one carries the four numbers
     strongest-first. It used to be six lines a stock -- status spelled out as a
@@ -600,28 +652,29 @@ def _rank_lines(picks, held, ref=None, mood=None):
     own band.
     """
     out = []
+    # When every pick is the same size band the header already says it once;
+    # repeating it five times is what wrapped /pool's lines onto three rows.
+    bands = {r["cluster"] for r in picks}
+    uniform_band = (ref is not None and len(bands) == 1)
     for n, r in enumerate(picks, 1):
         st = held.get(r["symbol"])
         state = ("🟢 held" if st == "open" else
-                 "🟡 buying at the next open" if st == "pending" else
-                 "⚪ waiting for breakout")
+                 "🟡 buys at open" if st == "pending" else
+                 "⚪ waiting")
         band = SIZE.get(r["cluster"], r["cluster"])
         # On /bucket the size band IS the reference set, so it is named once as
         # the reference rather than twice on one line. On /pool they differ --
         # the band is what the stock is, the reference is what it was scored
-        # against -- and both are needed.
-        head = (f"score {r['score']:.0f} vs {band}" if ref is None
-                else f"{band} · score {r['score']:.0f} vs {ref}")
-        out.append(f"*{n}. {r['symbol']}* — {head} · {state}"
-                   + _mood_tag((mood or {}).get(r["symbol"])))
-        # Strongest first, so the line answers why THIS name and not the one
-        # below it. A run-on sentence naming the strong features cannot: it
-        # never says which was strongest.
+        # against -- and both are needed, unless the whole screen is one band.
+        head = (f"vs {band}" if ref is None
+                else f"vs {ref}" if uniform_band
+                else f"{band} vs {ref}")
         nums = [f"{SHORT[f]} {v:.0f}"
                 for f, v in sorted((r.get("ranks") or {}).items(),
                                    key=lambda kv: -kv[1]) if f in SHORT]
-        if nums:
-            out.append("    " + " · ".join(nums))
+        out.append(f"{n}. *{r['symbol']}* {r['score']:.0f} {head} · {state}"
+                   + (" · " + " · ".join(nums) if nums else "")
+                   + _mood_tag((mood or {}).get(r["symbol"])))
         out.append("")
     return out
 
@@ -650,9 +703,8 @@ def cmd_bucket(_=None):
     mix = selection.TAKE_PER_CLUSTER
     out = [_title("THE BUCKET",
                   " + ".join(f"{v} {SIZE.get(k, k)}" for k, v in mix.items())),
-           f"_Top {sum(mix.values())} by score, {sum(mix.values())} best in "
-           f"each size band. Bought when the price breaks above its recent "
-           f"high._", ""]
+           f"_Top {sum(mix.values())} by score; bought when the price breaks "
+           f"above its recent high._", ""]
     picks = _chosen(rows, mix)
     shown = {r["symbol"] for r in picks}
     out += _rank_lines(picks, held,
@@ -668,30 +720,26 @@ def cmd_bucket(_=None):
     # printed; name what was not.
     earlier = sorted(s for s in held if s not in shown)
     if earlier:
-        out += [f"*Also held, bought earlier*  {', '.join(earlier)}",
-                "_Off tonight's top 5, still running to their own stop, target "
-                "or 10-day limit. /open-orders for detail._", ""]
+        out += ["", f"_Also held, off tonight's five: {', '.join(earlier)}._"]
     # The POOL, named separately and never mixed into the ranking above. This
     # screen is the BUCKET's list; a pool holding shown green among these rows
     # would say the bucket owns a name it does not.
     if pool_held:
-        out += [f"*The pool holds*  {', '.join(sorted(pool_held))}",
-                "_A separate book, ranked without size bands. /pool for its "
-                "own list._", ""]
+        out.append(f"_The pool also holds {', '.join(sorted(pool_held))}. "
+                   f"/pool for its list._")
     live = sum(1 for s in shown if s in held)
     out += [_score_note(WEIGHTS, "its own size band"),
             f"_{live} of {sum(mix.values())} bought, "
             f"{sum(mix.values()) - live} waiting._"]
-    return "\n".join(out)
+    return _spaced(out)
 
 
 def _score_note(weights, against):
     """-> the one line explaining what the numbers are. Shared, so the bucket
     and the pool cannot end up describing the score differently."""
-    return (f"_Each number is a place out of 100 against {against} — 100 is "
-            f"best. Score is their average, shares kept counted "
-            f"{weights.get('deliv', 1):g}x. Nothing is bought below its 200-day "
-            f"average price._")
+    return (f"_Score = average place out of 100 vs {against}; shares kept "
+            f"counted {weights.get('deliv', 1):g}x. Nothing buys below its "
+            f"200-day average._")
 
 
 def cmd_pool(_=None):
@@ -727,22 +775,18 @@ def cmd_pool(_=None):
                   " + ".join(f"{split[k]} {SIZE.get(k, k)}"
                              for k in ("micro", "small") if split[k])
                   or "nothing tonight"),
-           f"_Top {seats} by score across every eligible share, no size quota. "
-           f"The split lands wherever the ranking puts it._", ""]
+           f"_Top {seats} by score, no size quota._", ""]
     out += _rank_lines(picks, held, ref="all shares",
                        mood=_mood_of([r["symbol"] for r in picks], as_of))
     shown = {r["symbol"] for r in picks}
     earlier = sorted(s for s in held if s not in shown)
     if earlier:
-        out += [f"*Also held, bought earlier*  {', '.join(earlier)}",
-                "_Off tonight's top 5, still running to their own stop, target "
-                "or 10-day limit._", ""]
+        out += ["", f"_Also held, off tonight's five: {', '.join(earlier)}._"]
     live = sum(1 for s in shown if s in held)
     out += [_score_note(WEIGHTS, "every eligible share"),
-            f"_{live} of {seats} bought, {seats - live} waiting._",
-            "_Runs beside the bucket on its own Rs 3,00,000. /bucket for the "
-            "quota book._"]
-    return "\n".join(out)
+            f"_{live} of {seats} bought. Runs on its own Rs 3,00,000; "
+            f"/bucket for the quota book._"]
+    return _spaced(out)
 
 
 def cmd_pending_orders(_=None):
@@ -765,6 +809,7 @@ def cmd_pending_orders(_=None):
         out.append(note)
     out.append("")
     total = risk = 0.0
+    mood_all = _mood_of([r["symbol"] for r, _ in _merged(pend)], days[-1])
     for r, labels in _merged(pend):
         px = _px_now(corpus, r["symbol"], days[-1]) or 0
         val = (r["qty"] or 0) * px
@@ -775,21 +820,16 @@ def cmd_pending_orders(_=None):
         total += val
         risk += val * sp / 100
         out.append(f"*{r['symbol']}* "
-                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}")
-        out += _fields(
-            # `filled` is n/a and `entry` is an ESTIMATE off the last close --
-            # the fill happens at tomorrow's open, which nobody knows yet.
-            # Printing the estimate as a plain entry price would put a number
-            # the bucket never paid into the record a person reads.
-            ("filled", "n/a"),
-            ("entry", f"about {px:,.2f} at the next open"),
-            ("qty", f"{r['qty']}   = {_rs(val)}"),
-            ("stop", f"{r['stop']:,.2f}   (−{sp:g}%, most it can lose "
-                     f"{_rs(val * sp / 100)})"),
-            ("target", f"{r['target']:,.2f}   (+{positions.TARGET_PCT:g}%)"))
+                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}"
+                   + _mood_tag(mood_all.get(r["symbol"])))
+        out.append(f"   buying ~{px:,.2f} at next open · qty {r['qty']} "
+                   f"= {_rs(val)}")
+        out.append(f"   stop {r['stop']:,.2f} (−{sp:g}%, risk "
+                   f"{_rs(val * sp / 100)}) · target {r['target']:,.2f} "
+                   f"(+{positions.TARGET_PCT:g}%)")
         out.append("")
-    out.append(f"*Total being spent*  {_rs(total)}")
-    out.append(f"*Most it can lose*   {_rs(risk)}")
+    out.append("")
+    out.append(f"*Spending* {_rs(total)} · *most it can lose* {_rs(risk)}")
     # The pool is LIVE, not retired. This said "retired buckets still running
     # to their own exits" and would have introduced the pool's first order as a
     # relic the moment it queued -- a recorded reason outliving the thing it
@@ -801,7 +841,7 @@ def cmd_pending_orders(_=None):
     if retired:
         out.append(f"_Includes {', '.join(retired)} — retired buckets still "
                    f"running to their own exits._")
-    return "\n".join(out)
+    return _spaced(out)
 
 
 def cmd_open_orders(_=None):
@@ -817,7 +857,7 @@ def cmd_open_orders(_=None):
         note = _lag_note()
         if note:
             out += ["", note]
-        return "\n".join(out)
+        return _spaced(out)
     import live_source
     corpus = features.load_corpus()
     days = sorted({d for x in corpus.values() for d in x.days})
@@ -838,18 +878,22 @@ def cmd_open_orders(_=None):
                                    days[-1])
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop, to_tgt = _away(px, r["stop"]), _away(px, r["target"])
+        mood = _mood_of([r["symbol"]], days[-1]).get(r["symbol"])
+        # bars_held, not a date subtraction: a calendar gap counts weekends
+        # and would print a number the 10-day exit rule does not use.
+        held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
+                                   days[-1])
+        # Four SHORT lines. The previous three carried everything and wrapped
+        # to six on a phone; each line here stays under a screen width.
         out.append(f"{icon} *{r['symbol']}* "
-                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}")
-        out += _fields(
-            ("filled", r["entry_day"]),
-            ("entry", f"{r['entry_px']:,.2f} → now {px:,.2f}"),
-            ("qty", f"{r['qty']}   = {_rs(val)} now"),
-            ("stop", f"{r['stop']:,.2f}   ({to_stop:+.1f}% away)"),
-            ("target", f"{r['target']:,.2f}   ({to_tgt:+.1f}% away)"),
-            ("pnl", f"Rs {pl:+,.0f}   ({pct:+.1f}%)"),
-            # bars_held, not a date subtraction: a calendar gap counts weekends
-            # and would print a number the 10-day exit rule does not use.
-            ("day(s)", f"{held} of {selection.HOLD_DAYS}, then sold either way"))
+                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}"
+                   + _mood_tag(mood))
+        out.append(f"   in {_day_short(r['entry_day'])} · "
+                   f"{r['entry_px']:,.0f}→{px:,.2f} ({pct:+.1f}%) · "
+                   f"day {held}/{selection.HOLD_DAYS}")
+        out.append(f"   qty {r['qty']} · {_rs(val)} · P&L Rs {pl:+,.0f}")
+        out.append(f"   stop {r['stop']:,.0f} ({to_stop:+.1f}%) · "
+                   f"target {r['target']:,.0f} ({to_tgt:+.1f}%)")
         out.append("")
     note = _twin_note(live)
     if note:
@@ -857,13 +901,12 @@ def cmd_open_orders(_=None):
     out.append(f"*Total worth*  {_rs(tot_val)}")
     out.append(f"*Total profit* Rs {tot_pl:+,.0f}  "
                f"({tot_pl / (tot_val - tot_pl) * 100 if tot_val != tot_pl else 0:+.1f}%)")
-    return "\n".join(out)
+    return _spaced(out)
 
 
 def cmd_closed_orders(_=None):
     """Finished trades and what they made or lost."""
     import analysis, features, positions
-    from collections import defaultdict
     s = positions.summary(which=None)
     done = [r for r in s["rows"] if r["status"] == "closed" and r["entry_px"]]
     if not done:
@@ -885,54 +928,42 @@ def cmd_closed_orders(_=None):
     out = [_title("CLOSED ORDERS", f"{len(done)} finished"), ""]
     corpus = features.load_corpus()
     for r, labels in sorted(_merged(done),
-                            key=lambda t: t[0]["exit_day"] or "")[-10:]:
+                            key=lambda t: t[0]["exit_day"] or "")[-15:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
         icon = "✅" if (r["net"] or 0) > 0 else "❌"
         held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
                                    r["exit_day"])
+        why = ("stop" if r["stop"] and r["exit_px"] <= r["stop"]
+               else "target" if r["target"] and r["exit_px"] >= r["target"]
+               else "time")
         out.append(f"{icon} *{r['symbol']}* "
-                   f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}")
-        out += _fields(
-            ("filled", r["entry_day"]),
-            ("exit", f"{r['exit_day']} at {r['exit_px']:,.2f}"),
-            ("entry", f"{r['entry_px']:,.2f}"),
-            ("qty", r["qty"]),
-            ("stop", f"{r['stop']:,.2f}" if r["stop"] else None),
-            ("target", f"{r['target']:,.2f}" if r["target"] else None),
-            ("pnl", f"Rs {r['net'] or 0:+,.0f} after costs   ({pct:+.1f}% "
-                    f"on the price)"),
-            ("day(s)", held),
-            ("review", _review(r, pct, held)))
+                   f"{SIZE.get(r['cluster'], r['cluster'])}{_tag(labels)} · "
+                   f"{r['entry_px']:,.0f}→{r['exit_px']:,.2f} · {pct:+.1f}% · "
+                   f"{why} {_day_short(r['exit_day'])}, day {held} · "
+                   f"Rs {r['net'] or 0:+,.0f}"
+                   + (f"\n   {_review(r, pct, held)}" if pct <= -5 or pct >= 10
+                      else ""))
         out.append("")
     # Counted over `ev`, not `done`: won, lost, hit rate and total must all
     # describe the SAME set, and it must be the bucket's. Mixing the count over
     # every bucket with a total from one was the shape already here.
     won = sum(1 for r in ev if (r["net"] or 0) > 0)
     main_net = sum(r["net"] or 0 for r in ev)
-    out += [f"*Won* {won}   *Lost* {len(ev) - won}   "
-            f"*Hit rate* {won / len(ev) * 100:.0f}%" if ev else "*No finished "
-            "trades in the bucket yet*",
-            f"*Total* Rs {main_net:+,.0f}"]
+    out += [f"*Won* {won} · *Lost* {len(ev) - won} · *hit rate* "
+            f"{won / len(ev) * 100:.0f}% · *bucket net* Rs {main_net:+,.0f}"
+            if ev else "*No finished trades in the bucket yet*"]
     others = sorted({r["bucket"] for r in done} - {positions.MAIN})
     if others:
         out.append(f"_Counts the bucket only. "
                    f"{', '.join(positions.label(b).title() for b in others)} "
-                   f"trades are listed above but not counted: they hold the "
-                   f"same names, so adding them would put one price path in "
-                   f"twice._")
-    out += ["", "*By cluster*"]
-    by = defaultdict(list)
-    for r in ev:
-        by[r["cluster"]].append(r["net"] or 0.0)
-    for c, v in sorted(by.items()):
-        out.append(f"  {c}: {len(v)} trades, Rs {sum(v):+,.0f}, "
-                   f"{sum(1 for x in v if x > 0)} won")
+                   f"listed but not counted: same names, one price path._")
     if rets:
         conc = analysis.concentration(rets)
-        out += ["", f"_Best single name is {conc['top1']:.0f}% of all gains._",
-                f"_{len(rets)} finished trades._",
-                "_" + analysis.verdict(rets) + "_"]
-    return "\n".join(out)
+        out += [f"_{len(rets)} finished · best single name is "
+                f"{conc['top1']:.0f}% of gains · " + analysis.verdict(rets)
+                + "_"] if len(ev) >= 20 else \
+               ["_" + analysis.verdict(rets) + "_"]
+    return _spaced(out)
 
 
 # ============================================================ EVIDENCE
@@ -989,7 +1020,7 @@ def cmd_findings(_=None):
                    f"they were the best ones — removing them cut the tested return "
                    f"roughly in half. Older numbers here read better than the "
                    f"strategy is._")
-    return "\n".join(out)
+    return _spaced(out)
 
 
 # ============================================================ SYSTEM
@@ -1150,6 +1181,81 @@ def cmd_health(_=None):
 
 
 
+def cmd_etf_trend(_=None):
+    """The third book: fund trend-following, paper only.
+
+    Reads data/etf_trend/ DIRECTLY -- state and ledger are plain JSON, so no
+    etf_trend module is imported (they derive their data dir from STRATEGY at
+    import time; importing here would point the third book at breakout's
+    data dir) and nothing is spawned (a command must not execute anything;
+    see the selftest's forbidden list). The scheduler owns updates: launchd
+    runs paper.py --update after close on weekdays.
+    """
+    import json as _j
+    root = ROOT / "data" / "etf_trend"
+    state_p, ledger_p = root / "paper_state.json", root / "paper_trades.jsonl"
+    if not state_p.exists():
+        return (_title("ETF TREND BOOK")
+                + "\nNot initialised yet -- no state under data/etf_trend/. "
+                  "It fills after close on weekdays.")
+    st = _j.loads(state_p.read_text())
+    out = [_title("ETF TREND BOOK", "third bucket - paper, unvalidated rules"),
+           f"last processed {st.get('last_day')}", ""]
+    pos = st.get("positions") or []
+    if pos:
+        out.append(f"open ({len(pos)}):")
+        for p in pos:
+            out.append(f"  {p['symbol']:<14} {p.get('cluster', ''):<7} "
+                       f"in {p.get('entry_day')} @ {p.get('entry_px')}  "
+                       f"stop {p.get('stop')}")
+    else:
+        out.append("open: none")
+    q = st.get("queue") or []
+
+    def _sym(x):
+        return x if isinstance(x, str) else x.get("symbol")
+
+    out.append("")
+    held_syms = {p["symbol"] for p in pos}
+    if q:
+        out.append(f"queued for the next open ({len(q)}), best first:")
+        for item in q:
+            if isinstance(item, str):
+                out.append(f"  {item}")
+                continue
+            out.append(f"  {item.get('symbol')} — {item.get('cluster', '')} "
+                       f"{item.get('score', 0):+.1f}% · "
+                       f"{item.get('why', '')}")
+            out.append("")
+    else:
+        out.append("queued for the next open (0): -")
+    # Next in line only: re-listing the queued five was the same screen twice.
+    ranking = [r for r in (st.get("ranking") or [])
+               if r["symbol"] not in held_syms
+               and r["symbol"] not in {_sym(x) for x in q}]
+    if ranking:
+        out.append("")
+        out.append("next in line if a seat frees:")
+        for r in ranking:
+            out.append(f"  {r['symbol']} — {r.get('cluster', '')} "
+                       f"{r.get('score', 0):+.1f}%")
+        out.append("")
+    if ledger_p.exists():
+        rows = [_j.loads(l) for l in ledger_p.read_text().splitlines() if l]
+        ex = [r for r in rows if r.get("event") == "exit"]
+        wins = [r for r in ex if r.get("net", 0) > 0]
+        net = sum(r.get("net", 0.0) for r in ex)
+        out.append("")
+        out.append(f"closed trades: {len(ex)}  win {len(wins)}  "
+                   f"net Rs{net:,.0f}")
+        for r in ex[-5:]:
+            out.append(f"  {r['day']} {r['symbol']:<14} {r['why']:<6} "
+                       f"{r.get('ret_pct', 0):+.2f}%")
+    else:
+        out.append("no closed trades yet")
+    return _spaced(out)
+
+
 def cmd_review(_=None):
     """The daily read: what the bucket holds, what it would buy next, and whether
     anything has EARNED a change.
@@ -1173,14 +1279,14 @@ def cmd_review(_=None):
     # It did not. Money is quoted in one place, off live prices: /wallet.
     out = [_title("DAILY REVIEW", str(datetime.now().date())), "",
            f"*Bucket*  {s['open']} held · {s['pending']} buying tomorrow · "
-           f"{s['closed']} finished",
-           "_/wallet for what it is worth today._"]
+           f"{s['closed']} finished  _(/wallet for worth)_"]
     # Two positions were opened by the deeper buckets that have since been
     # removed. They run to their own exits and are counted here so the totals
     # match /open_orders, which would otherwise disagree.
     if allb["open"] + allb["pending"] != s["open"] + s["pending"]:
         out.append(f"*Including retired buckets*  {allb['open']} held · "
-                   f"{allb['pending']} buying tomorrow · {allb['closed']} finished")
+                   f"{allb['pending']} buying tomorrow · {allb['closed']} "
+                   f"finished")
 
     trades = [{"ret": (r["exit_px"] / r["entry_px"] - 1) * 100} for r in closed]
     out += ["", "*What the results so far can prove*",
@@ -1275,14 +1381,12 @@ def cmd_review(_=None):
             # Bullish is the resting state and Bearish is the one that means
             # something. Stated in the same breath as the labels (rules.md R5)
             # rather than left for the reader to work out.
-            out.append("_Most news is positive — about 9 in 10 items — so "
-                       "Bullish is the normal state here and Bearish is the "
-                       "one worth a look. 'Nothing said' means the filings "
-                       "were routine paperwork, not that opinion was split._")
+            out.append("_Bullish is the normal state here — /sentiment for "
+                       "what that means._")
         out.append("_/bucket for why · /clusters for the full ranking._")
     except Exception as e:
         out.append(f"_picks unavailable ({type(e).__name__})_")
-    return "\n".join(out)
+    return _spaced(out)
 
 
 def notify(title, lines):
@@ -1318,6 +1422,7 @@ def cmd_help(_=None):
             "*Why these stocks?*\n"
             "/bucket — the 5 chosen this session, with the reason for each\n"
             "/pool — the pool\'s 5, ranked with no size quota\n"
+            "/etf-trend — the third book (funds, trend-following): its queue and trades\n"
             "/clusters — the full ranking they were chosen from\n"
             "/sentiment — what the exchange and the papers said about them\n\n"
             "*Is any of this actually working?*\n"
@@ -1374,33 +1479,52 @@ def cmd_sentiment(_=None):
                                          -(mood[s]["composite"] or 0)))
     for s in ranked:
         m = mood[s]
-        score = "—" if m["composite"] is None else f"{m['composite']:+.1f}"
+        # ONE name per concept: a composite of None is "nothing said" on every
+        # screen in this bot. The old "No data" here was the same fact under a
+        # second word, which is the collision rules.md R1 forbids.
+        score = ("nothing said"
+                 if m["composite"] is None else f"{m['band']} {m['composite']:+.1f}")
         who = ([w for w, held in (("Bucket", _main), ("Pool", _pool))
                 if s in held])
         tag = f" · 🟢 held by the {' and the '.join(who)}" if who else ""
-        out.append(f"*{s}* — {m['band']} {score}{tag}")
+        out.append(f"*{s}* — {score}{tag}")
         out.append(f"    exchange {m['n_announcements']} filings · "
                    f"papers {m['n_news']} headlines")
-        for sc, who, what in (m["top"] or [])[:2]:
-            out.append(f"    [{sc:+.1f}] {who}: {what[:90]}")
+        # Third channel, DISPLAY ONLY. Quarterly numbers are facts, not tone;
+        # blending them into the composite would dress a measured-flat input
+        # (1,049 trades, L61) as a judgement. Shown so a reader can weigh it.
+        try:
+            import fundamentals as _fnd
+            frow = _fnd.features_asof(_fnd.timeline(s), str(m["as_of"]))
+            if frow:
+                rg = frow.get("rev_growth")
+                pg = frow.get("profit_growth")
+                if rg is not None or pg is not None:
+                    out.append(f"    latest quarter: revenue "
+                               f"{(rg or 0) * 100:+.0f}% · profit "
+                               f"{(pg or 0) * 100:+.0f}%")
+        except Exception:
+            pass
         out.append("")
+        if m["composite"] is not None and m["composite"] <= -3.0:
+            for sc, who, what in (m["top"] or [])[:1]:
+                out.append(f"    [{sc:+.1f}] {who}: {what[:90]}")
     # WITHOUT this a reader sees five Bullish rows and counts five good stocks.
     # Measured: about 9 in 10 scored items are positive, so Bullish is the
     # resting state. Said in the same breath as the labels (rules.md R5).
-    out += ["_Most company news is positive — roughly 9 in 10 items — so "
-            "*Bullish* is the normal state here, and *Bearish* is the one worth "
-            "opening. 'Nothing said' means the filings were routine paperwork, "
-            "not that opinion was split._",
-            "",
-            "_This is context, not a reason to buy. Nine tests found nothing "
-            "here that predicts what a stock does next._"]
-    return "\n".join(out)
+    out += ["_Bullish is the normal state here (about 9 in 10 items are "
+            "positive) — *Bearish* is the one worth opening. 'Nothing said' "
+            "means routine paperwork. Context only: nine tests found no "
+            "predictive power._"]
+    return _spaced(out)
 
 
 COMMANDS = {"/wallet": cmd_wallet, "/clusters": cmd_clusters,
             "/sentiment": cmd_sentiment,
             "/bucket": cmd_bucket,
             "/pool": cmd_pool,
+            "/etf_trend": cmd_etf_trend, "/etf-trend": cmd_etf_trend,
+            "/trend": cmd_etf_trend,
             "/pending_orders": cmd_pending_orders,
     "/pending-orders": cmd_pending_orders,
             "/open_orders": cmd_open_orders, "/open-orders": cmd_open_orders,
@@ -1427,7 +1551,7 @@ def canon(name):
 # findable there under one of its spellings. The hyphen forms used to be listed
 # here too, which made this set a list of spellings rather than a list of
 # exemptions -- see canon().
-ALIASES = {"/start", "/help"}
+ALIASES = {"/start", "/help", "/trend"}
 
 
 
@@ -1730,9 +1854,24 @@ def _selftest():
     assert "10-day limit" in _review({**_r, "exit_reason": "time"}, 1.4, 10)
     # an unrecognised reason must still say what happened, not invent a rule
     assert "sold: void" in _review({**_r, "exit_reason": "void"}, 0.0, 1)
+    # The three order screens must not DRIFT APART in facts. This used to
+    # assert the shared _fields() renderer; the crisp-format reform replaced
+    # label-value blocks with compact lines, so the mechanism check would have
+    # enforced the old layout forever. The property it protected is that each
+    # screen still STATES every fact a person needs to compare positions:
+    # which stock, how much paid, where the exit levels sit, and (on live
+    # screens) what is being said about the name. Assert those markers.
     for _c in ("cmd_pending_orders", "cmd_open_orders", "cmd_closed_orders"):
-        assert "_fields(" in src.split(f"def {_c}")[1].split("\ndef ")[0], \
-            f"{_c} does not use the shared layout; the three will drift apart"
+        body = src.split(f"def {_c}")[1].split("\ndef ")[0]
+        for fact in ("stop", "target"):
+            assert fact in body, f"{_c} no longer states {fact}"
+    for _c in ("cmd_pending_orders", "cmd_open_orders"):
+        body = src.split(f"def {_c}")[1].split("\ndef ")[0]
+        assert "qty" in body, f"{_c} lost a per-position fact: qty"
+    for _c in ("cmd_wallet",):
+        body = src.split(f"def {_c}")[1].split("\ndef ")[0]
+        assert "_mood_tag(" in body, \
+            f"{_c} lost a per-position fact: sentiment"
     print("tg selftest ok")
 
 
