@@ -1,0 +1,103 @@
+{
+ "last_day": "2026-08-24",
+ "queue": [
+  {
+   "symbol": "MODEFENCE",
+   "cluster": "index",
+   "score": 19.35,
+   "ref": 107.03,
+   "why": "above its 200-session average"
+  },
+  {
+   "symbol": "PHARMABEES",
+   "cluster": "index",
+   "score": 17.24,
+   "ref": 27.07,
+   "why": "above its 200-session average"
+  },
+  {
+   "symbol": "SMALLCAP",
+   "cluster": "index",
+   "score": 14.55,
+   "ref": 48.88,
+   "why": "above its 200-session average"
+  },
+  {
+   "symbol": "HDFCSML250",
+   "cluster": "index",
+   "score": 13.54,
+   "ref": 185.18,
+   "why": "above its 200-session average"
+  },
+  {
+   "symbol": "METALIETF",
+   "cluster": "index",
+   "score": 11.79,
+   "ref": 13.46,
+   "why": "above its 200-session average"
+  }
+ ],
+ "positions": [],
+ "ranking": [
+  {
+   "symbol": "MODEFENCE",
+   "cluster": "index",
+   "score": 19.35
+  },
+  {
+   "symbol": "PHARMABEES",
+   "cluster": "index",
+   "score": 17.24
+  },
+  {
+   "symbol": "SMALLCAP",
+   "cluster": "index",
+   "score": 14.55
+  },
+  {
+   "symbol": "HDFCSML250",
+   "cluster": "index",
+   "score": 13.54
+  },
+  {
+   "symbol": "METALIETF",
+   "cluster": "index",
+   "score": 11.79
+  },
+  {
+   "symbol": "GOLD1",
+   "cluster": "metals",
+   "score": 7.04
+  },
+  {
+   "symbol": "SETFGOLD",
+   "cluster": "metals",
+   "score": 7.02
+  },
+  {
+   "symbol": "HDFCGOLD",
+   "cluster": "metals",
+   "score": 6.99
+  },
+  {
+   "symbol": "TATAGOLD",
+   "cluster": "metals",
+   "score": 6.92
+  },
+  {
+   "symbol": "GOLDCASE",
+   "cluster": "metals",
+   "score": 6.92
+  },
+  {
+   "symbol": "GOLDIETF",
+   "cluster": "metals",
+   "score": 6.75
+  },
+  {
+   "symbol": "GOLDBEES",
+   "cluster": "metals",
+   "score": 6.72
+  }
+ ]
+}

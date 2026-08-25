@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The etf_trend book's paper bucket. A THIRD book, deliberately separate from the
+  agent that runs the two equity books: different strategy (STRATEGY=etf_trend),
+  its own data dir (data/etf_trend/), its own ledger -- nothing here can touch
+  data/breakout/.
+
+  It runs AFTER market close only. Fills are recorded at the day's open from
+  a queue built on the previous session's data, which is exactly the
+  next-open discipline the backtests assume; running after close keeps every
+  price it reads final.
+
+    cp scripts/deploy/trading-bot-etf-trend.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/trading-bot-etf-trend.plist 2>/dev/null
+    launchctl load   ~/Library/LaunchAgents/trading-bot-etf-trend.plist
+
+  Idempotent by design: a repeat tick on the same session changes nothing, so
+  hourly catch-up would be safe even though it is not needed.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sudhanshu.tradingbot.etf_trend</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+    <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/src/strategies/etf_trend/paper.py</string>
+    <string>--update</string>
+  </array>
+  <!-- Unbuffered, or a crash mid-run truncates the log that would explain it. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+    <key>STRATEGY</key><string>etf_trend</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>45</integer></dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/etf_trend_paper.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sudhanshukushwaha/Documents/Repo/trading-bot/data/etf_trend_paper.err</string>
+</dict>
+</plist>
