@@ -2957,3 +2957,41 @@ pre-registration.
 First day: 1,039 fetched, 9 mapped (most of the feed was debt-fund NAVs,
 correctly unmatched). The archive accrues forward; KENNAMET and KOVAI get
 coverage the day they next file.
+
+---
+
+## L73 — H12 registered: impact calibration off the forward book (pre-registration)
+
+The leverage analysis against TradingAgents and ABIDES produced one surviving
+actionable item, and this is it. The announcement-sentiment line the analysis
+proposed was already closed — H1-H3, H6, H8-H11 had all run and L66 closed it
+explicitly; proposing a re-run would have been "a differently-tuned retry".
+The correction is part of this lesson: an assistant reading sentiment.py's
+docstring caveat ("nothing here has been measured against returns") without
+reading L66 onward concluded the test had never run. **The docstring's caveat
+is stale relative to the lessons file; lessons.md wins.**
+
+What survives is ABIDES' actual use case, which maps onto this project's
+weakest number: `engine.IMPACT_C = 1.0` is uncalibrated, and every headline
+CAGR sits on it. The forward paper book fills at real opens, so its realised
+net returns embed TRUE impact; simulated arms at c in {0, 0.5, 1, 2, 3} embed
+MODELED impact. Comparing the distributions across that grid is the measurement
+no amount of further backtesting provides.
+
+**H12 is pre-registered in `src/research/impact_calibrate_test.py`
+(batch 20260825-h12-calibrate) before its first comparison**: cohort = closed
+MAIN trades entered on/after forward_test.FORWARD_FROM (pool excluded — same
+names, one price path), statistic = z per constant with |z| <= 1.96 consistent,
+gates at n=25 (descriptive) and n=100 (verdict), power arithmetic stated in
+advance (~3.1% minimum detectable gap at n=100), and NO adoption path — if the
+band excludes 1.0, the operator decides on a rebaseline deliberately.
+
+First state on the day of registration: **0 closed cohort trades** — the gate
+reads "too early", by design. At the backtested rate of 2.86 main trades/month,
+the first verdict arrives around mid-2028. The slowness is the noise of the
+thing being measured, not a flaw in the instrument.
+
+Side finding while verifying: `data/positions_record.sql` had drifted from the
+live DB after the morning fill (audit trail 14 vs 13). Regenerated with
+`positions.export_record()`; audit back to 38/38. The daily flow that refreshes
+the record does not appear to have run after the 11:37 fill — worth watching.

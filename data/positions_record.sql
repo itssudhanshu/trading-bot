@@ -11,7 +11,7 @@ INSERT INTO "pos" VALUES(4,'GMMPFAUDLR','small','open','2026-08-17','2026-08-18'
 INSERT INTO "pos" VALUES(5,'SAHYADRI','micro','closed','2026-08-17','2026-08-18',388.0,115,349.2,4.655999999999999659e+02,'2026-08-24',349.2,'stop',-4619.672167828,NULL,'confirmed','main','rank-cohort');
 INSERT INTO "pos" VALUES(6,'VCL','micro','void','2026-08-19',NULL,NULL,23195,1.75,2.33,'2026-08-19',NULL,'void: the 2026-08-19 trigger bar was an upper circuit lock (O=H=L=C 1.94, +4.86%, 129 trades, 9 of the last 20 bars locked). The breakout high IS the price band, and at an upper lock there are no sellers, so the next-open fill this order assumes cannot be got. engine.gate() has always rejected high==low but nothing called it; the guard now lives in selection.build and VCL is no longer triggered.',NULL,NULL,NULL,'main',NULL);
 INSERT INTO "pos" VALUES(7,'KENNAMET','small','open','2026-08-21','2026-08-24',4048.0,11,3.643200000000000273e+03,4.857599999999999454e+03,NULL,NULL,NULL,NULL,NULL,'confirmed','pooled',NULL);
-INSERT INTO "pos" VALUES(8,'ARCHIDPLY','micro','pending','2026-08-24',NULL,NULL,397,100.36,133.81,NULL,NULL,NULL,NULL,NULL,NULL,'main',NULL);
+INSERT INTO "pos" VALUES(8,'ARCHIDPLY','micro','open','2026-08-24','2026-08-25',116.5,397,1.048500000000000086e+02,1.397999999999999829e+02,NULL,NULL,NULL,NULL,NULL,'live:upstox','main',NULL);
 CREATE TABLE pos_log(
       seq INTEGER PRIMARY KEY,
       at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -29,6 +29,7 @@ INSERT INTO "pos_log" VALUES(10,'2026-08-24 06:29:34',7,'update','{"id":7,"symbo
 INSERT INTO "pos_log" VALUES(11,'2026-08-24 12:40:21',7,'update','{"id":7,"symbol":"KENNAMET","cluster":"small","status":"open","queued_on":"2026-08-21","entry_day":"2026-08-24","entry_px":4048.0,"qty":11,"stop":3643.2,"target":4857.6,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"confirmed","bucket":"pooled","origin":null}');
 INSERT INTO "pos_log" VALUES(12,'2026-08-24 12:40:21',5,'update','{"id":5,"symbol":"SAHYADRI","cluster":"micro","status":"closed","queued_on":"2026-08-17","entry_day":"2026-08-18","entry_px":388.0,"qty":115,"stop":349.2,"target":465.6,"exit_day":"2026-08-24","exit_px":349.2,"exit_reason":"stop","net":-4619.672167828,"features":null,"fill_source":"confirmed","bucket":"main","origin":"rank-cohort"}');
 INSERT INTO "pos_log" VALUES(13,'2026-08-24 12:40:21',8,'insert','{"id":8,"symbol":"ARCHIDPLY","cluster":"micro","status":"pending","queued_on":"2026-08-24","entry_day":null,"entry_px":null,"qty":397,"stop":100.36,"target":133.81,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":null,"bucket":"main","origin":null}');
+INSERT INTO "pos_log" VALUES(14,'2026-08-25 05:05:04',8,'update','{"id":8,"symbol":"ARCHIDPLY","cluster":"micro","status":"open","queued_on":"2026-08-24","entry_day":"2026-08-25","entry_px":116.5,"qty":397,"stop":104.85,"target":139.8,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"live:upstox","bucket":"main","origin":null}');
 CREATE INDEX ix_pos_status ON pos(status);
 CREATE TRIGGER pos_no_delete BEFORE DELETE ON pos BEGIN
       SELECT RAISE(ABORT,

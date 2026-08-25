@@ -3,7 +3,19 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-24 — a THIRD book exists: the etf_trend fund book
+Last updated: 2026-08-25 — **H12 registered** (`src/research/impact_calibrate_test.py`,
+batch 20260825-h12-calibrate): impact calibration off the forward book, the one
+survivor of a TradingAgents/ABIDES leverage analysis (L73). The announcement
+sentiment line it initially proposed was ALREADY CLOSED by L66/L68 — re-running
+it is forbidden; sentiment.py's own docstring caveat is stale relative to
+lessons.md and lessons wins. H12 compares closed MAIN paper trades (real opens,
+true impact) against simulated arms at c ∈ {0, 0.5, 1, 2, 3}; gates at n=25
+descriptive / n=100 verdict; no adoption path, rebaseline stays the operator's.
+Currently 0 closed cohort trades → "too early". Same day: the morning fill left
+`data/positions_record.sql` stale (audit trail 14 vs 13); regenerated via
+`positions.export_record()`, audit 38/38.
+
+Previous: 2026-08-24 — a THIRD book exists: the etf_trend fund book
 (`src/strategies/etf_trend/`, `data/etf_trend/`, launchd label
 `com.sudhanshu.tradingbot.etf_trend`; renamed from `trend` the same day, before
 its first fill, so no ledger row moved). It trades liquid NSE funds with the
