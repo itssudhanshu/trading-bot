@@ -62,7 +62,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
         start_idx=300, trigger="none", offset=0, max_corr=None,
         impact_c=engine.IMPACT_C, sizing="equal", targets=None, stop_to=None,
-        atr_stop=None, time_exit=None):
+        atr_stop=None, time_exit=None, tradable=None):
     """`targets` = [(pct, fraction), ...]: a ladder of PARTIAL exits, each
     selling `fraction` of the original quantity at entry*(1 + pct/100).
     `stop_to` = (trigger_pct, new_stop_pct): once price touches
@@ -82,6 +82,15 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
     chart -- patterns uses it to hold past day 10 while the up-structure is
     intact. Default None is the flat comparison, byte for byte, which is what
     keeps breakout's baseline reproducing at 7.59 / 195 with this hook present.
+
+    `tradable` = f(series, i, purpose) -> bool, purpose in ("entry", "exit").
+    When provided, a position may neither EXIT on a bar the function rejects
+    nor ENTER on one (the FILL bar is checked, which selection's signal-bar
+    guard cannot reach). The purpose matters because the directions are
+    OPPOSITE: an upper lock has no sellers, so it blocks a BUY and not a sell;
+    a lower lock has no buyers, so it blocks a SELL and not a buy. Default
+    None is byte-for-byte today's path; suspension_probe.py uses it to refuse
+    fills that no counterparty existed for.
 
     `atr_stop` = k places the stop k x ATR(14) below the fill instead of a flat
     `stop_pct`. A fixed percentage asks a 6%-daily-vol microcap and a 2%-vol
@@ -110,7 +119,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
         for p in open_pos:
             s = corpus[p["sym"]]
             i = s.index_of(day)
-            if i is None:
+            if i is None or (tradable and not tradable(s, i, "exit")):
                 still.append(p); continue
             held = len([d for d in s.days if p["entry_day"] < d <= day])
             px = why = None
@@ -238,6 +247,11 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                     continue
                 e = s.open[i + 1]
                 if not e:
+                    continue
+                # The FILL bar needs its own guard: a signal-day lock is
+                # marked untriggered in selection, but tomorrow's lock is
+                # unknowable then -- and an upper-locked bar has no sellers.
+                if tradable and not tradable(s, i + 1, "entry"):
                     continue
                 vols = [v for v in (_liq(corpus[x["symbol"]],
                         corpus[x["symbol"]].index_of(day) or 0)[1] for x in rows)

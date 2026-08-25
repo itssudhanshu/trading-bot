@@ -1,0 +1,2 @@
+{"batch": "20260824-suspensionprobe1", "live": {"cagr": 2.18, "dd": 32.5, "n": 194}, "guarded": {"cagr": 0.2, "dd": 39.1, "n": 201}, "bars": {"exit": {"normal": 175, "upper-lock": 7, "lower-lock": 4, "resumption": 8}, "entry": {"normal": 187, "upper-lock": 7}}, "sanity_ok": false}
+{"batch": "20260824-suspensionprobe1", "live": {"cagr": 2.18, "dd": 32.5, "n": 194}, "guarded": {"cagr": 0.2, "dd": 39.1, "n": 201}, "bars": {"exit": {"normal": 175, "upper-lock": 7, "lower-lock": 4, "resumption": 8}, "entry": {"normal": 187, "upper-lock": 7}}, "sanity_ok": true}

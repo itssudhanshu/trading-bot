@@ -1,0 +1,2 @@
+{"batch": "20260824-trendfund1", "proceed": false, "treatment": {"cagr": 1.96, "dd": 17.8, "n": 147, "per_trade": [1.04, 1.08]}, "control": {"cagr": -0.28, "dd": 1.6, "n": 1, "per_trade": [-10.63, 0.0]}}
+{"batch": "20260824-trendfund2", "proceed": false, "treatment": {"cagr": 1.96, "dd": 17.8, "n": 147, "per_trade": [1.04, 1.08]}, "control": {"cagr": -5.95, "dd": 38.0, "n": 486, "per_trade": [-0.36, 0.47]}}
