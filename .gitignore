@@ -109,3 +109,5 @@ data/fundamentals_screener/
 data/fund_annual*.log
 data/fund_backfill.log
 data/fund_reparse.log
+data/etf_trend/paper_trades.jsonl
+data/etf_trend_paper.*
