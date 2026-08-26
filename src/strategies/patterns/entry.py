@@ -206,7 +206,7 @@ def any_pattern(s, i):
 
 
 
-# --- H12a: candlestick geometry of the SIGNAL BAR ----------------------------
+# --- H13: candlestick geometry of the SIGNAL BAR ----------------------------
 # PRE-REGISTERED 2026-08-26, frozen in this commit BEFORE any return was
 # computed against any arm below. H5 asked whether the shape of a 20-60 bar
 # WINDOW carries information the single-bar breakout misses; it never looked at
@@ -319,7 +319,7 @@ TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             # so they can each be adopted.
             "flag": flag, "asc_triangle": ascending_triangle,
             "cup_handle": cup_handle, "pattern": any_pattern,
-            # H12a, frozen above. `strong_close` carries the adoption path;
+            # H13, frozen above. `strong_close` carries the adoption path;
             # engulf / inside / three_push are description only; `coin` is the
             # mechanism reference and can never be adopted.
             "strong_close": candle_strong_close, "engulf": candle_engulf,
@@ -402,7 +402,7 @@ def _selftest():
                                             or ascending_triangle(series, idx)
                                             or cup_handle(series, idx))
 
-    # --- H12a candle gates: fire on the shape, and ONLY on the shape ---------
+    # --- H13 candle gates: fire on the shape, and ONLY on the shape ---------
     # Same defence as H5, both ways per detector. A gate here is `breakout AND
     # shape`, so each negative case is still a genuine breakout bar -- a weak
     # one -- and must be rejected on the shape alone.
@@ -481,7 +481,7 @@ def _selftest():
         globals()["P_COIN"] = saved
 
     print("entry selftest ok (H5 detectors fire on their shape, not on a trend;"
-          " H12a candle gates fire on theirs)")
+          " H13 candle gates fire on theirs)")
 
 
 if __name__ == "__main__":
