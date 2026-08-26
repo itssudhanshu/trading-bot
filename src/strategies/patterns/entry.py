@@ -206,6 +206,111 @@ def any_pattern(s, i):
 
 
 
+# --- H12a: candlestick geometry of the SIGNAL BAR ----------------------------
+# PRE-REGISTERED 2026-08-26, frozen in this commit BEFORE any return was
+# computed against any arm below. H5 asked whether the shape of a 20-60 bar
+# WINDOW carries information the single-bar breakout misses; it never looked at
+# the signal bar itself. These detectors do exactly that, and nothing else.
+#
+# Every arm is a GATE on `breakout`, never a standalone signal: this book is
+# long-only momentum above the 200-DMA, and a hammer or morning star is a
+# bottom-reversal call that contradicts that design. The question is whether the
+# QUALITY of the breakout bar adds anything to knowing a breakout happened.
+#
+# The confound runs the OPPOSITE way from H5's. H5's arms were looser than the
+# incumbent and could win by reaching deeper down a ranking whose depth is
+# known to cost -1.12%/step. These arms are TIGHTER, so they fill the bucket
+# more slowly and reach LESS deep -- a mechanical tailwind available to any
+# tightening rule with no information in it at all. The `coin` arm exists to
+# price that tailwind: it tightens by a deterministic pseudo-random coin whose
+# rate is matched to the primary's measured firing RATE (rates only; it cannot
+# see returns). A candle arm beats the hypothesis test only if it also beats
+# the coin at its own game.
+#
+# Thresholds below are canonical values fixed now and not tuned afterwards:
+#   STRONG_CLOSE_POS  0.50  close in the top half of the bar's range -- the
+#                           plainest strength test there is, no free parameter
+#   engulf            body engulfs prior body, trigger bar bullish (the strict
+#                     bearish-prior-bar version contradicts a breakout context)
+#   inside_break      the bar before the breakout was an inside bar (the skill's
+#                     own "inside bar breakout" setup)
+#   three_push        three consecutive higher closes into the breakout (Three
+#                     White Soldiers adapted to closes; bodies/openings variant
+#                     deliberately NOT also run -- one form per shape)
+
+STRONG_CLOSE_POS = 0.50
+
+
+def _rng(s, i):
+    """crc32 of symbol|date in [0,1) -- stable across processes, unlike hash()."""
+    import zlib
+    key = f"{s.symbol}|{s.days[i].isoformat()}"
+    return zlib.crc32(key.encode()) / 2 ** 32
+
+
+P_COIN = None    # set at run time from measured RATES only; never from returns
+
+
+def set_coin_rate(p):
+    global P_COIN
+    P_COIN = float(p)
+
+
+def strong_close(s, i):
+    """The breakout closed in the top half of its own range."""
+    h, l = s.high[i], s.low[i]
+    if h is None or l is None or h <= l:
+        return False
+    return (s.close[i] - l) / (h - l) >= STRONG_CLOSE_POS
+
+
+def engulf(s, i):
+    """Breakout whose body swallows the previous bar's body."""
+    if i < 1:
+        return False
+    bt, bb = max(s.open[i], s.close[i]), min(s.open[i], s.close[i])
+    pt, pb = max(s.open[i - 1], s.close[i - 1]), min(s.open[i - 1], s.close[i - 1])
+    return bt >= pt and bb <= pb and s.close[i] > s.open[i]
+
+
+def inside_break(s, i):
+    """Breakout on the bar after an inside bar."""
+    if i < 2:
+        return False
+    return (s.high[i - 1] <= s.high[i - 2]) and (s.low[i - 1] >= s.low[i - 2])
+
+
+def three_push(s, i):
+    """Three consecutive higher closes ending at the breakout."""
+    if i < 3:
+        return False
+    return (s.close[i] > s.close[i - 1] > s.close[i - 2] > s.close[i - 3])
+
+
+def _gated(base):
+    def g(s, i):
+        return breakout(s, i) and base(s, i)
+    return g
+
+
+def coin(s, i):
+    """MECHANISM reference: breakout AND a deterministic coin at P_COIN.
+
+    Exists to price the mechanical tailwind every tighter gate earns through
+    rank depth. No adoption path; raises if the rate was never set so it can
+    never silently run wide open or fully shut.
+    """
+    if P_COIN is None:
+        raise RuntimeError("coin rate unset -- candle_test sets it from rates")
+    return breakout(s, i) and _rng(s, i) < P_COIN
+
+
+candle_strong_close = _gated(strong_close)
+candle_engulf = _gated(engulf)
+candle_inside = _gated(inside_break)
+candle_three_push = _gated(three_push)
+
+
 TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             "not_overbought": not_overbought, "rsi_band": rsi_band,
             "pullback": pullback, "vol+breakout": vol_and_breakout,
@@ -213,7 +318,13 @@ TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             # individual detectors are registered so they can be DESCRIBED, not
             # so they can each be adopted.
             "flag": flag, "asc_triangle": ascending_triangle,
-            "cup_handle": cup_handle, "pattern": any_pattern}
+            "cup_handle": cup_handle, "pattern": any_pattern,
+            # H12a, frozen above. `strong_close` carries the adoption path;
+            # engulf / inside / three_push are description only; `coin` is the
+            # mechanism reference and can never be adopted.
+            "strong_close": candle_strong_close, "engulf": candle_engulf,
+            "inside_break": candle_inside, "three_push": candle_three_push,
+            "coin": coin}
 
 
 def _selftest():
@@ -236,6 +347,7 @@ def _selftest():
     assert volume(s, i), "a 5x volume day must pass"
     # every trigger must be callable and return a bool at a valid index
     _CACHE.clear()
+    set_coin_rate(0.5)                  # coin must never run with an unset rate
     for name, fn in TRIGGERS.items():
         assert isinstance(fn(s, i), bool), name
 
@@ -289,7 +401,87 @@ def _selftest():
         assert any_pattern(series, idx) == (flag(series, idx)
                                             or ascending_triangle(series, idx)
                                             or cup_handle(series, idx))
-    print("entry selftest ok (H5 detectors fire on their shape, not on a trend)")
+
+    # --- H12a candle gates: fire on the shape, and ONLY on the shape ---------
+    # Same defence as H5, both ways per detector. A gate here is `breakout AND
+    # shape`, so each negative case is still a genuine breakout bar -- a weak
+    # one -- and must be rejected on the shape alone.
+
+    def _hist(top=100.0):
+        """20 quiet bars under `top`, so close > top is a clean breakout."""
+        b = [(top - 5, top - 4.5, top - 5.5, top - 5) for _ in range(21)]
+        return b
+
+    # strong_close: a fade-that-still-breaks-out closes at its LOW -> reject;
+    # the same breakout closing near its high -> accept.
+    bars = _hist() + [(106, 106.0, 104.0, 104.1)]          # gap up, fade all day
+    g = _mk(bars)
+    j = len(bars) - 1
+    _CACHE.clear()
+    assert breakout(g, j), "fixture must itself be a breakout"
+    assert not strong_close(g, j), "strong_close accepted a close at the bar's low"
+    bars = _hist() + [(101, 106.0, 100.8, 105.5)]
+    g2 = _mk(bars)
+    assert strong_close(g2, j), "strong_close rejected a close near the high"
+
+    # engulf: today's body swallows yesterday's; shrinking bodies are rejected.
+    bars = _hist() + [(93.5, 94.8, 93.2, 94.5), (93.0, 97.0, 92.8, 96.5)]
+    e = _mk(bars)
+    k = len(bars) - 1
+    _CACHE.clear()
+    assert engulf(e, k), "engulf missed a body that swallowed the prior body"
+    bars = _hist() + [(93.5, 94.8, 93.2, 94.5), (94.0, 96.0, 93.9, 95.5)]
+    e2 = _mk(bars)
+    assert not engulf(e2, k), "engulf accepted a smaller body"
+
+    # inside_break: an inside bar then the break; expanding ranges rejected.
+    bars = _hist(90.0) + [(91, 92.0, 90.0, 91.5),
+                          (91, 91.8, 90.2, 91.3),
+                          (91.5, 93.5, 91.4, 93.0)]
+    ib = _mk(bars)
+    m = len(bars) - 1
+    _CACHE.clear()
+    assert inside_break(ib, m), "inside_break missed inside-bar-then-breakout"
+    bars = _hist(90.0) + [(91, 92.0, 90.0, 91.5),
+                          (91.2, 92.6, 89.8, 91.3),
+                          (91.5, 93.5, 91.4, 93.0)]
+    ib2 = _mk(bars)
+    assert not inside_break(ib2, m), "inside_break fired on an expanding range"
+
+    # three_push: rising closes qualify (a plain uptrend legitimately does);
+    # alternating closes do not.
+    bars = _hist() + [(98, 99.0, 97.8, 98.8), (98.8, 100.0, 98.6, 99.7),
+                      (99.7, 101.0, 99.5, 100.8)]
+    tp = _mk(bars)
+    q = len(bars) - 1
+    _CACHE.clear()
+    assert three_push(tp, q), "three_push missed three rising closes"
+    bars = _hist() + [(98, 99.0, 97.8, 98.8), (98.8, 99.9, 97.6, 97.9),
+                      (98.2, 101.0, 98.0, 100.8)]
+    tp2 = _mk(bars)
+    assert not three_push(tp2, q), "three_push accepted alternating closes"
+
+    # coin: deterministic for a given key, bounded by its rate, equal to
+    # breakout at p=1, silent nowhere without a rate.
+    set_coin_rate(1.0)
+    assert all(coin(g, jj) == breakout(g, jj) for jj in range(len(g.close)))
+    set_coin_rate(0.0)
+    assert not any(coin(g, jj) for jj in range(len(g.close)))
+    set_coin_rate(0.5)
+    assert coin(g, j) == coin(g, j), "coin is not deterministic for a fixed bar"
+    saved = P_COIN
+    globals()["P_COIN"] = None
+    try:
+        try:
+            coin(g, j)
+            raise AssertionError("coin ran with no rate set")
+        except RuntimeError:
+            pass
+    finally:
+        globals()["P_COIN"] = saved
+
+    print("entry selftest ok (H5 detectors fire on their shape, not on a trend;"
+          " H12a candle gates fire on theirs)")
 
 
 if __name__ == "__main__":
