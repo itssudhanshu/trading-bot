@@ -3155,3 +3155,66 @@ Family status after H15: candlestick gates (L74), fair-value gaps (L75),
 pullback depth (here) all CLOSED. Remaining from the chart-pattern review:
 swing structure features (HH/HL counts, BOS/CHoCH recency) — the last of the
 four untouched families.
+
+---
+
+## L77 — H16: swing structure leans positive and still cannot clear its bar; the review closes
+
+**Pre-registered** (`src/research/structure_test.py`, batch
+20260826-structure-h16) after detectors frozen in their own commit
+(ece430d8). The freeze settled two definitional questions by fixture, before
+any return existed: a CHoCH is a close through the newest higher low the
+moment it prints (not gated on pivot confirmation — visible damage is
+damage), and plateau troughs register once rather than as adjacent duplicate
+pivots. Last family of the operator's chart-pattern review.
+
+| arm | CAGR | maxDD | n | per trade | vs breakout | t |
+|---|---|---|---|---|---|---|
+| **breakout (control)** | **+2.18** | **32.5** | **194** | **+1.01%** | -- | -- |
+| hl_intact (primary) | +4.36 | 27.8 | 146 | +1.92% | +0.91% ± 1.78 | **+0.51** |
+| hh_hl | +3.80 | 29.3 | 123 | +2.09% | +1.08% | +0.56 |
+| coin (mechanism ref) | −0.66 | 30.5 | 134 | +0.19% | −0.81% | −0.48 |
+
+Bar was |t| >= 2.6. **DO NOT ADOPT**: condition 1 fails. TRIGGER stays
+`breakout`. This is the closest ANY gated arm has come in the family —
+positive edge, better worst block (−96.8 vs −166.4), lower maxDD, conditions
+2–4 all passing — and it STILL does not clear the bar. That is what a
+promising-but-unresolved description looks like, and the honest sentence is
+exactly that, not "structure works".
+
+What is worth keeping:
+
+1. **Intact structure is the normal state of a breakout (60.9%)** — the
+   fourth canonical quality mark in a row that turns out common at 20-day
+   highs (83%, 54%, 69%, 61%). The price-action canon describes what
+   breakouts usually look like, not a subset that does better.
+2. **Fourth consecutive ~zero for the tightening confound** (coin −0.81%,
+   t −0.48). Measured four times now: gating this trigger does not reach
+   shallower down the ranking.
+3. **The one lead left standing** — structure is the only family where BOTH
+   the primary and the stricter descriptive leaned the same positive
+   direction with better tails. Per-cluster n (~91/~55) puts every gap under
+   one standard error; recording it as a hypothesis for FORWARD observation,
+   not as a backtest claim. If anything from this review ever justifies a
+   fresh pre-registration when forward trades accumulate, it is this one —
+   noticed here buys it nothing, exactly as L67's residual bought nothing.
+
+### The chart-pattern review, closed
+
+All four untouched families from the operator's price-action skill are now
+measured under the full protocol (freeze -> register -> run -> error bars):
+
+| family | primary result | verdict |
+|---|---|---|
+| H13 candlestick gates (L74) | strong_close +0.77%, t +0.47 | inside the noise |
+| H14 fair-value gaps (L75) | fvg −0.75%, t −0.48 | inside the noise |
+| H15 pullback depth (L76) | pb_shallow +0.00%, t 0.00 | exactly null |
+| H16 swing structure (L77) | hl_intact +0.91%, t +0.51 | inside the noise |
+
+Nothing adopted; TRIGGER stays `breakout`. The recurring shape of the
+finding: the canon's quality marks describe what breakouts normally look
+like (they fire on 54–83% of signal bars), so gating on them mostly renames
+the incumbent trigger. The one thing this review added beyond four negatives
+is the measured null for the tightening confound (four coin arms) and a
+single forward-looking lead (structure), which starts from zero evidence by
+construction.

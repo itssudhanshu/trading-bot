@@ -3,14 +3,14 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-26 — **H13, H14 and H15 run and closed**: three of four
-untouched price-action families from the operator's chart-pattern review.
-Candlestick gates (H13/L74: +0.77%, t +0.47), fair-value gaps (H14/L75:
-−0.75%, t −0.48) and pullback depth (H15/L76: +0.00%, t 0.00; deep-flush
-breakouts were the WORST trades at n=6, against the Fibonacci claim's
-direction) are all inside the noise at bar |t| ≥ 2.6. The tightening confound
-priced ~zero three times (coin arms). TRIGGER stays `breakout`. Remaining:
-swing structure features.
+Last updated: 2026-08-26 — **the chart-pattern review is CLOSED**: all four
+untouched price-action families measured under the full protocol. H13
+candlestick gates (L74: +0.77%, t +0.47), H14 fair-value gaps (L75: −0.75%,
+t −0.48), H15 pullback depth (L76: +0.00%, t 0.00; deep flushes the WORST
+trades, against the Fibonacci direction), H16 swing structure (L77:
++0.91%, t +0.51 — closest yet, still inside the noise). Nothing adopted;
+TRIGGER stays `breakout`; the tightening confound priced ~zero four times.
+One forward-looking lead recorded (structure), starting from zero evidence.
 
 Previous: 2026-08-25 — **H12 registered** (`src/research/impact_calibrate_test.py`,
 batch 20260825-h12-calibrate): impact calibration off the forward book, the one
@@ -406,6 +406,7 @@ tests) *before* any data was downloaded. See L61.
 | candle gates on the signal bar (H13, 2026-08-26) | strong_close +0.77% ± 1.64, t +0.47 | L74; a 20-day-high close is in its bar's top half 83% of the time — barely a filter; engulf/inside too rare at breakouts to test (n=9/25) |
 | fair-value gaps around the breakout (H14, 2026-08-26) | fvg −0.75% ± 1.58, t −0.48 | L75; a fresh gap accompanies 54% of breakouts and gating on it pays nothing; gap_fill (the literature's own entry) too rare to test (n=28) |
 | pullback depth before the breakout (H15, 2026-08-26) | pb_shallow +0.00% ± 1.56, t 0.00 | L76; 69% of breakouts already rise off shallow dips — nothing to select between; deep-flush breakouts read −8.29% at n=6, the OPPOSITE of the Fibonacci claim |
+| swing structure into the breakout (H16, 2026-08-26) | hl_intact +0.91% ± 1.78, t +0.51 | L77; closest any gated arm came (conditions 2–4 pass), still inside the noise; recorded as the one forward-looking lead from the review |
 
 Nothing adopted. The one live lead is post-hoc and unconfirmable here: the whole
 tone effect is **positive** corporate actions (+1.77% vs neutral, n=255), with
