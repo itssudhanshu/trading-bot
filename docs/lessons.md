@@ -2995,3 +2995,59 @@ Side finding while verifying: `data/positions_record.sql` had drifted from the
 live DB after the morning fill (audit trail 14 vs 13). Regenerated with
 `positions.export_record()`; audit back to 38/38. The daily flow that refreshes
 the record does not appear to have run after the 11:37 fill — worth watching.
+
+---
+
+## L74 — H13: candlestick gates on the breakout bar are noise, and barely filter at all
+
+**Pre-registered** (`src/research/candle_test.py`, batch
+20260826-candles-h13) after the detectors were frozen in their own commit
+(3b0b2bb3) — thresholds fixed from principle, selftests asserting each detector
+both ways, before any return was computed. The question: H5 tested the shape of
+a 20–60 bar WINDOW and found nothing; the price-action literature's next claim
+is that the QUALITY of the signal bar itself is readable — close near the high,
+engulfing body, inside bar before the break, consecutive higher closes. All
+four ran as GATES on the live breakout, never as standalone signals (this book
+is long-only momentum; reversal candles contradict its design).
+
+| arm | CAGR | maxDD | n | per trade | vs breakout | t |
+|---|---|---|---|---|---|---|
+| **breakout (control)** | **+2.18** | **32.5** | **194** | **+1.01%** | -- | -- |
+| strong_close (primary) | +4.75 | 34.1 | 174 | +1.78% | +0.77% ± 1.64 | **+0.47** |
+| engulf | +1.13 | 4.1 | 9 | +7.10% | +6.09% | +1.06 |
+| inside_break | +1.11 | 5.8 | 25 | +3.07% | +2.06% | +0.44 |
+| three_push | +0.76 | 39.1 | 146 | +0.88% | −0.13% | −0.07 |
+| coin (mechanism ref) | +2.41 | 36.0 | 182 | +1.10% | +0.09% | +0.06 |
+
+Bar was |t| ≥ 2.6 (Bonferroni over five comparisons). **DO NOT ADOPT**: the
+primary fails condition 1 (t +0.47) and condition 4 (worst block −187.3% vs
+−166.4%). TRIGGER stays `breakout`. Control read +2.18/194 against the
+recorded live +2.42/193 because the corpus grew since 20260820-nonequity3;
+every comparison here is paired within the same run.
+
+Three things worth keeping:
+
+1. **The canonical quality gate barely filters.** A close clearing the prior
+   20-day high sits in the top half of its own range **83.4%** of the time —
+   `strong_close` removes only one trade in six. "Buy breakouts that close
+   strong" is nearly indistinguishable from "buy breakouts".
+2. **The shapes that look spectacular are too rare to test here.** An
+   engulfing bar coincides with a 20-day-high breakout 8.2% of the time
+   (n=9); an inside-bar break 12.5% (n=25). Their +7.10% and +3.07% means sit
+   on nine and twenty-five trades at t = 1.06 and 0.44 — description, not
+   evidence, and exactly what lucky small samples look like. No adoption path
+   was offered them, which is why they cannot quietly become a rule.
+3. **The pre-registered confound priced at ~zero.** The worry written down
+   BEFORE the run: tighter gates earn a mechanical tailwind by not reaching
+   deep down a ranking that costs −1.12%/step. `coin`, tightened to match the
+   primary's rate (194→182 trades), read **+0.09%, t +0.06** — no tailwind at
+   this mildness. Consistent with `occupancy_test.py`'s premise: the trigger
+   mostly chooses among the five names the ranking already nominated, so
+   firing less does NOT automatically reach shallower. The confound was
+   measured, not assumed, and it was moot; the primary's +0.77% stands or
+   falls on its own noise either way.
+
+Candidate family status after H13: of the four untouched price-action ideas,
+candlestick gates are now CLOSED (this lesson). Still genuinely untested:
+fair-value gaps (3-bar OHLC imbalance), pullback retracement depth, swing
+structure features. Each needs its own freeze-then-register cycle.
