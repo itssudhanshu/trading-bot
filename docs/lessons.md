@@ -3099,3 +3099,59 @@ What is worth keeping:
 Family status after H14: candlestick gates CLOSED (L74), fair-value gaps
 CLOSED (here). Still genuinely untested from the chart-pattern review:
 pullback retracement depth, swing structure features.
+
+---
+
+## L76 — H15: pullback depth reads exactly zero, and the Fibonacci direction points backwards
+
+**Pre-registered** (`src/research/retrace_test.py`, batch
+20260826-retrace-h15) after detectors frozen in their own commit (367f0ab9),
+with one pre-run amendment recorded there (367f0ab9's follow-up): equal highs
+resolve to the MOST RECENT touch, so a flat top is no pullback rather than a
+base-sized dip — first-occurrence indexing turned bar noise into phantom
+depth, caught by the selftest fixture before any return existed.
+
+The first two-sided family: Fibonacci practice buys deep retracements (the
+61.8% discount), trend-following prefers shallow ones (high-tight-flag). The
+momentum-consistent `pb_shallow` (<15%) carried the adoption path by
+pre-statement; `pb_deep` (>=30%) ran description only.
+
+| arm | CAGR | maxDD | n | per trade | vs breakout | t |
+|---|---|---|---|---|---|---|
+| **breakout (control)** | **+2.18** | **32.5** | **194** | **+1.01%** | -- | -- |
+| pb_shallow (primary) | +2.62 | 25.1 | 173 | +1.01% | **+0.00% ± 1.56** | **0.00** |
+| pb_deep | −0.88 | 6.6 | 7 | −4.26% | −5.27% | −1.10 |
+| coin (mechanism ref) | +0.22 | 33.0 | 149 | +0.47% | −0.54% | −0.33 |
+
+Bar was |t| >= 2.6. **DO NOT ADOPT**: condition 1 fails at literally t = 0.00.
+TRIGGER stays `breakout`.
+
+What is worth keeping:
+
+1. **Depth is monotone-decreasing in outcome, with the tail doing all the
+   work — and it points AGAINST the Fibonacci reading.** Depth thirds over
+   control trades: <15% -> +1.32% (n=170); 15-30% -> +1.11% (n=18);
+   >=30% -> **−8.29% ± 2.79 (n=6)**. Breakouts preceded by a real flush were
+   the WORST trades measured, not the best discount. The "buy the 61.8%
+   retracement" claim has its sign reversed here — but with n=6 in the tail
+   this is description, not resolution, and it gets no adoption path.
+2. **The primary's perfect null is itself the finding about frequency:** 68.8%
+   of breakout bars rise from shallow pullbacks, and 88% of the book's actual
+   trades already were shallow-origin. The gate keeps nearly everything the
+   trigger fires on, so there is almost nothing for it to select between —
+   the same "canonical quality marks barely discriminate" shape as H13's 83%
+   and H14's 54%, taken to its limit.
+3. **Third consecutive ~zero for the tightening confound** (coin −0.54%,
+   t −0.33, after +0.09 and −0.02). The prior is now measured thrice:
+   gating this trigger does not buy rank-depth improvement. Future gated
+   tests keep running coin — one fork — but nobody may cite the confound as
+   a live risk again without new evidence.
+4. pb_shallow's calmer drawdown (25.1 vs 32.5 maxDD, worst block −117.9 vs
+   −166.4) is the L67 occupancy illusion once more: comfort bought by
+   trading less, on a return edge of exactly zero. Drawdown stays without an
+   adoption path until one is pre-registered.
+
+Family status after H15: candlestick gates (L74), fair-value gaps (L75),
+pullback depth (here) all CLOSED. Remaining from the chart-pattern review:
+swing structure features (HH/HL counts, BOS/CHoCH recency) — the last of the
+four untouched families.
