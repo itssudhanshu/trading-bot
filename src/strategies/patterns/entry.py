@@ -432,6 +432,86 @@ pb_shallow_gated = _gated(pb_shallow)
 pb_deep_gated = _gated(pb_deep)
 
 
+# --- H16: swing structure into the breakout -----------------------------------
+# PRE-REGISTERED 2026-08-26, frozen in this commit BEFORE any return was
+# computed against any arm below. Fourth and last family from the operator's
+# chart-pattern review.
+#
+# The skill's structure reading: an uptrend is a series of higher highs and
+# higher lows; a break BELOW the newest higher low is a change of character
+# (CHoCH) and damages the trend. The testable claim for this book: a breakout
+# that arrives with intact higher-low structure outperforms one arriving
+# after structure broke.
+#
+# Definitions, frozen:
+#   SWING_FRINGE = 3      a pivot needs the extreme over 3 bars either side,
+#                         so it is only KNOWABLE 3 bars later -- nothing here
+#                         can see a swing before it is confirmed
+#   STRUCT_LOOKBACK = 60  the window searched for confirmed swings
+#
+# `hl_intact` (PRIMARY): at least two confirmed swing lows in the window, the
+# newer ABOVE the older (ascending lows), and NO close after the newest swing
+# low's own trough bar back through its level -- a close through a known
+# higher low is visible damage the moment it prints, confirmation or not.
+# A monotonic run with no pullbacks has NO readable structure and is
+# rejected: excluding it is part of the hypothesis, not an oversight (H15
+# measured those trades as fine).
+#
+# `hh_hl` (description only): hl_intact AND ascending confirmed swing highs
+# too -- the stricter full-structure reading.
+
+SWING_FRINGE = 3
+STRUCT_LOOKBACK = 60
+
+
+def _confirmed_swing_lows(s, i):
+    """-> indices of confirmed swing lows fully visible at bar i. A bar whose
+    low merely EQUALS the previous bar's low is part of the same trough, not
+    a second one: plateaus register once, on their first touch."""
+    out = []
+    lo = max(i - STRUCT_LOOKBACK, SWING_FRINGE)
+    for k in range(lo, i - SWING_FRINGE + 1):
+        w = s.low[k - SWING_FRINGE:k + SWING_FRINGE + 1]
+        if s.low[k] == min(w) and s.low[k] < s.low[k - 1]:
+            out.append(k)
+    return out
+
+
+def _confirmed_swing_highs(s, i):
+    """-> indices of confirmed swing highs fully visible at bar i, plateau
+    rule as for lows: strictly above the prior bar's high."""
+    out = []
+    lo = max(i - STRUCT_LOOKBACK, SWING_FRINGE)
+    for k in range(lo, i - SWING_FRINGE + 1):
+        w = s.high[k - SWING_FRINGE:k + SWING_FRINGE + 1]
+        if s.high[k] == max(w) and s.high[k] > s.high[k - 1]:
+            out.append(k)
+    return out
+
+
+def hl_intact(s, i):
+    """Ascending confirmed swing lows, no close back through the newest one."""
+    lows = _confirmed_swing_lows(s, i)
+    if len(lows) < 2:
+        return False
+    newer, older = lows[-1], lows[-2]
+    if not s.low[newer] > s.low[older]:
+        return False
+    return all(c >= s.low[newer] for c in s.close[newer + 1:i + 1])
+
+
+def hh_hl(s, i):
+    """hl_intact plus ascending confirmed swing highs."""
+    if not hl_intact(s, i):
+        return False
+    highs = _confirmed_swing_highs(s, i)
+    return len(highs) >= 2 and s.high[highs[-1]] > s.high[highs[-2]]
+
+
+hl_intact_gated = _gated(hl_intact)
+hh_hl_gated = _gated(hh_hl)
+
+
 TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             "not_overbought": not_overbought, "rsi_band": rsi_band,
             "pullback": pullback, "vol+breakout": vol_and_breakout,
@@ -453,7 +533,10 @@ TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             # H15, frozen above. `pb_shallow` carries the adoption path (the
             # momentum-consistent direction); pb_deep is the OPPOSING
             # literature, description only.
-            "pb_shallow": pb_shallow_gated, "pb_deep": pb_deep_gated}
+            "pb_shallow": pb_shallow_gated, "pb_deep": pb_deep_gated,
+            # H16, frozen above. `hl_intact` carries the adoption path;
+            # hh_hl is the stricter full-structure reading, description only.
+            "hl_intact": hl_intact_gated, "hh_hl": hh_hl_gated}
 
 
 def _selftest():
@@ -699,8 +782,57 @@ def _selftest():
     _CACHE.clear()
     assert pullback_pct(fl, 29) == 0.0
 
+    # --- H16 swing structure ---------------------------------------------------
+    def _path_bars(path):
+        bars = []
+        prev = path[0]
+        for c in path[1:]:
+            bars.append((prev, max(prev, c) + 0.3, min(prev, c) - 0.3, c))
+            prev = c
+        return bars
+
+    def _breakout(bars):
+        bars = list(bars)
+        bars.append((113, 113.8, 112.2, 113.5))
+        return bars, len(bars) - 1
+
+    # Intact staircase: troughs 92 -> 97 ascending, peaks 106 -> 112
+    # ascending, nothing closes back through the newest higher low.
+    up = [100, 98, 96, 94, 92, 95, 99, 103, 106, 104,
+          101, 98, 97, 100, 104, 108, 112, 109, 106, 104.5]
+    st_bars, j = _breakout(_path_bars(up))
+    st = _mk(st_bars)
+    _CACHE.clear()
+    assert len(_confirmed_swing_lows(st, j)) >= 2, "fixture has no pivots"
+    assert hl_intact(st, j), "an intact staircase read as broken"
+    assert hh_hl(st, j), "ascending highs missed on an intact staircase"
+
+    # Descending lows: second trough BELOW the first -- structure fails on
+    # the slope test before any violation matters.
+    dn = [100, 98, 96, 99, 102, 98, 94, 97, 100, 103, 106, 104, 101]
+    dn_bars, j2 = _breakout(_path_bars(dn))
+    dn_s = _mk(dn_bars)
+    _CACHE.clear()
+    assert not hl_intact(dn_s, j2), "descending lows passed as intact"
+    assert not hh_hl(dn_s, j2)
+
+    # CHoCH inside the unconfirmed zone: a close back through the known
+    # higher low (96.7) prints damage immediately -- it cannot hide by being
+    # too recent to confirm as its own pivot.
+    ch = up[:13] + [99, 96.4, 98]
+    ch_bars, j3 = _breakout(_path_bars(ch))
+    ch_s = _mk(ch_bars)
+    _CACHE.clear()
+    assert not hl_intact(ch_s, j3), "a close through the HL read as intact"
+    assert not hh_hl(ch_s, j3)
+
+    # A monotonic uptrend has no pullback pivots at all: no readable
+    # structure, so the gate rejects it BY DESIGN.
+    _CACHE.clear()
+    assert not hl_intact(s, i), "structure fired on a pivotless run"
+
     print("entry selftest ok (H5 detectors fire on their shape, not on a trend;"
-          " H13-H15 candle/FVG/pullback gates fire on theirs)")
+          " H13-H16 candle/FVG/pullback/structure gates fire on theirs)")
 
 
 if __name__ == "__main__":
