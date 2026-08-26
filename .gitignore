@@ -98,3 +98,14 @@ data/announcements/parsed/
 # diff in every commit. It stays on disk; losing it costs only the days since
 # the last capture, which no backtest can read anyway.
 data/news/
+
+# --- local tool caches -------------------------------------------------------
+.agents/
+.playwright/
+.superpowers/
+dashboard/
+data/screener_raw/
+data/fundamentals_screener/
+data/fund_annual*.log
+data/fund_backfill.log
+data/fund_reparse.log
