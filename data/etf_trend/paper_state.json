@@ -1,103 +1,113 @@
 {
- "last_day": "2026-08-24",
- "queue": [
+ "last_day": "2026-08-26",
+ "queue": [],
+ "positions": [
   {
    "symbol": "MODEFENCE",
    "cluster": "index",
-   "score": 19.35,
-   "ref": 107.03,
-   "why": "above its 200-session average"
+   "queued_on": "2026-08-24",
+   "entry_day": "2026-08-25",
+   "entry_px": 109.7215,
+   "qty": 410,
+   "stop": 98.7494
   },
   {
    "symbol": "PHARMABEES",
    "cluster": "index",
-   "score": 17.24,
-   "ref": 27.07,
-   "why": "above its 200-session average"
+   "queued_on": "2026-08-24",
+   "entry_day": "2026-08-25",
+   "entry_px": 27.3124,
+   "qty": 1647,
+   "stop": 24.5811
   },
   {
    "symbol": "SMALLCAP",
    "cluster": "index",
-   "score": 14.55,
-   "ref": 48.88,
-   "why": "above its 200-session average"
+   "queued_on": "2026-08-24",
+   "entry_day": "2026-08-25",
+   "entry_px": 49.0063,
+   "qty": 918,
+   "stop": 44.1056
   },
   {
    "symbol": "HDFCSML250",
    "cluster": "index",
-   "score": 13.54,
-   "ref": 185.18,
-   "why": "above its 200-session average"
+   "queued_on": "2026-08-24",
+   "entry_day": "2026-08-25",
+   "entry_px": 185.1934,
+   "qty": 243,
+   "stop": 166.6741
   },
   {
    "symbol": "METALIETF",
    "cluster": "index",
-   "score": 11.79,
-   "ref": 13.46,
-   "why": "above its 200-session average"
+   "queued_on": "2026-08-24",
+   "entry_day": "2026-08-25",
+   "entry_px": 13.1227,
+   "qty": 3429,
+   "stop": 11.8104
   }
  ],
- "positions": [],
  "ranking": [
   {
    "symbol": "MODEFENCE",
    "cluster": "index",
-   "score": 19.35
+   "score": 20.52
   },
   {
    "symbol": "PHARMABEES",
    "cluster": "index",
-   "score": 17.24
+   "score": 19.24
   },
   {
    "symbol": "SMALLCAP",
    "cluster": "index",
-   "score": 14.55
+   "score": 16.52
   },
   {
    "symbol": "HDFCSML250",
    "cluster": "index",
-   "score": 13.54
+   "score": 15.84
   },
   {
    "symbol": "METALIETF",
    "cluster": "index",
-   "score": 11.79
+   "score": 13.91
   },
   {
-   "symbol": "GOLD1",
-   "cluster": "metals",
-   "score": 7.04
+   "symbol": "JUNIORBEES",
+   "cluster": "index",
+   "score": 7.94
   },
   {
-   "symbol": "SETFGOLD",
-   "cluster": "metals",
-   "score": 7.02
+   "symbol": "MID150BEES",
+   "cluster": "index",
+   "score": 7.66
   },
   {
-   "symbol": "HDFCGOLD",
-   "cluster": "metals",
-   "score": 6.99
+   "symbol": "AUTOBEES",
+   "cluster": "index",
+   "score": 5.14
   },
   {
    "symbol": "TATAGOLD",
    "cluster": "metals",
-   "score": 6.92
+   "score": 4.08
   },
   {
-   "symbol": "GOLDCASE",
+   "symbol": "GOLD1",
    "cluster": "metals",
-   "score": 6.92
+   "score": 3.89
+  },
+  {
+   "symbol": "HDFCGOLD",
+   "cluster": "metals",
+   "score": 3.85
   },
   {
    "symbol": "GOLDIETF",
    "cluster": "metals",
-   "score": 6.75
-  },
-  {
-   "symbol": "GOLDBEES",
-   "cluster": "metals",
-   "score": 6.72
+   "score": 3.8
   }
  ]
 }

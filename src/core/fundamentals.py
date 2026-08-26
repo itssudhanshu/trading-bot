@@ -45,6 +45,24 @@ WANTED = {                       # xbrl local-name -> our field
     "ProfitLossForPeriod": "net_profit",
     "ProfitBeforeTax": "pbt",
     "Expenses": "expenses",
+    # Earnings-quality inputs. Feasibility scan on 400 random filings: these
+    # four appear in 100% of them; cash-flow statements appear in 0%, so the
+    # accruals family stays impossible rather than silently empty.
+    "OtherIncome": "other_income",
+    "ProfitBeforeExceptionalItemsAndTax": "pbt_before_exceptional",
+    "ExceptionalItemsBeforeTax": "exceptional_items",
+    "FinanceCosts": "finance_cost",
+    # Cash-flow facts exist ONLY in the ANNUAL feed (L79): quarterly files
+    # never carry them. Read by build_parsed_annual, never by build_parsed.
+    "CashFlowsFromUsedInOperatingActivities": "ocf",
+}
+
+# Balance-sheet facts live in INSTANT contexts (one date, no span), which the
+# flow parser skips by design. Kept separate so every existing caller and the
+# as-of flow logic stay untouched; matched against the filing's own toDate.
+INSTANT_WANTED = {
+    "TradeReceivables": "receivables",
+    "Inventories": "inventories",
 }
 
 
@@ -116,19 +134,68 @@ def parse_xbrl(data: bytes) -> dict:
     return out
 
 
+def parse_instants(data: bytes) -> dict:
+    """-> {instant_date_iso: {field: float}} for balance-sheet facts.
+
+    One date, no span; segment-filtered contexts dropped like everywhere else.
+    First value wins per (date, field): later duplicates are restatements or
+    consolidated/standalone repeats, same rule as the flow parser.
+    """
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return {}
+    ctx_date = {}
+    for ctx in root.iter(f"{XBRLI}context"):
+        if ctx.find(f".//{{http://xbrl.org/2006/xbrldi}}explicitMember") is not None:
+            continue
+        per = ctx.find(f"{XBRLI}period")
+        if per is None:
+            continue
+        ins = per.find(f"{XBRLI}instant")
+        if ins is not None and (ins.text or "").strip():
+            ctx_date[ctx.get("id")] = ins.text.strip()
+    if not ctx_date:
+        return {}
+    out = {}
+    for el in root.iter():
+        field = INSTANT_WANTED.get(el.tag.rsplit("}", 1)[-1])
+        if not field or not (el.text or "").strip():
+            continue
+        date = ctx_date.get(el.get("contextRef"))
+        if date is None:
+            continue
+        try:
+            val = float(el.text)
+        except ValueError:
+            continue
+        out.setdefault(date, {}).setdefault(field, val)
+    return out
+
+
 def quarter_figures(meta: dict, xbrl: bytes) -> dict:
     """Figures for the quarter the filing REPORTS, matched on its own dates."""
     want = (_dt(meta.get("fromDate")), _dt(meta.get("toDate")))
     if not all(want):
         return {}
+    fig = {}
     for (sd, ed), fields in parse_xbrl(xbrl).items():
         try:
             if (datetime.strptime(sd, "%Y-%m-%d").date(),
                     datetime.strptime(ed, "%Y-%m-%d").date()) == want:
-                return fields
+                fig = fields
+                break
         except ValueError:
             continue
-    return {}
+    if not fig:
+        return {}
+    # Stocks as at this filing's own quarter close: printed WITH it, never
+    # later. Partial coverage by design -- missing concepts stay missing
+    # instead of silently falling back to some other date's balance sheet.
+    ins = parse_instants(xbrl).get(want[1].isoformat())
+    if ins:
+        fig.update({k: v for k, v in ins.items() if fig.get(k) is None})
+    return fig
 
 
 # Consolidated vs standalone: NSE files BOTH for the same quarter, same
@@ -205,6 +272,20 @@ def _selftest():
       <f:RevenueFromOperations contextRef="YTD">300</f:RevenueFromOperations>
       <f:RevenueFromOperations contextRef="SEG">7</f:RevenueFromOperations>
       <f:ProfitLossForPeriod contextRef="Q">10</f:ProfitLossForPeriod>
+      <f:OtherIncome contextRef="Q">4</f:OtherIncome>
+      <f:FinanceCosts contextRef="YTD">9</f:FinanceCosts>
+      <xbrli:context id="FY"><xbrli:period>
+        <xbrli:startDate>2024-01-01</xbrli:startDate>
+        <xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+      <xbrli:context id="HY"><xbrli:period>
+        <xbrli:startDate>2024-10-01</xbrli:startDate>
+        <xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+      <xbrli:context id="BS"><xbrli:period>
+        <xbrli:instant>2024-12-31</xbrli:instant></xbrli:period></xbrli:context>
+      <f:Inventories contextRef="BS">55</f:Inventories>
+      <f:TradeReceivables contextRef="BS">77</f:TradeReceivables>
+      <f:CashFlowsFromUsedInOperatingActivities contextRef="FY">500</f:CashFlowsFromUsedInOperatingActivities>
+      <f:CashFlowsFromUsedInOperatingActivities contextRef="HY">120</f:CashFlowsFromUsedInOperatingActivities>
     </xbrl>"""
 
     p = parse_xbrl(xml)
@@ -218,6 +299,20 @@ def _selftest():
     q = quarter_figures(meta, xml)
     assert q["revenue"] == 100, f"picked the wrong context: {q}"
     assert q["net_profit"] == 10
+    # quality fields follow the SAME quarter-matching discipline
+    assert q["other_income"] == 4, q
+    assert "finance_cost" not in q, "the YTD finance cost leaked into Q"
+    # and the balance sheet attaches only at the filing's own instant
+    assert q["inventories"] == 55 and q["receivables"] == 77, q
+    assert parse_instants(xml) == {
+        "2024-12-31": {"inventories": 55.0, "receivables": 77.0}}
+    # annual cash flow: the FULL-YEAR span wins over same-date shorter ones
+    fy = pick_fy_span(parse_xbrl(xml), _dt("31-Dec-2024"))
+    assert fy["ocf"] == 500, fy
+    assert pick_fy_span(parse_xbrl(xml), _dt("31-Mar-2020")) == {}, \
+        "a year with no context must yield nothing, never the nearest"
+    assert quarter_figures({"fromDate": "01-Jan-2020", "toDate": "31-Mar-2020"},
+                           xml) == {}, "a stale balance sheet leaked"
 
     # a filing whose dates match nothing yields nothing, never a stale guess
     assert quarter_figures({"fromDate": "01-Jan-2020", "toDate": "31-Mar-2020"}, xml) == {}
@@ -339,6 +434,8 @@ def backfill(symbols, start=None, end=None, workers=6, log=print):
 # --- parsed cache + as-of timeline ----------------------------------------
 
 PARSED = RAW / "parsed"
+PARSED_ANNUAL = RAW / "parsed_annual"
+INDEX_ANNUAL_DIR = RAW / "index_annual"
 
 
 def build_parsed(symbol, force=False) -> list:
@@ -374,6 +471,75 @@ def build_parsed(symbol, force=False) -> list:
 def timeline(symbol):
     """Cached as-of timeline, or [] if never built."""
     p = PARSED / f"{symbol}.json"
+    return json.loads(p.read_text()) if p.exists() else []
+
+
+def pick_fy_span(parsed: dict, year_end):
+    """-> fields of the LONGEST context ending on `year_end`.
+
+    Annual XBRL carries half-year and quarter spans that share the fiscal
+    year-end date; the cash-flow statement belongs to the FULL year. Longest
+    span wins is a rule about the construct (annual flow), fixed before any
+    spread was measured -- not a tunable.
+    """
+    best, best_days = {}, -1
+    for (sd, ed), fields in parsed.items():
+        try:
+            d_ed = datetime.strptime(ed, "%Y-%m-%d").date()
+            d_sd = datetime.strptime(sd, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if d_ed != year_end:
+            continue
+        days = (d_ed - d_sd).days
+        if days > best_days:
+            best, best_days = fields, days
+    return best
+
+
+def build_parsed_annual(symbol, force=False) -> list:
+    """Annual-filing timeline -> [{visible_from, year_end, ocf, ...}].
+
+    Reads bytes harvested into xbrl_annual/ plus the broadcast-dated index
+    written by backfill_annual.py. Deliberately SEPARATE from the quarterly
+    timeline: features_asof counts rows in QUARTERS, and interleaving annual
+    rows would silently corrupt every growth feature built on that arithmetic.
+    """
+    out = PARSED_ANNUAL / f"{symbol}.json"
+    if out.exists() and not force:
+        return json.loads(out.read_text())
+    idx_path = INDEX_ANNUAL_DIR / f"{symbol}.json"
+    if not idx_path.exists():
+        return []
+    rows = []
+    for m in json.loads(idx_path.read_text()):
+        p = RAW / "xbrl_annual" / symbol / f"{m['quarter_end']}.xml"
+        if not p.exists():
+            continue
+        qe = _dt(m["quarter_end"])
+        if qe is None:
+            continue
+        try:
+            fig = pick_fy_span(parse_xbrl(p.read_bytes()), qe)
+        except Exception:
+            continue
+        if fig.get("ocf") is None:
+            continue
+        row = {"visible_from": m["visible_from"], "year_end": m["quarter_end"],
+               "ocf": fig["ocf"]}
+        for k in ("revenue", "net_profit"):
+            if fig.get(k) is not None:
+                row[k] = fig[k]
+        rows.append(row)
+    rows.sort(key=lambda r: r["visible_from"])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rows))
+    return rows
+
+
+def timeline_annual(symbol):
+    """Cached ANNUAL as-of timeline, or [] if never built."""
+    p = PARSED_ANNUAL / f"{symbol}.json"
     return json.loads(p.read_text()) if p.exists() else []
 
 
@@ -455,6 +621,17 @@ if __name__ == "__main__":
             if n % 250 == 0:
                 print(f"  parsed {n}  with data {ok}", flush=True)
         print(f"done: {ok}/{n} symbols have parsed fundamentals")
+    elif "--parse-annual" in sys.argv:
+        import features
+        corpus = features.load_corpus()
+        n = ok = 0
+        for sym in sorted(corpus):
+            n += 1
+            if build_parsed_annual(sym):
+                ok += 1
+            if n % 250 == 0:
+                print(f"  annual {n}  with ocf {ok}", flush=True)
+        print(f"done: {ok}/{n} symbols have annual ocf timelines")
     elif "--backfill" in sys.argv:
         import features
         from datetime import date

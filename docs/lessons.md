@@ -3218,3 +3218,170 @@ the incumbent trigger. The one thing this review added beyond four negatives
 is the measured null for the tightening confound (four coin arms) and a
 single forward-looking lead (structure), which starts from zero evidence by
 construction.
+
+## L78 — The loss taxonomy: one resolved description, zero adoptable rules
+
+Origin: RakshaQuant (an NSE paper-trading project built on LangGraph agents)
+classifies closed trades into "lessons" and injects them into LLM prompts.
+The injection is unmeasurable by construction and was rejected as such; the
+deterministic core of the idea was worth one pre-registered question — if
+losses cluster in conditions observable BEFORE the fill, a rule shape exists
+that this score cannot see. Two hypotheses were named, with mechanisms and
+signs, before any run (`src/research/loss_taxonomy_test.py`, batch
+20260826-lossclass). Closed trades gained an `entry_day` field for this
+(simulate.py records it now; money logic untouched, baseline reproduced).
+
+Sample discipline: the live book alone is n=194 and can resolve almost
+nothing, so the study pre-registered a power harvest — offsets 0..5, six
+disjoint rank cohorts (the rank_test mechanism), 1,060 joined trades, every
+harvest statistic computed on returns DEMEANED WITHIN COHORT so the known
+rank-depth slope could not masquerade as a feature effect.
+
+**H1, market breadth at entry (regime mismatch): NOT ESTABLISHED.**
+On the live book it resolved exactly as the mechanism predicted (+6.21%/trade
+top-vs-bottom breadth tercile, +/-2.79, t=+2.22; slope t=+2.30) — and then
+DIED on the five-times-larger harvest (gap +1.51%, t=+1.33; slope t=+1.56)
+and in every regime block (t between -0.56 and +0.30). A small sample that
+resolves what a large sample cannot is the signature of a lucky draw across
+the many looks taken, not of a weak-but-real effect. Nothing proposed; nearby
+definitions (other windows, other denominators) must not be tried either —
+that would be the noise search this file keeps warning about.
+
+**H2, fill premium (paying the overnight extension): RESOLVED as a spread,
+and it earned its one follow-up.** Per-trade return falls as the fill open
+sits further above the signal close: harvest top-bottom tercile -3.71%
++/-1.17, t=-3.18 (n=1,060); resolved inside micro (slope t=-2.02, gap
+t=-2.79) and in the two outer blocks (2019-21 t=-2.58, 2024-26 t=-3.45);
+null in small caps. Median fill pays +1.20%; the top third pays more than
++2.29%. The threshold was frozen from that distribution and ONE rule-shape
+test was registered (`premium_skip_test.py`, batch 20260826-premskip):
+refuse entries whose fill open exceeds +2.29% over the signal close.
+
+| arm (batch 20260826-premskip) | CAGR | maxDD | win | n | per-trade |
+|---|---|---|---|---|---|
+| baseline (live rules) | +2.18% | 32.5% | 45% | 194 | +1.01% +/- 1.12% |
+| skip premium > +2.29% | +4.03% | 29.2% | 49% | 149 | +1.78% +/- 1.30% |
+
+Variant minus control: +0.78%/trade +/- 1.72, **t=+0.45 — inside the noise**;
+promotion bar NOT cleared (CAGR 4.03 < 5); occupancy fell 3.14 -> 2.13 seats,
+full-book sessions 15% -> 7%. ENDPOINT honoured: NULL RESULT, rule dropped,
+nothing adopted.
+
+The lesson is the second instance of a pattern rs 1.5 taught first: a
+univariate spread that clears its error bar on a harvested sample is a fact
+about the distribution of trades, not about a rule the bucket can execute.
+Turning H2 into a filter cost a third of the book's entries and produced a
+gap smaller than its own standard error at live-book n. What survives is the
+DESCRIPTION — fills that pay >~2.3% overnight extension are systematically
+worse (-3.7%/trade) — recorded here so that if forward trades ever accumulate
+around such fills, THIS is where a fresh pre-registration would start, from
+zero adopted evidence, same as the structure lead in L77.
+
+Also recorded for honesty: breadth at entry resolving only in the small
+sample is a reminder that the PRIMARY book (n~194) resolves almost nothing
+by itself, and any future "resolved on offset 0" claim should be presumed
+lucky until a harvest reproduces it.
+
+## L79 — The earnings-quality family: measured null where testable, enabled where it wasn't
+
+Follow-on from L78's protocol, pointed at the checklist the
+fundamental-analysis plugin sells: accounting quality. Three things happened
+in order, and only the third changed any belief.
+
+**The pipeline came back to life.** `data/fundamentals/` held only a 229-symbol
+index -- no XBRL bytes, no parsed timelines -- so the score's fundamentals
+component had been silently neutral-by-absence. Rebuilt: 40,802 quarterly
+filings downloaded, **2,081/2,404 symbols parsed**, coverage of the tradeable
+clusters micro 96% / small 91%. Parser extended the same day (recording only,
+selftested): OtherIncome / ExceptionalItems / FinanceCosts /
+ProfitBeforeExceptionalItemsAndTax at 100% filing coverage, plus instant-context
+balance-sheet facts (`fundamentals.parse_instants`; Inventories 98%,
+TradeReceivables 38%).
+
+**Both pre-registered quality hypotheses died at their endpoints**
+(batch 20260826-quality, six-cohort demeaned harvest per L78):
+
+| hypothesis | powered n | result | verdict |
+|---|---|---|---|
+| H1 other-income share (expect negative slope) | 630 | slope t=+0.29, tercile gap +0.67% +/-1.42, t=+0.47 | NULL — wrong sign, no spread |
+| H2 inventory divergence vs revenue | 102 | below the pre-registered 300 floor | UNDERPOWERED — does not count |
+
+H1's feature distribution is extreme (top tercile averages 48% of revenue as
+other income) and still carries zero return information at this horizon.
+H2 could not even reach its power floor: needing inventories visible in both
+the current and year-ago quarter left 10% of trades. Endpoint honoured:
+nothing adopted, no nearby definitions will be tried.
+
+**"Cash flow is impossible" was true only of the source I had scanned.** The
+quarterly results feed carries cash-flow statements in 0% of filings -- but the
+operator pointed at NSE's XBRL ecosystem (NEAPS dashboard exports it to Excel),
+and the check that mattered was cheaper than the dashboard: the ANNUAL results
+feed carries complete Ind-AS cash-flow statements as raw XBRL
+(CashFlowsFromUsedInOperatingActivities et al., verified in live samples).
+`backfill_annual.py` now harvests those bytes resumably into
+xbrl_annual/. The accruals family (OCF-vs-NI) is therefore POSSIBLE after all
+-- annual frequency, broadcast-dated like everything else -- and if it is ever
+measured, it gets its own pre-registration under the same endpoints, not a
+retrofitted claim.
+
+Standing rule reinforced: an impossibility verdict is scoped to the feed
+actually probed, and a pointer from the operator is worth one cheap decisive
+test before it earns either adoption or rejection.
+
+## L80 — Accruals are unmeasurable from NSE XBRL: the annual tag exists but its context dates do not
+
+Closed the arc L79 opened when the operator pointed at NEAPS's XBRL Dashboard
+("you can get cash-flow statements as Excel"). The pointer was worth the check
+it prompted, and the check killed the construct it was meant to enable -- which
+is exactly how the discipline is supposed to work.
+
+**Quarterly feed: still 0%.** The scheduled quarterly results XBRL carries no
+cash-flow statement in any of 400 randomly sampled filings -- not a coverage
+quirk, a reporting-requirement fact. The accruals family cannot be built there.
+
+**Annual feed: present but undatable.** The annual results feed DOES carry
+`CashFlowsFromUsedInOperatingActivities` and siblings (52% of 250 sampled files
+have an OCF fact; 48% have none). But 0 of 250 carry that fact in a
+genuinely full-year-dated span (>=300 days). RELIANCE FY24 is the exemplar
+that makes the problem concrete rather than statistical: its annual filing
+reports FY-sized OCF (Rs 1,58,788 cr -- its known full-year operating cash
+flow) inside a Jan-Mar quarter-dated context, in the SAME file where revenue
+(2.41 lakh cr) and net profit are genuinely Q4-scale. Value says FY, context
+says Q4, P&L facts beside it say Q4 -- no mechanical rule can tell which
+construct a number belongs to, and taking "longest span" still returns the
+91-day Q4 context here because it is the ONLY span.
+
+No winsorization, threshold or cross-check fixes that: summing four quarters
+fails (quarterly files have NO OCF to sum), filtering on revenue/OCF ratios
+admits both the mislabeled FY value and true quarter values, and the defect is
+in the submitters' tagging, not our download path. The NEAPS dashboard's
+XBRL->Excel export renders the SAME instances -- conversion does not re-date
+them.
+
+`parse_xbrl` was extended with `parse_instants` and `pick_fy_span` (longest
+span wins, frozen before any spread was seen), four quarterly quality fields
+plus OCF added to `WANTED`, the pipeline re-harvested 6,952 annual filings
+(indexes persisted as `index_annual/` for offline parsing) and built annual
+timelines -- then the study refused to run on its own output:
+
+`accrual_spread_test.py` (batch 20260826-accrual) now opens with a
+feasibility gate `source_usable(xbrl_annual, k=30, need=0.5)` that samples
+real harvested bytes and demands >=50% of them carry OCF in a full-year span.
+Measured on the live harvest: **0 of 250**. `main()` raises
+
+    SOURCE UNUSABLE (L80): annual-feed OCF is not full-year dated (0/250 files)
+
+and exits before any slope is computed. Its own `_selftest` covers the gate
+(synthetic FY vs short-HY fixtures, threshold logic), the 550-day freshness
+window, and visibility cutoffs, so the gate cannot be read as a status message
+that does nothing.
+
+Endpoint honoured without a number: the accruals hypothesis (Sloan scaled by
+revenue, since total assets are absent from these filings) was pre-registered
+with a single directional prediction, power floor 300 and both-slope-and-gap
+bar -- and it never reaches its `n` because its input cannot be dated. Recorded
+as a closure of the family FROM THIS SOURCE, not of accruals in general.
+A vendor or screener-grade dataset that dates its cash flows is the only lever
+left; quarterly growth in `OtherIncome` share (L79 H1: 100% coverage, powered
+NULL at n=630) already says the earnings-quality signal that IS dateable
+carries no return at this horizon.

@@ -12,7 +12,9 @@ INSERT INTO "pos" VALUES(5,'SAHYADRI','micro','closed','2026-08-17','2026-08-18'
 INSERT INTO "pos" VALUES(6,'VCL','micro','void','2026-08-19',NULL,NULL,23195,1.75,2.33,'2026-08-19',NULL,'void: the 2026-08-19 trigger bar was an upper circuit lock (O=H=L=C 1.94, +4.86%, 129 trades, 9 of the last 20 bars locked). The breakout high IS the price band, and at an upper lock there are no sellers, so the next-open fill this order assumes cannot be got. engine.gate() has always rejected high==low but nothing called it; the guard now lives in selection.build and VCL is no longer triggered.',NULL,NULL,NULL,'main',NULL);
 INSERT INTO "pos" VALUES(7,'KENNAMET','small','open','2026-08-21','2026-08-24',4048.0,11,3.643200000000000273e+03,4.857599999999999454e+03,NULL,NULL,NULL,NULL,NULL,'confirmed','pooled',NULL);
 INSERT INTO "pos" VALUES(8,'ARCHIDPLY','micro','open','2026-08-24','2026-08-25',116.5,397,1.048500000000000086e+02,1.397999999999999829e+02,NULL,NULL,NULL,NULL,NULL,'confirmed','main',NULL);
-INSERT INTO "pos" VALUES(9,'WELENT','small','open','2026-08-25','2026-08-26',662.0,68,5.958000000000000683e+02,794.4,NULL,NULL,NULL,NULL,NULL,'live:upstox','pooled',NULL);
+INSERT INTO "pos" VALUES(9,'WELENT','small','open','2026-08-25','2026-08-26',662.0,68,5.958000000000000683e+02,794.4,NULL,NULL,NULL,NULL,NULL,'confirmed','pooled',NULL);
+INSERT INTO "pos" VALUES(10,'WELENT','small','pending','2026-08-26',NULL,NULL,63,623.57,831.42,NULL,NULL,NULL,NULL,NULL,NULL,'main',NULL);
+INSERT INTO "pos" VALUES(11,'SOMANYCERA','small','pending','2026-08-26',NULL,NULL,80,502.61,670.14,NULL,NULL,NULL,NULL,NULL,NULL,'pooled',NULL);
 CREATE TABLE pos_log(
       seq INTEGER PRIMARY KEY,
       at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -34,6 +36,9 @@ INSERT INTO "pos_log" VALUES(14,'2026-08-25 05:05:04',8,'update','{"id":8,"symbo
 INSERT INTO "pos_log" VALUES(15,'2026-08-25 12:43:15',8,'update','{"id":8,"symbol":"ARCHIDPLY","cluster":"micro","status":"open","queued_on":"2026-08-24","entry_day":"2026-08-25","entry_px":116.5,"qty":397,"stop":104.85,"target":139.8,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"confirmed","bucket":"main","origin":null}');
 INSERT INTO "pos_log" VALUES(16,'2026-08-25 12:43:15',9,'insert','{"id":9,"symbol":"WELENT","cluster":"small","status":"pending","queued_on":"2026-08-25","entry_day":null,"entry_px":null,"qty":68,"stop":594.9,"target":793.2,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":null,"bucket":"pooled","origin":null}');
 INSERT INTO "pos_log" VALUES(17,'2026-08-26 06:29:16',9,'update','{"id":9,"symbol":"WELENT","cluster":"small","status":"open","queued_on":"2026-08-25","entry_day":"2026-08-26","entry_px":662.0,"qty":68,"stop":595.8,"target":794.4,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"live:upstox","bucket":"pooled","origin":null}');
+INSERT INTO "pos_log" VALUES(18,'2026-08-26 12:40:24',9,'update','{"id":9,"symbol":"WELENT","cluster":"small","status":"open","queued_on":"2026-08-25","entry_day":"2026-08-26","entry_px":662.0,"qty":68,"stop":595.8,"target":794.4,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"confirmed","bucket":"pooled","origin":null}');
+INSERT INTO "pos_log" VALUES(19,'2026-08-26 12:40:24',10,'insert','{"id":10,"symbol":"WELENT","cluster":"small","status":"pending","queued_on":"2026-08-26","entry_day":null,"entry_px":null,"qty":63,"stop":623.57,"target":831.42,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":null,"bucket":"main","origin":null}');
+INSERT INTO "pos_log" VALUES(20,'2026-08-26 12:40:24',11,'insert','{"id":11,"symbol":"SOMANYCERA","cluster":"small","status":"pending","queued_on":"2026-08-26","entry_day":null,"entry_px":null,"qty":80,"stop":502.61,"target":670.14,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":null,"bucket":"pooled","origin":null}');
 CREATE INDEX ix_pos_status ON pos(status);
 CREATE TRIGGER pos_no_delete BEFORE DELETE ON pos BEGIN
       SELECT RAISE(ABORT,

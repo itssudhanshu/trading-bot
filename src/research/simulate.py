@@ -167,7 +167,8 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                                    "cost_pct": _cost / _buy * 100,
                                    "imp": p.get("imp_in", 0.0) + _imp,
                                    "pid": p["pid"], "net": _net, "buy": _buy,
-                                   "held": held, "stop_dist": p.get("stop_dist")})
+                                   "held": held, "stop_dist": p.get("stop_dist"),
+                                   "entry_day": p["entry_day"]})
                     p["qty"] -= sold
                 if p["qty"] < 1:
                     continue
@@ -209,7 +210,8 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                            "cost_pct": cost / buy_val * 100,
                            "imp": p.get("imp_in", 0.0) + imp_out,
                            "pid": p["pid"], "net": net, "buy": buy_val,
-                           "stop_dist": p.get("stop_dist"), "held": held})
+                           "stop_dist": p.get("stop_dist"), "held": held,
+                           "entry_day": p["entry_day"]})
         open_pos = still
         occupancy.append(len(open_pos))
         # Settle the previous year's tax after 31 March, on net gains only.
