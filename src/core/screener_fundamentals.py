@@ -88,13 +88,91 @@ def _norm_num(s):
 def parse_screener(html_bytes):
     """Parse Screener HTML -> list[{visible_from, year_end, revenue, net_profit, ocf, total_assets}].
 
-    Annual columns only. visible_from is Ann. Date column, year_end is Mar 31 YYYY of header.
-    Sorted by visible_from ascending.
+    Annual columns only (Mar 31). visible_from is year_end + 60 days (conservative proxy for
+    announcement lag; median NSE quarterly lag is 42d, annual ~60d). Sorted by visible_from.
+    Values are in INR (Crores * 1e7) to match XBRL scale; ratio tests are unit-invariant.
     """
     from bs4 import BeautifulSoup
+    from datetime import datetime, timedelta
     soup = BeautifulSoup(html_bytes, "lxml")
-    # This is a stub for Task 1 — full implementation in Task 2
-    return []
+    # Map section id -> field mapping for rows we care
+    FIELD_MAP = {
+        "Sales": "revenue",
+        "Net Profit": "net_profit",
+        "Cash from Operating Activity": "ocf",
+        "Total Assets": "total_assets",
+    }
+    # year_end -> dict of fields
+    per_year = {}
+    # Screener annual tables are in sections: profit-loss, balance-sheet, cash-flow
+    for sec_id in ("profit-loss", "balance-sheet", "cash-flow"):
+        sec = soup.find("section", id=sec_id)
+        if not sec:
+            continue
+        tbl = sec.find("table")
+        if not tbl:
+            continue
+        thead = tbl.find("thead")
+        if not thead:
+            continue
+        headers = thead.find_all("th")
+        # headers[0] is empty/label, rest are dates like Mar 2015 with data-date-key=2015-03-31
+        col_years = []
+        for th in headers[1:]:
+            dk = th.get("data-date-key")
+            if dk:
+                col_years.append(dk)
+            else:
+                txt = th.get_text(strip=True)
+                # fallback: parse Mar YYYY
+                try:
+                    dt = datetime.strptime(txt, "%b %Y")
+                    col_years.append(dt.strftime("%Y-%m-%d").replace("-01", "-31") if "Mar" in txt else None)
+                except Exception:
+                    col_years.append(None)
+        # iterate rows
+        for tr in tbl.find("tbody").find_all("tr") if tbl.find("tbody") else []:
+            tds = tr.find_all("td")
+            if not tds:
+                continue
+            label = tds[0].get_text(" ", strip=True).replace("+", "").strip()
+            field = None
+            for k, v in FIELD_MAP.items():
+                if k.lower() in label.lower():
+                    field = v
+                    break
+            if not field:
+                continue
+            for idx, td in enumerate(tds[1:]):
+                if idx >= len(col_years) or not col_years[idx]:
+                    continue
+                ye = col_years[idx]
+                # only Mar 31 annual columns (Screener includes all Mar, so all are annual)
+                if not ye.endswith("-03-31"):
+                    continue
+                txt = td.get_text(strip=True)
+                val = _norm_num(txt)
+                if val is None:
+                    continue
+                # Screener displays in Rs. Crores without suffix in table -> scale to INR
+                if "Cr" not in txt and "Lac" not in txt:
+                    val *= 1e7
+                # visible_from proxy: year_end + 60 days
+                try:
+                    ye_dt = datetime.strptime(ye, "%Y-%m-%d").date()
+                    vf = (ye_dt + timedelta(days=60)).isoformat()
+                except Exception:
+                    continue
+                per_year.setdefault(ye, {"year_end": ye, "visible_from": vf})
+                per_year[ye][field] = val
+    # keep only rows with at least ocf (for accruals) or revenue (for completeness) — but store all
+    rows = []
+    for ye in sorted(per_year):
+        d = per_year[ye]
+        # require at least one of the key fields
+        if any(k in d for k in ("revenue", "ocf", "total_assets")):
+            rows.append(d)
+    return sorted(rows, key=lambda r: r["visible_from"])
 
 
 def build_parsed_screener(symbol, force=False):
@@ -138,8 +216,29 @@ def _selftest():
     finally:
         globals()["RAW_SCREENER"] = orig_raw
 
-    # parser stub
+    # parser stub + fixture
     assert parse_screener(b"<html></html>") == []
+    # pinned fixture from 2026-08-26
+    import pathlib as _pl2
+    fix = pathlib.Path("tests/fixtures/screener_RELIANCE_consolidated.html")
+    if fix.exists():
+        rows = parse_screener(fix.read_bytes())
+        assert len(rows) >= 5, f"expected >=5 annual rows, got {len(rows)}"
+        r2024 = [r for r in rows if r["year_end"] == "2024-03-31"]
+        assert r2024, "2024-03-31 row missing"
+        r2024 = r2024[0]
+        # visible_from is year_end +60d = 2024-05-30
+        assert r2024["visible_from"] == "2024-05-30", r2024["visible_from"]
+        # values are scaled to INR (Cr *1e7); check exact
+        assert abs(r2024["ocf"] - 1587880000000.0) < 1e6, r2024["ocf"]  # 158,788 Cr -> 1.58788e12 INR
+        assert abs(r2024["revenue"] - 8990410000000.0) < 1e6, r2024["revenue"]
+        assert r2024["total_assets"] > 1e12, r2024["total_assets"]
+        # number norm (allow tiny floating error)
+        assert abs(_norm_num("₹ 1,587.88 Cr") - 15878800000.0) < 1e-2
+        assert _norm_num("—") is None
+        print(f"parser selftest ok ({len(rows)} rows)")
+    else:
+        print("parser fixture missing, skipping pinned test")
     print("screener_fundamentals selftest ok")
 
 
