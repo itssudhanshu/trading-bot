@@ -298,7 +298,8 @@ def coin(s, i):
 
     Exists to price the mechanical tailwind every tighter gate earns through
     rank depth. No adoption path; raises if the rate was never set so it can
-    never silently run wide open or fully shut.
+    never silently run wide open or fully shut. The research test that needs
+    it sets the rate from firing counts only.
     """
     if P_COIN is None:
         raise RuntimeError("coin rate unset -- candle_test sets it from rates")
@@ -309,6 +310,68 @@ candle_strong_close = _gated(strong_close)
 candle_engulf = _gated(engulf)
 candle_inside = _gated(inside_break)
 candle_three_push = _gated(three_push)
+
+
+# --- H14: fair-value gaps around the breakout ---------------------------------
+# PRE-REGISTERED 2026-08-26, frozen in this commit BEFORE any return was
+# computed against any arm below. Second family from the operator's
+# chart-pattern review that H5/H13 had not touched.
+#
+# A bullish fair-value gap (FVG) is a three-bar imbalance: the signal bar's
+# low sits entirely ABOVE the high two bars back, so the impulse bar between
+# them left a zone no one traded. Three readings exist and all are run:
+#   fvg          the break itself completes a fresh gap -- the urgency claim
+#   fvg_recent   an UNFILLED gap exists inside the window -- lingering support
+#   gap_fill     a recent gap was REVISITED before today's break -- the
+#                literature's own entry ("price returns to fill the gap"),
+#                adapted as a gate on the live trigger rather than a
+#                standalone mean-reversion buy this book cannot make
+#
+# `fvg` is the PRIMARY because it is one clause with no window parameter;
+# the two windowed arms carry an extra frozen choice (FVG_WINDOW=5) each and
+# take description only. `coin` prices the tightening confound again -- H14
+# runs it because it costs nothing, whatever it read last time (L74: ~zero).
+
+FVG_WINDOW = 5
+
+
+def fvg_bull(s, i):
+    """Bullish FVG completing on bar i: low[i] entirely above high[i-2]."""
+    if i < 2:
+        return False
+    return s.low[i] > s.high[i - 2]
+
+
+def _recent_gap(s, i):
+    """-> the newest j within the window completing a bullish FVG, else None."""
+    for j in range(i, i - FVG_WINDOW, -1):
+        if j >= 2 and fvg_bull(s, j):
+            return j
+    return None
+
+
+def fvg_recent(s, i):
+    """An in-window bullish FVG whose zone has not been traded back into."""
+    j = _recent_gap(s, i)
+    if j is None:
+        return False
+    lid = s.low[j]
+    return all(lo > lid for lo in s.low[j + 1:i + 1])
+
+
+def gap_fill(s, i):
+    """An in-window bullish FVG that WAS revisited, today closing above it."""
+    j = _recent_gap(s, i)
+    if j is None or j == i:
+        return False
+    lid, floor = s.low[j], s.high[j - 2]
+    touched = any(lo <= lid for lo in s.low[j + 1:i + 1])
+    return touched and s.close[i] > floor
+
+
+fvg_gated = _gated(fvg_bull)
+fvg_recent_gated = _gated(fvg_recent)
+gap_fill_gated = _gated(gap_fill)
 
 
 TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
@@ -324,7 +387,11 @@ TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             # mechanism reference and can never be adopted.
             "strong_close": candle_strong_close, "engulf": candle_engulf,
             "inside_break": candle_inside, "three_push": candle_three_push,
-            "coin": coin}
+            "coin": coin,
+            # H14, frozen above. `fvg` carries the adoption path; fvg_recent /
+            # gap_fill are description only.
+            "fvg": fvg_gated, "fvg_recent": fvg_recent_gated,
+            "gap_fill": gap_fill_gated}
 
 
 def _selftest():
@@ -480,8 +547,46 @@ def _selftest():
     finally:
         globals()["P_COIN"] = saved
 
+    # --- H14 fair-value gaps: fire on the imbalance, and ONLY on it -----------
+    bars = [(100, 100.5, 99.5, 100), (101, 104.0, 100.8, 103.5),
+            (104.5, 106.0, 102.0, 105.5)]          # low[2] clears high[0]
+    fv = _mk(bars)
+    _CACHE.clear()
+    assert fvg_bull(fv, 2), "fvg missed a clean three-bar imbalance"
+    assert fvg_recent(fv, 2) and gap_fill(fv, 2) is False, \
+        "a fresh gap is unfilled and cannot yet have been filled"
+
+    bars = [(100, 100.5, 99.5, 100), (101, 102.0, 100.4, 101.5),
+            (101.6, 103.0, 100.2, 102.5)]          # low[2] dips to high[0]
+    fv2 = _mk(bars)
+    assert not fvg_bull(fv2, 2), "fvg fired on overlapping bars"
+
+    # A later bar holding above the gap lid keeps it unfilled; a dip back to
+    # the lid fills it (and closes the fvg_recent case while opening the
+    # gap_fill one).
+    bars = [(100, 100.5, 99.5, 100), (101, 104.0, 100.8, 103.5),
+            (104.5, 106.0, 102.0, 105.5), (105.6, 107.0, 103.0, 106.0)]
+    fv3 = _mk(bars)
+    assert fvg_recent(fv3, 3), "an untouched zone read as filled"
+    assert not gap_fill(fv3, 3), "gap_fill fired with no revisit"
+    bars = [(100, 100.5, 99.5, 100), (101, 104.0, 100.8, 103.5),
+            (104.5, 106.0, 102.0, 105.5), (105.0, 105.8, 101.9, 105.2)]
+    fv4 = _mk(bars)
+    assert not fvg_recent(fv4, 3), "fvg_recent ignored a revisit to the lid"
+    assert gap_fill(fv4, 3), "gap_fill missed a revisit that closed back above"
+
+    # A close below the floor destroys the zone -- neither reading survives.
+    bars = [(100, 100.5, 99.5, 100), (101, 104.0, 100.8, 103.5),
+            (104.5, 106.0, 102.0, 105.5), (104.0, 104.6, 100.2, 100.4)]
+    fv5 = _mk(bars)
+    assert not gap_fill(fv5, 3), "gap_fill accepted a close through the floor"
+
+    # The plain uptrend's bars touch edge to edge; strict inequality means
+    # no FVG -- a detector that fires there matches everything.
+    assert not fvg_bull(s, i), "fvg fired on an edge-touching uptrend"
+
     print("entry selftest ok (H5 detectors fire on their shape, not on a trend;"
-          " H13 candle gates fire on theirs)")
+          " H13/H14 candle and FVG gates fire on theirs)")
 
 
 if __name__ == "__main__":
