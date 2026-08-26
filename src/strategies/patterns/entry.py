@@ -374,6 +374,62 @@ fvg_recent_gated = _gated(fvg_recent)
 gap_fill_gated = _gated(gap_fill)
 
 
+# --- H15: how deep was the pullback that preceded the breakout ----------------
+# PRE-REGISTERED 2026-08-26, frozen in this commit BEFORE any return was
+# computed against any arm below. Third family from the operator's
+# chart-pattern review.
+#
+# The literatures genuinely OPPOSE each other here and both are tested:
+#   Fibonacci practice buys DEEP retracements (61.8% "golden" -- the discount
+#   reading); trend-following practice prefers SHALLOW pullbacks (the
+#   high-tight-flag reading). This book is long-only momentum above a 200-DMA
+#   buying new highs, so the momentum-consistent direction carries the
+#   adoption path: if the deep-discount side won instead, adopting it would
+#   need its own fresh pre-registration, not a quiet swap after seeing data.
+#
+# Depth is mechanical and point-in-time: over PB_WINDOW bars ending at i-1,
+# find the window high H and the deepest low AFTER it; depth = (H - low)/H.
+# The signal bar itself is excluded -- today's breakout pop must not erase
+# the dip it is recovering from. A high on the window's last bar is a pullback
+# of zero: nothing has happened yet to recover from.
+
+PB_WINDOW = 40
+PB_SHALLOW_PCT = 15.0
+PB_DEEP_PCT = 30.0
+
+
+def pullback_pct(s, i):
+    """-> % decline from the trailing-window high to its deepest later low,
+    measured on bars up to i-1; 0.0 when the high is the newest bar."""
+    lo_idx = max(i - PB_WINDOW, 0)
+    hi_val, hi_pos = None, None
+    for k in range(lo_idx, i):
+        if hi_val is None or s.high[k] > hi_val:
+            hi_val, hi_pos = s.high[k], k
+    if hi_val is None or not hi_val:
+        return None
+    after = s.low[hi_pos + 1:i]
+    if not after:
+        return 0.0
+    return (hi_val - min(after)) / hi_val * 100.0
+
+
+def pb_shallow(s, i):
+    """Breakout preceded by only a shallow dip (< PB_SHALLOW_PCT)."""
+    d = pullback_pct(s, i)
+    return d is not None and d < PB_SHALLOW_PCT
+
+
+def pb_deep(s, i):
+    """Breakout preceded by a real flush (>= PB_DEEP_PCT)."""
+    d = pullback_pct(s, i)
+    return d is not None and d >= PB_DEEP_PCT
+
+
+pb_shallow_gated = _gated(pb_shallow)
+pb_deep_gated = _gated(pb_deep)
+
+
 TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             "not_overbought": not_overbought, "rsi_band": rsi_band,
             "pullback": pullback, "vol+breakout": vol_and_breakout,
@@ -391,7 +447,11 @@ TRIGGERS = {"none": none, "volume": volume, "breakout": breakout,
             # H14, frozen above. `fvg` carries the adoption path; fvg_recent /
             # gap_fill are description only.
             "fvg": fvg_gated, "fvg_recent": fvg_recent_gated,
-            "gap_fill": gap_fill_gated}
+            "gap_fill": gap_fill_gated,
+            # H15, frozen above. `pb_shallow` carries the adoption path (the
+            # momentum-consistent direction); pb_deep is the OPPOSING
+            # literature, description only.
+            "pb_shallow": pb_shallow_gated, "pb_deep": pb_deep_gated}
 
 
 def _selftest():
@@ -585,8 +645,54 @@ def _selftest():
     # no FVG -- a detector that fires there matches everything.
     assert not fvg_bull(s, i), "fvg fired on an edge-touching uptrend"
 
+    # --- H15 pullback depth ---------------------------------------------------
+    # Shallow: rise to 100.5, dip ~8%, break out. The dip must read as depth,
+    # so the window high must sit BEFORE the dip bars.
+    def _rise(start, n):
+        return [(start + k, start + k + 0.5, start + k - 0.5, start + k)
+                for k in range(n)]
+
+    bars = [(95, 95.5, 94.5, 95) for _ in range(8)]          # base, h=95.5
+    bars += _rise(96, 5)                                      # h ends 100.5
+    bars += [(99, 99.4, 92.4, 99.2),                          # dip: low 92.4
+             (99.2, 99.6, 92.6, 99.4),
+             (99.4, 99.8, 92.8, 99.6)]
+    sh = _mk(bars)
+    j = len(bars)
+    sh.open.append(101); sh.high.append(102); sh.low.append(100.9)
+    sh.close.append(101.5); sh.volume.append(1000)
+    sh.turnover.append(1e6); sh.deliv_pct.append(50.0)
+    _CACHE.clear()
+    assert abs(pullback_pct(sh, j) - (100.5 - 92.4) / 100.5 * 100) < 1e-9, \
+        "depth is not measured off the window high"
+    assert pb_shallow(sh, j), "shallow rejected an ~8% dip"
+    assert not pb_deep(sh, j), "deep accepted an ~8% dip"
+
+    # Deep: same frame, the dip runs to 64 (~36%).
+    bars = [(95, 95.5, 94.5, 95) for _ in range(8)]
+    bars += _rise(96, 5)
+    bars += [(99, 99.4, 84.0, 99.0),
+             (98, 98.4, 74.0, 98.0),
+             (90, 90.4, 64.0, 90.0),
+             (89, 89.4, 88.0, 89.0),
+             (89.2, 89.8, 88.2, 89.5)]
+    dp = _mk(bars)
+    j = len(bars)
+    dp.open.append(101); dp.high.append(102); dp.low.append(100.9)
+    dp.close.append(101.5); dp.volume.append(1000)
+    dp.turnover.append(1e6); dp.deliv_pct.append(50.0)
+    _CACHE.clear()
+    assert abs(pullback_pct(dp, j) - (100.5 - 64.0) / 100.5 * 100) < 1e-9
+    assert pb_deep(dp, j), "deep rejected a ~36% flush"
+    assert not pb_shallow(dp, j), "shallow accepted a ~36% flush"
+
+    # A monotonic uptrend has its window high on the newest bar: no pullback
+    # exists yet, which IS the extreme shallow case, never the deep one.
+    assert pullback_pct(s, i) == 0.0
+    assert pb_shallow(s, i) and not pb_deep(s, i)
+
     print("entry selftest ok (H5 detectors fire on their shape, not on a trend;"
-          " H13/H14 candle and FVG gates fire on theirs)")
+          " H13-H15 candle/FVG/pullback gates fire on theirs)")
 
 
 if __name__ == "__main__":
