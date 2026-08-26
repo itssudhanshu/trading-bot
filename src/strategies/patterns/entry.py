@@ -400,11 +400,13 @@ PB_DEEP_PCT = 30.0
 
 def pullback_pct(s, i):
     """-> % decline from the trailing-window high to its deepest later low,
-    measured on bars up to i-1; 0.0 when the high is the newest bar."""
+    measured on bars up to i-1; 0.0 when the high is the newest bar. Equal
+    highs resolve to the MOST RECENT touch: a flat top is no pullback yet,
+    not a whole base of dipping."""
     lo_idx = max(i - PB_WINDOW, 0)
     hi_val, hi_pos = None, None
     for k in range(lo_idx, i):
-        if hi_val is None or s.high[k] > hi_val:
+        if hi_val is None or s.high[k] >= hi_val:
             hi_val, hi_pos = s.high[k], k
     if hi_val is None or not hi_val:
         return None
@@ -690,6 +692,12 @@ def _selftest():
     # exists yet, which IS the extreme shallow case, never the deep one.
     assert pullback_pct(s, i) == 0.0
     assert pb_shallow(s, i) and not pb_deep(s, i)
+
+    # Equal-high ties resolve to the most recent touch, so a flat top is no
+    # pullback rather than a base-sized dip.
+    fl = _mk([(95, 95.5, 94.5, 95)] * 30)
+    _CACHE.clear()
+    assert pullback_pct(fl, 29) == 0.0
 
     print("entry selftest ok (H5 detectors fire on their shape, not on a trend;"
           " H13-H15 candle/FVG/pullback gates fire on theirs)")
