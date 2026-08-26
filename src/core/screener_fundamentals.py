@@ -239,6 +239,30 @@ def _selftest():
         print(f"parser selftest ok ({len(rows)} rows)")
     else:
         print("parser fixture missing, skipping pinned test")
+
+    # cache builder + timeline API
+    orig_parsed = PARSED_SCREENER
+    orig_parse = parse_screener
+    tmp2 = pathlib.Path(tempfile.mkdtemp())
+    globals()["PARSED_SCREENER"] = tmp2
+    try:
+        # use same tmp raw dir from fetcher test? recreate
+        tmp_raw = pathlib.Path(tempfile.mkdtemp())
+        globals()["RAW_SCREENER"] = tmp_raw
+        globals()["parse_screener"] = lambda b: [{"visible_from": "2024-05-17", "year_end": "2024-03-31", "ocf": 1.0, "revenue": 10.0}]
+        (tmp_raw / "FAKE.html").write_bytes(b"fake")
+        rows2 = build_parsed_screener("FAKE")
+        assert rows2[0]["ocf"] == 1.0, rows2
+        assert timeline_annual_screener("FAKE")[0]["visible_from"] == "2024-05-17"
+        # second call without force should hit cache (no re-parse)
+        globals()["parse_screener"] = lambda b: (_ for _ in ()).throw(RuntimeError("should not be called"))
+        rows3 = build_parsed_screener("FAKE")
+        assert rows3[0]["ocf"] == 1.0
+        print("cache selftest ok")
+    finally:
+        globals()["PARSED_SCREENER"] = orig_parsed
+        globals()["RAW_SCREENER"] = orig_raw
+        globals()["parse_screener"] = orig_parse
     print("screener_fundamentals selftest ok")
 
 
