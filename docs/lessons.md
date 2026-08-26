@@ -3051,3 +3051,51 @@ Candidate family status after H13: of the four untouched price-action ideas,
 candlestick gates are now CLOSED (this lesson). Still genuinely untested:
 fair-value gaps (3-bar OHLC imbalance), pullback retracement depth, swing
 structure features. Each needs its own freeze-then-register cycle.
+
+---
+
+## L75 — H14: fair-value gaps around the breakout are noise too, and half of every breakout already has one
+
+**Pre-registered** (`src/research/fvg_test.py`, batch 20260826-fvg-h14) after
+the detectors were frozen in their own commit (c9ef1bfb). Second family from
+the operator's chart-pattern review. A bullish FVG completes when the signal
+bar's low sits entirely above the high two bars back. Three readings ran as
+gates on the live breakout: `fvg` (the break leaves a fresh imbalance — the
+primary), `fvg_recent` (an unfilled zone within 5 bars), `gap_fill` (a recent
+zone WAS revisited before today's close — the literature's own entry,
+adapted from standalone mean-reversion, which this book cannot trade).
+
+| arm | CAGR | maxDD | n | per trade | vs breakout | t |
+|---|---|---|---|---|---|---|
+| **breakout (control)** | **+2.18** | **32.5** | **194** | **+1.01%** | -- | -- |
+| fvg (primary) | −0.52 | 35.7 | 163 | +0.25% | −0.75% ± 1.58 | **−0.48** |
+| fvg_recent | +1.50 | 29.5 | 163 | +0.88% | −0.13% | −0.07 |
+| gap_fill | +0.95 | 6.1 | 28 | +1.91% | +0.91% | +0.32 |
+| coin (mechanism ref) | +1.34 | 25.1 | 121 | +0.99% | −0.02% | −0.01 |
+
+Bar was |t| ≥ 2.6. **DO NOT ADOPT**: the primary fails condition 1 (t −0.48)
+AND condition 2 — it does not beat the coin at matched tightness (−0.75% vs
+−0.02%). TRIGGER stays `breakout`.
+
+What is worth keeping:
+
+1. **A fresh FVG accompanies over half of all breakouts (54.0%) and gating on
+   it trends NEGATIVE.** The urgency reading has no support here. Same shape
+   of fact as H13's strong_close at 83.4%: the canonical price-action
+   "quality" marks are so common at 20-day-high closes that they barely
+   discriminate — and what they remove, they remove without pay.
+2. **The literature's own entry is untestable on daily microcaps.**
+   gap_fill — revisit-then-resume — coincides with a breakout only 12.2% of
+   the time; n=28 at t +0.32 is description, not evidence. Its serene 6.1%
+   drawdown is the L67 lesson again: 28 trades means mostly sitting out, and
+   comfort bought by not trading is available free.
+3. **The tightening confound priced at ~zero for the second time running**
+   (coin −0.02%, t −0.01, at P matched to 54%). Two independent measurements
+   now agree with `occupancy_test.py`'s premise: this trigger chooses among
+   the five names ranking nominated; firing less does not reach shallower.
+   Future gated-trigger tests still run coin — it costs one fork — but the
+   prior going in is now measured twice.
+
+Family status after H14: candlestick gates CLOSED (L74), fair-value gaps
+CLOSED (here). Still genuinely untested from the chart-pattern review:
+pullback retracement depth, swing structure features.

@@ -3,12 +3,13 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-26 — **H13 run and closed** (`src/research/candle_test.py`,
-batch 20260826-candles-h13, L74): candlestick gates on the breakout signal bar
-are inside the noise (strong_close +0.77% ± 1.64, t +0.47; bar was 2.6) — the
-first of the four untouched price-action families from the operator's chart-pattern
-review. TRIGGER stays `breakout`; remaining untested families are fair-value
-gaps, retracement depth and swing structure.
+Last updated: 2026-08-26 — **H13 and H14 run and closed**: the first two of
+four untouched price-action families from the operator's chart-pattern review.
+Candlestick gates on the breakout bar (H13, L74: strong_close +0.77% ± 1.64,
+t +0.47) and fair-value gaps (H14, L75: fvg −0.75% ± 1.58, t −0.48) are both
+inside the noise at bar |t| ≥ 2.6; TRIGGER stays `breakout`. The tightening
+confound has now priced ~zero twice (coin arms). Remaining untested families:
+pullback retracement depth, swing structure.
 
 Previous: 2026-08-25 — **H12 registered** (`src/research/impact_calibrate_test.py`,
 batch 20260825-h12-calibrate): impact calibration off the forward book, the one
@@ -402,6 +403,7 @@ tests) *before* any data was downloaded. See L61.
 | structural exit | +0.33%, t 0.22 | holding 30 days flat gained 4× as much |
 | patterns | +0.43%, t 0.21 | `none` lost 1.97%, so it is not just looseness |
 | candle gates on the signal bar (H13, 2026-08-26) | strong_close +0.77% ± 1.64, t +0.47 | L74; a 20-day-high close is in its bar's top half 83% of the time — barely a filter; engulf/inside too rare at breakouts to test (n=9/25) |
+| fair-value gaps around the breakout (H14, 2026-08-26) | fvg −0.75% ± 1.58, t −0.48 | L75; a fresh gap accompanies 54% of breakouts and gating on it pays nothing; gap_fill (the literature's own entry) too rare to test (n=28) |
 
 Nothing adopted. The one live lead is post-hoc and unconfirmable here: the whole
 tone effect is **positive** corporate actions (+1.77% vs neutral, n=255), with
