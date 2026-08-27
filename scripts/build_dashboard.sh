@@ -1,11 +1,9 @@
 #!/bin/bash
-# Rebuild the static dashboard: export a fresh snapshot from disk, then build.
-# The snapshot is the only bridge between the repo's data and the UI; if this
-# fails, the dashboard must not be shipped with yesterday's numbers.
+# Rebuild the static dashboard: build the React app that fetches from API at runtime.
+# The API (dashboard_api.py) serves live data from Gold; no snapshot export needed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-python3 src/ops/dashboard_export.py
 cd dashboard
 if [ ! -d node_modules ]; then
     npm install

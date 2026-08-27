@@ -5,6 +5,7 @@ Endpoints:
   GET /watchlist                          → watchlist summary
   GET /sector/heatmap                    → sector P&L heatmap
   GET /journal                           → last N journal entries
+  GET /snapshot                          → full dashboard snapshot (composed from Gold + strategy data)
 """
 
 import sys as _sys
@@ -43,6 +44,17 @@ def journal(limit: int = 50):
     return company_data.get_journal(limit=limit)
 
 
+@app.get("/snapshot")
+def snapshot(as_of: str = None):
+    """Return full dashboard snapshot composed from Gold + strategy data."""
+    # Reuse the dashboard_export logic to compose the snapshot
+    import dashboard_export as de
+    snap = de.export()
+    if as_of:
+        snap["as_of"] = as_of
+    return snap
+
+
 def _selftest():
     from fastapi.testclient import TestClient
     import dashboard_api as api
@@ -50,6 +62,11 @@ def _selftest():
     r = client.get("/company/RELIANCE?as_of=2024-05-17")
     assert r.status_code == 200
     assert "revenue" in r.json()["fundamentals"]
+    # Test snapshot endpoint
+    r2 = client.get("/snapshot")
+    assert r2.status_code == 200
+    assert "approach" in r2.json()
+    assert "trades" in r2.json()
     print("dashboard_api selftest ok")
 
 
