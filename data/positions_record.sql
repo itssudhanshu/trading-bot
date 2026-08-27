@@ -13,8 +13,8 @@ INSERT INTO "pos" VALUES(6,'VCL','micro','void','2026-08-19',NULL,NULL,23195,1.7
 INSERT INTO "pos" VALUES(7,'KENNAMET','small','open','2026-08-21','2026-08-24',4048.0,11,3.643200000000000273e+03,4.857599999999999454e+03,NULL,NULL,NULL,NULL,NULL,'confirmed','pooled',NULL);
 INSERT INTO "pos" VALUES(8,'ARCHIDPLY','micro','open','2026-08-24','2026-08-25',116.5,397,1.048500000000000086e+02,1.397999999999999829e+02,NULL,NULL,NULL,NULL,NULL,'confirmed','main',NULL);
 INSERT INTO "pos" VALUES(9,'WELENT','small','open','2026-08-25','2026-08-26',662.0,68,5.958000000000000683e+02,794.4,NULL,NULL,NULL,NULL,NULL,'confirmed','pooled',NULL);
-INSERT INTO "pos" VALUES(10,'WELENT','small','pending','2026-08-26',NULL,NULL,63,623.57,831.42,NULL,NULL,NULL,NULL,NULL,NULL,'main',NULL);
-INSERT INTO "pos" VALUES(11,'SOMANYCERA','small','pending','2026-08-26',NULL,NULL,80,502.61,670.14,NULL,NULL,NULL,NULL,NULL,NULL,'pooled',NULL);
+INSERT INTO "pos" VALUES(10,'WELENT','small','open','2026-08-26','2026-08-27',689.9,63,620.91,827.88,NULL,NULL,NULL,NULL,NULL,'live:upstox','main',NULL);
+INSERT INTO "pos" VALUES(11,'SOMANYCERA','small','open','2026-08-26','2026-08-27',565.0,80,508.5,678.0,NULL,NULL,NULL,NULL,NULL,'live:upstox','pooled',NULL);
 CREATE TABLE pos_log(
       seq INTEGER PRIMARY KEY,
       at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -39,6 +39,8 @@ INSERT INTO "pos_log" VALUES(17,'2026-08-26 06:29:16',9,'update','{"id":9,"symbo
 INSERT INTO "pos_log" VALUES(18,'2026-08-26 12:40:24',9,'update','{"id":9,"symbol":"WELENT","cluster":"small","status":"open","queued_on":"2026-08-25","entry_day":"2026-08-26","entry_px":662.0,"qty":68,"stop":595.8,"target":794.4,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"confirmed","bucket":"pooled","origin":null}');
 INSERT INTO "pos_log" VALUES(19,'2026-08-26 12:40:24',10,'insert','{"id":10,"symbol":"WELENT","cluster":"small","status":"pending","queued_on":"2026-08-26","entry_day":null,"entry_px":null,"qty":63,"stop":623.57,"target":831.42,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":null,"bucket":"main","origin":null}');
 INSERT INTO "pos_log" VALUES(20,'2026-08-26 12:40:24',11,'insert','{"id":11,"symbol":"SOMANYCERA","cluster":"small","status":"pending","queued_on":"2026-08-26","entry_day":null,"entry_px":null,"qty":80,"stop":502.61,"target":670.14,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":null,"bucket":"pooled","origin":null}');
+INSERT INTO "pos_log" VALUES(21,'2026-08-27 03:54:01',10,'update','{"id":10,"symbol":"WELENT","cluster":"small","status":"open","queued_on":"2026-08-26","entry_day":"2026-08-27","entry_px":689.9,"qty":63,"stop":620.91,"target":827.88,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"live:upstox","bucket":"main","origin":null}');
+INSERT INTO "pos_log" VALUES(22,'2026-08-27 03:54:01',11,'update','{"id":11,"symbol":"SOMANYCERA","cluster":"small","status":"open","queued_on":"2026-08-26","entry_day":"2026-08-27","entry_px":565.0,"qty":80,"stop":508.5,"target":678.0,"exit_day":null,"exit_px":null,"exit_reason":null,"net":null,"features":null,"fill_source":"live:upstox","bucket":"pooled","origin":null}');
 CREATE INDEX ix_pos_status ON pos(status);
 CREATE TRIGGER pos_no_delete BEFORE DELETE ON pos BEGIN
       SELECT RAISE(ABORT,

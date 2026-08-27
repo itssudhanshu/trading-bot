@@ -3397,3 +3397,14 @@ Pre-registered `preearn_test.py` (batch 20260827-preearn): signal 7-10d before `
 ## L83 — Sector mapping: Screener covers 97% of tradeable, flow data still missing
 
 Screener.in company header (`Broad Sector|Sector|Broad Industry|Industry`) reusing `screener_fundamentals.fetch_screener` (429/5xx retry, 10KB cache) covers **1,241/1,276 tradeable = 97.3%** from local `screener_raw` cache with 0 missing Broad Sector on 1,238 measured (sample 10 + 5 live uncached at 0.7s delay: 5/5 ok). NSE sector indices CSVs are large-cap only (~200 names, 0 micro/small). `src/ops/sector_backfill.py` now builds `data/sectors.json` (`{symbol: broad_sector}`, 12 values) and `data/sectors_detailed.json` (20 Sectors, 157 Industries) — 12 broad sectors drive rotation grain. Full polite backfill (~11 min) finishes the remaining 35; `FII/DII sector flow` source still missing (NSE archives give daily totals, not sector breakdown) — pre-registered rotation test must wait for that feed, not re-use trigger test.
+
+## L84 — Accruals via Screener (full 1,236): powered null, pilot slope did not replicate
+
+After L80 gated NSE annual OCF as undatable, `screener_fundamentals` + `sector_backfill` brought a dated free source: 1,268 raw Screener HTML, 1,236 parsed annual rows, 984 with OCF (was 383 pilot), 12 Broad Sectors. Re-ran `accrual_spread_test_screener.py` batch `20260827-accrual-screener` on full tradeable (offsets 0..5, demeaned within cohort, floor 300):
+
+| scaling | powered n | slope t | tercile gap t | verdict |
+|---|---|---|---|---|
+| (NP-OCF)/Revenue | 470 | -1.66 | -0.59 | inside the noise |
+| (NP-OCF)/Assets | 470 | -1.46 | -0.83 | inside the noise |
+
+Pilot at n=208 had shown slope t=-2.12 (would have been RESOLVED if powered, correct sign) — with 2.3× more data it faded to t=-1.66 inside noise. No follow-up rule earned; endpoint NULL, nothing adopted. The 550d freshness window and point-in-time `visible_from = year_end+60d` proxy held. Screener annual cache stays as `data/fundamentals_screener/` (gitignored raw, tracked parsed sample), but the construct carries no return at this horizon.

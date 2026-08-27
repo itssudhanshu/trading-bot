@@ -111,3 +111,5 @@ data/fund_backfill.log
 data/fund_reparse.log
 data/etf_trend/paper_trades.jsonl
 data/etf_trend_paper.*
+data/screener_full.log
+data/sector_backfill.log
