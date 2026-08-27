@@ -1,0 +1,104 @@
+{
+ "20MICRONS": {
+  "broad_industry": "Minerals & Mining",
+  "broad_sector": "Commodities",
+  "industry": "Industrial Minerals",
+  "sector": "Metals & Mining"
+ },
+ "21STCENMGM": {
+  "broad_industry": "Capital Markets",
+  "broad_sector": "Financial Services",
+  "industry": "Other Capital Market related Services",
+  "sector": "Financial Services"
+ },
+ "3PLAND": {
+  "broad_industry": "Finance",
+  "broad_sector": "Financial Services",
+  "industry": "Investment Company",
+  "sector": "Financial Services"
+ },
+ "5PAISA": {
+  "broad_industry": "Capital Markets",
+  "broad_sector": "Financial Services",
+  "industry": "Stockbroking & Allied",
+  "sector": "Financial Services"
+ },
+ "63MOONS": {
+  "broad_industry": "IT - Software",
+  "broad_sector": "Information Technology",
+  "industry": "Computers - Software & Consulting",
+  "sector": "Information Technology"
+ },
+ "A2ZINFRA": {
+  "broad_industry": "Construction",
+  "broad_sector": "Industrials",
+  "industry": "Civil Construction",
+  "sector": "Construction"
+ },
+ "AAATECH": {
+  "broad_industry": "Commercial Services & Supplies",
+  "broad_sector": "Services",
+  "industry": "Consulting Services",
+  "sector": "Services"
+ },
+ "AAKASH": {
+  "broad_industry": "Oil",
+  "broad_sector": "Energy",
+  "industry": "Offshore Support Solution Drilling",
+  "sector": "Oil, Gas & Consumable Fuels"
+ },
+ "AAREYDRUGS": {
+  "broad_industry": "Pharmaceuticals & Biotechnology",
+  "broad_sector": "Healthcare",
+  "industry": "Pharmaceuticals",
+  "sector": "Healthcare"
+ },
+ "AARON": {
+  "broad_industry": "Industrial Manufacturing",
+  "broad_sector": "Industrials",
+  "industry": "Industrial Products",
+  "sector": "Capital Goods"
+ },
+ "AARTIDRUGS": {
+  "broad_industry": "Pharmaceuticals & Biotechnology",
+  "broad_sector": "Healthcare",
+  "industry": "Pharmaceuticals",
+  "sector": "Healthcare"
+ },
+ "AARVI": {
+  "broad_industry": "Commercial Services & Supplies",
+  "broad_sector": "Services",
+  "industry": "Diversified Commercial Services",
+  "sector": "Services"
+ },
+ "ABCOTS": {
+  "broad_industry": "Textiles & Apparels",
+  "broad_sector": "Consumer Discretionary",
+  "industry": "Other Textile Products",
+  "sector": "Textiles"
+ },
+ "ARFIN": {
+  "broad_industry": "Non - Ferrous Metals",
+  "broad_sector": "Commodities",
+  "industry": "Aluminium",
+  "sector": "Metals & Mining"
+ },
+ "BORANA": {
+  "broad_industry": "Textiles & Apparels",
+  "broad_sector": "Consumer Discretionary",
+  "industry": "Other Textile Products",
+  "sector": "Textiles"
+ },
+ "DEVX": {
+  "broad_industry": "Commercial Services & Supplies",
+  "broad_sector": "Services",
+  "industry": "Diversified Commercial Services",
+  "sector": "Services"
+ },
+ "GANESHCP": {
+  "broad_industry": "Food Products",
+  "broad_sector": "Fast Moving Consumer Goods",
+  "industry": "Packaged Foods",
+  "sector": "Fast Moving Consumer Goods"
+ }
+}

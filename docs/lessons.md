@@ -3385,3 +3385,15 @@ A vendor or screener-grade dataset that dates its cash flows is the only lever
 left; quarterly growth in `OtherIncome` share (L79 H1: 100% coverage, powered
 NULL at n=630) already says the earnings-quality signal that IS dateable
 carries no return at this horizon.
+
+## L81 — RSI-bounce gate: no trade where breakout lives
+
+Pre-registered `rsi_bounce_test.py` (batch 20260827-rsibounce): RSI(14) 30-40 → cross >40 + close>SMA60 vs live breakout. Gate as additive filter to breakout: **0 trades** in 1,703 sessions vs control 194 (CAGR +2.18% vs +0.00%, `t=nan` — unresolvable). Standalone `trigger none` + gate: 6 trades. Endpoint honoured: NULL, gate dropped. Breakout needs 20-day highs (high RSI); RSI-bounce needs oversold (low RSI) — the universe rate is 0.12% and among breakout picks 0/32 sampled. A standalone RSI ranking would be a different entry rule, not a gate.
+
+## L82 — Pre-earnings drift: no edge 7-10d before results
+
+Pre-registered `preearn_test.py` (batch 20260827-preearn): signal 7-10d before `expected_next_filing` vs live. Gate 7 trades vs control 194: per-trade −5.23% vs +1.01%, gap −6.24% ±4.42 `t=-1.41` — **inside the noise** and opposite to the hypothesized drift, `n=7 <<150` promotion floor. Per-cluster/block all inside noise. Endpoint NULL, gate dropped. Forward paper trades remain the only way to shrink the 1.07% edge (859 needed).
+
+## L83 — Sector mapping: Screener covers 97% of tradeable, flow data still missing
+
+Screener.in company header (`Broad Sector|Sector|Broad Industry|Industry`) reusing `screener_fundamentals.fetch_screener` (429/5xx retry, 10KB cache) covers **1,241/1,276 tradeable = 97.3%** from local `screener_raw` cache with 0 missing Broad Sector on 1,238 measured (sample 10 + 5 live uncached at 0.7s delay: 5/5 ok). NSE sector indices CSVs are large-cap only (~200 names, 0 micro/small). `src/ops/sector_backfill.py` now builds `data/sectors.json` (`{symbol: broad_sector}`, 12 values) and `data/sectors_detailed.json` (20 Sectors, 157 Industries) — 12 broad sectors drive rotation grain. Full polite backfill (~11 min) finishes the remaining 35; `FII/DII sector flow` source still missing (NSE archives give daily totals, not sector breakdown) — pre-registered rotation test must wait for that feed, not re-use trigger test.
