@@ -3408,3 +3408,122 @@ After L80 gated NSE annual OCF as undatable, `screener_fundamentals` + `sector_b
 | (NP-OCF)/Assets | 470 | -1.46 | -0.83 | inside the noise |
 
 Pilot at n=208 had shown slope t=-2.12 (would have been RESOLVED if powered, correct sign) — with 2.3× more data it faded to t=-1.66 inside noise. No follow-up rule earned; endpoint NULL, nothing adopted. The 550d freshness window and point-in-time `visible_from = year_end+60d` proxy held. Screener annual cache stays as `data/fundamentals_screener/` (gitignored raw, tracked parsed sample), but the construct carries no return at this horizon.
+
+## L85 — The sector map cannot be used historically: it is a "still small today" filter that truncates BOTH tails
+
+L83 built `data/sectors.json` (1,276 symbols, 12 Broad Sectors, 97.3% of today's
+tradeable universe) and left sector rotation waiting on an FII/DII flow feed.
+Before registering any sector hypothesis, the map was checked against the
+POINT-IN-TIME universe it would have to be applied to. It fails, and the failure
+is not the obvious one.
+
+| as of | tradeable | sector known | of the UNMAPPED, still tradeable today |
+|---|---|---|---|
+| 2021-06-30 | 844 | 64.8% | 0.3% |
+| 2022-06-30 | 1,019 | 68.0% | 0.3% |
+| 2023-06-30 | 1,010 | 72.3% | 0.4% |
+| 2025-06-30 | 1,098 | 81.3% | 0.5% |
+| 2026-08-28 | 1,275 | 99.8% | — |
+
+Of the 547 names that WERE mapped in 2021, 547 are still quoted today. All of
+them. "Has a sector" and "still exists" are very nearly the same variable,
+because the map was scraped from Screener in 2026 for the symbols tradeable in
+2026.
+
+**But it is not plain survivorship, and calling it that gets the direction
+wrong.** Classifying 2021's 297 unmapped names by what became of them:
+
+  - **197 (66%) are no longer quoted** — delisted or renamed.
+  - **95 (32%) are still quoted and are now in the TOP THIRD by turnover**, the
+    band this book does not trade. They are not missing because they died. They
+    are missing because they GREW, out of the micro/small universe the scrape
+    covered.
+  - 5 others.
+
+So requiring a sector label historically drops the failures and the biggest
+successes at the same time. It is a filter on "still small in 2026", which
+truncates both tails of the outcome distribution and leaves the middle. A sector
+momentum feature measured on it would look excellent for a reason that has
+nothing to do with sectors, and unlike ordinary survivorship the bias does not
+even have a predictable sign.
+
+**What is still legal.** (a) Forward-only use: from today the map is 99.8%
+complete and honest, because a name is mapped BECAUSE it trades now. (b) A rule
+in which unmapped means UNCONSTRAINED — a concentration cap never has to drop an
+unmapped name, it just never counts one, which makes the historical test weaker
+than the live rule and never stronger. Any design that DROPS or REQUIRES a
+mapped name is not admissible on this data.
+
+Cost of finding this: one afternoon and no simulation. Cost of not finding it:
+a sector feature adopted on a truncated distribution. This is the L61 discipline
+applied before the run instead of eighteen months after it.
+
+## L86 — H17: the diversification rule that was never called is measurably inert — and the bar that judged it said ADOPT
+
+`selection.decorrelate()` drops a candidate that moves too closely with one
+already taken. Its docstring records the motivation: "two of five positions were
+hospital chains." **Nothing calls it.** `selection.build()` — the live path that
+queues real orders — ranks, sorts and returns. `simulate.run()` calls it only
+when `max_corr` is passed, and `max_corr` defaults to None and was passed by no
+caller, no research module and no batch in this repo. The live bucket has no
+diversification rule beyond the 3/2 cluster quota, and `build()` name-checks the
+L58 dead-code failure twice in its own comments while the dead `decorrelate`
+sits ninety lines below it in the same file.
+
+Pre-registered `decorr_test.py`, batch `20260828-decorr`. Control `max_corr=None`
+(what the live book runs). Two arms: the hook AS WRITTEN (one day's candidates
+compared only against each other — the two hospital chains, bought on different
+days, never meet inside it) and the rule its docstring DESCRIBES (candidates also
+compared against open positions, seeded by prepending synthetic rows rather than
+writing the rule twice). Three thresholds each, 0.70/0.60/0.50.
+
+| arm | CAGR | maxDD | n | per trade | vs control | t |
+|---|---|---|---|---|---|---|
+| **no rule (control, = live)** | **+1.93%** | **32.5%** | **195** | **+0.94% ± 1.12%** | — | — |
+| within-day, all three thresholds | +1.39% | 32.3% | 194 | +0.83% | −0.12% | −0.07 |
+| vs open book, all three thresholds | +1.39% | 32.3% | 194 | +0.83% | −0.12% | −0.07 |
+
+**Every arm is byte-identical, and that is the result.** The removal counts do
+differ — within-day drops 1–2 of 242 candidate rows, vs-open-book 18–19 of 925,
+which is what proves the flag reaches the simulation — but the trade sets come
+out the same. Compared directly: all six arms remove **exactly one trade in
+seven years**, LSIL on 2021-11-26, and add none. The whole −0.54 CAGR gap and
+the whole 0.2-point drawdown "improvement" are that one price path.
+
+**Why it has nothing to do: the book is already diversified by accident.** It
+holds 3.1 names on average and refreshes every fifth session, so two genuinely
+correlated names rarely compete for a seat in the first place. The hospital-chain
+case is real and it is rare.
+
+**THE PRE-REGISTERED BAR SAID "ADOPT", AND IT WAS WRONG.** It asked for drawdown
+to improve, per-trade return to hold within one standard error, and the three
+thresholds to be monotone. A rule that does nothing satisfies all three:
+drawdown "improved" by 0.2 points, per-trade "held" because it fell by less than
+its own error bar, and six identical numbers are vacuously monotone in both
+directions. The verdict line was printed by code written before the run
+specifically so it could not be re-read leniently afterwards — and it was the
+OUTPUT, not the verdict, that caught the error. That is the L69 rule again in a
+new place: a classifier is finished when the output is clean, not when the
+validation passes.
+
+The bar was TIGHTENED, not relaxed: an arm must now move at least 20 trades
+(`MIN_CHANGED`) before its result is about the rule rather than one price path,
+and "monotone" now requires the thresholds to differ from each other at all.
+Under the tightened bar both arms read `no — changes fewer than 20 trades,
+threshold made no difference`.
+
+**Nothing adopted, and nothing deleted either.** The rule is not dead code in the
+strict sense — it removes rows — but those rows would not have been filled
+anyway. If it is ever wired into `build()`, that is a decision about risk taken
+deliberately and with this measurement in hand, not a bug fix.
+
+**A pointer at the function itself would be the right place for this, and it is
+not there.** `src/strategies/breakout/selection.py` is hash-protected by
+`tests/breakout_manifest.json` — breakout must not move while sentiment and
+patterns are built — so a docstring added to `decorrelate()` fails
+`breakout_untouched.py` exactly as designed, prose or not. It was written and
+then reverted; re-recording the manifest is a deliberate operator step and not
+something to do in order to land a comment. Until then this lesson is the only
+record that the live book has no diversification rule, which is precisely the
+L58 exposure: the next reader of that file sees a plausible guard and no sign
+that nothing calls it.

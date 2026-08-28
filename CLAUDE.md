@@ -412,9 +412,11 @@ absent from the master are all real delisted or renamed companies, and none
 reads as an instrument. Verified, not assumed -- that check is what found the
 Bharat Bond ETFs.
 
-**The baseline was NOT re-recorded.** `audit.py` fails on the drift on
-purpose; `--rebaseline` is a deliberate separate step. `data/breakout/baseline.json`
-still says +7.59% and is known to be wrong.
+**The baseline WAS re-recorded on 2026-08-23** (commit `af100ed2`), as its own
+deliberate step: `data/breakout/baseline.json` now reads **+2.18% CAGR / 32.5%
+DD / 194 trades** and `audit.py` passes 38/38 again. It said +7.59% and was
+known to be wrong for three days before that; any text on this page still
+quoting +7.59% as the RECORDED figure predates the rebaseline.
 
 ## Market impact
 

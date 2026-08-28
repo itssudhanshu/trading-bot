@@ -3,7 +3,34 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-26 — **the chart-pattern review is CLOSED**: all four
+Last updated: 2026-08-28 — **the dashboard track was removed and two gates
+closed.** The two days of React/FastAPI/DuckDB work built a viewer for numbers
+the bot already prints; nothing in selection, the engine, the audit or any
+research module imported one line of it, so it is gone (specs archived in
+`data/retired/dashboard/`). The forward book now has THREE closed trades: the
+bucket is 2 for 2 on stops (SAHYADRI, ARCHIDPLY, realised −Rs 9,406) and the
+pool took KENNAMET at target (+Rs 8,734, shown and not counted). etf_trend
+holds 5, none closed.
+
+**The baseline WAS re-recorded on 2026-08-23** (commit `af100ed2`): +7.59% →
+**+2.18% CAGR / 32.5% DD / 194 trades**, and `audit.py` now passes 38/38.
+Anything below that still says the recorded baseline is +7.59% and "known to be
+wrong" is describing the state before that commit.
+
+Two findings the same day, both from checking before running rather than after:
+**L85** — `data/sectors.json` cannot be used historically. It covers 99.8% of
+today's tradeable universe but only 64.8% of 2021's, and the missing names are
+66% delisted and 32% GROWN OUT of the micro/small band. Requiring a sector drops
+the failures and the biggest winners at once, so the bias has no clean sign.
+Forward-only use, or unmapped-means-unconstrained, are the admissible designs.
+**L86** — `selection.decorrelate()` is called by nothing in the live path, and
+measured (batch `20260828-decorr`) it removes exactly ONE trade in seven years
+across both mechanisms and all three thresholds. The book already holds 3.1
+names on a five-session refresh, so correlated names rarely compete for a seat.
+Its pre-registered bar said ADOPT and was defective; the bar was tightened, not
+the result. Nothing adopted.
+
+Previous: 2026-08-26 — **the chart-pattern review is CLOSED**: all four
 untouched price-action families measured under the full protocol. H13
 candlestick gates (L74: +0.77%, t +0.47), H14 fair-value gaps (L75: −0.75%,
 t −0.48), H15 pullback depth (L76: +0.00%, t 0.00; deep flushes the WORST
@@ -99,9 +126,11 @@ There is no TDS on resident equity delivery.
 
 ## Historical baseline
 
-**RECORDED: +7.59% CAGR, 31.0% max drawdown, 195 trades.** That is what
-`data/breakout/baseline.json` still says, and it is **known to be wrong** as of
-2026-08-20.
+**RECORDED: +2.18% CAGR, 32.5% max drawdown, 194 trades**, since the
+2026-08-23 rebaseline (commit `af100ed2`). It read +7.59% / 31.0% / 195 before
+that, on the universe holding 87 delisted ETFs (L61). `audit.py` passes 38/38
+and the headline drifts only with new sessions — +1.93% on the 5 sessions added
+since.
 
 **MEASURED NOW: +2.42% CAGR, 32.5% max drawdown, 193 trades**, per trade
 +1.07% +/- 1.12% (batch 20260820-nonequity3). The gap is L61: the non-equity

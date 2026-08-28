@@ -61,6 +61,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
         hold=selection.HOLD_DAYS, max_pos=5,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
         start_idx=300, trigger="none", offset=0, max_corr=None,
+        decorr_open=False,
         impact_c=engine.IMPACT_C, sizing="equal", targets=None, stop_to=None,
         atr_stop=None, time_exit=None, tradable=None):
     """`targets` = [(pct, fraction), ...]: a ladder of PARTIAL exits, each
@@ -233,7 +234,24 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
             rows = selection.allocate(
                 selection.build(corpus, day, capital=equity, trigger=trigger),
                 take_per_cluster, offset=offset, max_pos=max_pos)
-            rows = selection.decorrelate(rows, corpus, day, max_corr)
+            if max_corr and decorr_open and open_pos:
+                # Compare a candidate against what is ALREADY HELD, not only
+                # against the same day's other candidates. decorrelate() as
+                # called above can only ever see one day's rows, so the case its
+                # own docstring cites -- two hospital chains -- passes it
+                # untouched whenever the two were bought on different days.
+                #
+                # Seeded by PREPENDING synthetic rows for the open names rather
+                # than by writing the rule a second time (rules.md R1):
+                # decorrelate preserves order and only removes, so the held
+                # names fill its comparison list first and a candidate that
+                # moves with one of them is dropped. The synthetic rows carry no
+                # "cluster" key, which is how they are told apart afterwards.
+                seed = [{"symbol": p["sym"]} for p in open_pos]
+                out = selection.decorrelate(seed + rows, corpus, day, max_corr)
+                rows = [r for r in out if "cluster" in r]
+            else:
+                rows = selection.decorrelate(rows, corpus, day, max_corr)
             for r in rows:
                 if room <= 0:
                     break
