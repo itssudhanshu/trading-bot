@@ -5,6 +5,7 @@ Endpoints:
   GET /watchlist                          → watchlist summary
   GET /sector/heatmap                    → sector P&L heatmap
   GET /journal                           → last N journal entries
+  GET /etf_trend                         → ETF trend paper state (positions/queue)
   GET /snapshot                          → full dashboard snapshot (composed from Gold + strategy data)
 """
 
@@ -44,6 +45,19 @@ def journal(limit: int = 50):
     return company_data.get_journal(limit=limit)
 
 
+@app.get("/etf_trend")
+def etf_trend():
+    import json
+    from paths import ROOT
+    p = ROOT / "data" / "etf_trend" / "paper_state.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            return {"positions": [], "queue": [], "last_day": None}
+    return {"positions": [], "queue": [], "last_day": None}
+
+
 @app.get("/snapshot")
 def snapshot(as_of: str = None):
     """Return full dashboard snapshot composed from Gold + strategy data."""
@@ -69,6 +83,8 @@ def _selftest():
     assert h.status_code == 200 and "sectors" in h.json() and h.json()["total"] >= 1000
     j = client.get("/journal?limit=2")
     assert j.status_code == 200 and isinstance(j.json(), list)
+    e = client.get("/etf_trend")
+    assert e.status_code == 200 and "positions" in e.json()
     # Test snapshot endpoint
     r2 = client.get("/snapshot")
     assert r2.status_code == 200

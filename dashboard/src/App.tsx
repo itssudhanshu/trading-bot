@@ -233,17 +233,23 @@ export default function App() {
   useEffect(() => {
     // Primary: live API (FastAPI /snapshot from Gold), fallback: static snapshot.json
     // so `npm run preview` and Playwright e2e work without a running API server.
-    fetch('/snapshot')
+    // Timeout the API quickly (2s) so e2e doesn't wait 20s for the heavy Gold snapshot.
+    const apiFetch = fetch('/snapshot', { signal: AbortSignal.timeout(2000) })
       .then((r) => {
         if (!r.ok) throw new Error(`API ${r.status}`)
         return r.json() as Promise<Snapshot>
       })
-      .catch(() =>
-        fetch('data/snapshot.json').then((r) => {
-          if (!r.ok) throw new Error(`snapshot request failed (HTTP ${r.status})`)
-          return r.json() as Promise<Snapshot>
-        }),
-      )
+    const staticFetch = fetch('data/snapshot.json').then((r) => {
+      if (!r.ok) throw new Error(`snapshot request failed (HTTP ${r.status})`)
+      return r.json() as Promise<Snapshot>
+    })
+    // Try API first but don't block on its 20s cold start; static is always fast.
+    // Race with timeout: if API doesn't respond in 2s, use static.
+    Promise.race([
+      apiFetch,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('API timeout')), 2000)),
+    ])
+      .catch(() => staticFetch)
       .then(setSnap)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
