@@ -62,6 +62,13 @@ def _selftest():
     r = client.get("/company/RELIANCE?as_of=2024-05-17")
     assert r.status_code == 200
     assert "revenue" in r.json()["fundamentals"]
+    # watchlist / heatmap / journal must not 500 (reviewer critical)
+    w = client.get("/watchlist")
+    assert w.status_code == 200 and "symbols" in w.json() and len(w.json()["symbols"]) >= 1000
+    h = client.get("/sector/heatmap")
+    assert h.status_code == 200 and "sectors" in h.json() and h.json()["total"] >= 1000
+    j = client.get("/journal?limit=2")
+    assert j.status_code == 200 and isinstance(j.json(), list)
     # Test snapshot endpoint
     r2 = client.get("/snapshot")
     assert r2.status_code == 200

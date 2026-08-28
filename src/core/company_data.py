@@ -121,6 +121,80 @@ def _journal(symbol: str, as_of):
 def get(symbol, as_of=None):
     sym = symbol.strip().upper() if isinstance(symbol, str) else symbol
     return {"prices": _prices(sym, as_of), "fundamentals": _latest_visible(_timeline(sym), as_of), "screener": _latest_visible(_screener_timeline(sym), as_of), "sector": _sector(sym), "announcements": _announcements(sym, as_of), "journal": _journal(sym, as_of)}
+
+
+def get_universe():
+    """Tradeable universe — keys of sectors.json (1,276 micro/small) else fundamentals parsed."""
+    try:
+        p = ROOT / "data" / "sectors.json"
+        if p.exists():
+            d = json.loads(p.read_text())
+            if isinstance(d, dict) and d:
+                return sorted(d.keys())
+    except Exception:
+        pass
+    try:
+        import fundamentals as _f
+        # fallback: scan parsed directory names
+        parsed = ROOT / "data" / "fundamentals" / "parsed"
+        if parsed.exists():
+            return sorted(pp.stem for pp in parsed.glob("*.json"))
+    except Exception:
+        pass
+    try:
+        import features as _feat
+        try:
+            corp = _feat.load_corpus(require_master=False)
+        except TypeError:
+            corp = _feat.load_corpus()
+        return sorted(corp.keys())
+    except Exception:
+        return []
+
+
+def get_sector_heatmap():
+    """Sector → count (and symbols) for the dashboard heatmap."""
+    try:
+        p = ROOT / "data" / "sectors.json"
+        if not p.exists():
+            return {"sectors": {}, "total": 0}
+        d = json.loads(p.read_text())
+        from collections import Counter
+        cnt = Counter(d.values())
+        return {"sectors": dict(cnt), "total": len(d), "by_sector": {k: sorted([s for s, v in d.items() if v == k]) for k in cnt}}
+    except Exception:
+        return {"sectors": {}, "total": 0}
+
+
+def get_journal(limit=50):
+    """Global journal — last `limit` rows from positions.db pos/positions, ordered by entry_day desc."""
+    try:
+        dbp = ROOT / "data" / "positions.db"
+        if not dbp.exists():
+            return []
+        con = sqlite3.connect(str(dbp))
+        con.row_factory = sqlite3.Row
+        rows = None
+        tbl = None
+        for cand in ("pos", "positions"):
+            try:
+                con.execute(f"SELECT 1 FROM {cand} LIMIT 1")
+                tbl = cand
+                break
+            except Exception:
+                continue
+        if tbl is None:
+            con.close()
+            return []
+        # order by entry_day/queued_on desc, fallback to id desc
+        try:
+            rows = con.execute(f"SELECT * FROM {tbl} ORDER BY COALESCE(entry_day, queued_on, '') DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
+        except Exception:
+            rows = con.execute(f"SELECT * FROM {tbl} LIMIT ?", (int(limit),)).fetchall()
+        con.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 def _selftest():
     from datetime import date
     import company_data as cd
@@ -149,6 +223,13 @@ def _selftest():
         assert r_latest["fundamentals"]["revenue"] == 100 and r_latest["screener"]["ocf"] == 80
         r_shape = cd.get("FAKE", as_of=date(2024, 6, 1))
         assert set(r_shape) == {"prices", "fundamentals", "screener", "sector", "announcements", "journal"}
+        # new helpers
+        uni = cd.get_universe()
+        assert isinstance(uni, list) and len(uni) >= 1000, f"universe too small {len(uni)}"
+        heat = cd.get_sector_heatmap()
+        assert isinstance(heat, dict) and "sectors" in heat and heat["total"] >= 1000, f"heatmap failed {heat}"
+        jour = cd.get_journal(limit=5)
+        assert isinstance(jour, list), f"journal failed {jour}"
     finally:
         cd._timeline, cd._screener_timeline = orig_tl, orig_sl
     print("company_data selftest ok")
