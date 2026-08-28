@@ -8,6 +8,8 @@ import { useState } from 'react'
 import ChartPane from '../components/ChartPane'
 import LeftToolbar from '../components/LeftToolbar'
 import RightBucketPanel from '../components/RightBucketPanel'
+import DetailDrawer from '../components/DetailDrawer'
+import FundamentalsStrip from '../components/FundamentalsStrip'
 
 const SAMPLE = [
   { time: '2024-05-13', open: 100, high: 108, low: 99, close: 106, volume: 1200 },
@@ -20,6 +22,11 @@ const SAMPLE = [
 export default function Monitor() {
   const [book, setBook] = useState<'main' | 'pooled' | 'etf_trend'>('main')
   const [selected, setSelected] = useState<string | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const handleSelect = (sym: string) => {
+    setSelected(sym)
+    setDrawerOpen(true)
+  }
   return (
     <Box sx={{ minHeight: '100dvh', bgcolor: '#131722', color: '#D1D4DC', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderBottom: '1px solid #2A2E39', bgcolor: '#131722' }}>
@@ -39,9 +46,10 @@ export default function Monitor() {
         <Box sx={{ flex: 1, p: 1, bgcolor: '#131722' }}>
           <ChartPane data={SAMPLE} entryPx={106} stop={98} target={127} />
         </Box>
-        <RightBucketPanel book={book} selected={selected} onSelect={setSelected} />
+        <RightBucketPanel book={book} selected={selected} onSelect={handleSelect} />
       </Box>
-      <Box sx={{ height: 48, bgcolor: '#1E222D', borderTop: '1px solid #2A2E39', display: 'flex', alignItems: 'center', px: 2, fontSize: 11, color: '#9598A1' }}>Revenue 2407Cr · OCF 80Cr · Sector Commodities · visible_from 2024-05-17 · RightDrawer (Task 4)</Box>
+      <FundamentalsStrip fundamentals={{ revenue: 2407, sector: 'Commodities', visible_from: '2024-05-17' }} />
+      <DetailDrawer symbol={selected ?? 'NATCAPSUQ'} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </Box>
   )
 }

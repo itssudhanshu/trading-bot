@@ -14,3 +14,12 @@ test('bucket switch changes rail', async ({ page }) => {
   const firstPool = await page.getByTestId('bucket-row').first().textContent()
   expect(firstPool).not.toBe(firstBucket)
 })
+
+test('click bucket row opens drawer trader+analyst', async ({ page }) => {
+  await page.goto('/#monitor')
+  await page.getByTestId('bucket-row').first().click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByText('Entry').first()).toBeVisible()
+  await expect(page.getByRole('dialog').getByText('Revenue')).toBeVisible()
+  await expect(page.getByRole('dialog').getByText('Sector')).toBeVisible()
+})
