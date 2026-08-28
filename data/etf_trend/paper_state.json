@@ -1,5 +1,5 @@
 {
- "last_day": "2026-08-26",
+ "last_day": "2026-08-28",
  "queue": [],
  "positions": [
   {
@@ -52,62 +52,62 @@
   {
    "symbol": "MODEFENCE",
    "cluster": "index",
-   "score": 20.52
+   "score": 21.42
   },
   {
    "symbol": "PHARMABEES",
    "cluster": "index",
-   "score": 19.24
+   "score": 19.45
   },
   {
    "symbol": "SMALLCAP",
    "cluster": "index",
-   "score": 16.52
+   "score": 16.88
   },
   {
    "symbol": "HDFCSML250",
    "cluster": "index",
-   "score": 15.84
+   "score": 16.45
   },
   {
    "symbol": "METALIETF",
    "cluster": "index",
-   "score": 13.91
-  },
-  {
-   "symbol": "JUNIORBEES",
-   "cluster": "index",
-   "score": 7.94
+   "score": 11.97
   },
   {
    "symbol": "MID150BEES",
    "cluster": "index",
-   "score": 7.66
+   "score": 8.03
+  },
+  {
+   "symbol": "JUNIORBEES",
+   "cluster": "index",
+   "score": 6.8
   },
   {
    "symbol": "AUTOBEES",
    "cluster": "index",
-   "score": 5.14
+   "score": 3.69
   },
   {
-   "symbol": "TATAGOLD",
-   "cluster": "metals",
-   "score": 4.08
+   "symbol": "LIQUID1",
+   "cluster": "bond",
+   "score": 2.55
   },
   {
-   "symbol": "GOLD1",
-   "cluster": "metals",
-   "score": 3.89
+   "symbol": "LIQUIDPLUS",
+   "cluster": "bond",
+   "score": 2.53
   },
   {
-   "symbol": "HDFCGOLD",
-   "cluster": "metals",
-   "score": 3.85
+   "symbol": "CASHIETF",
+   "cluster": "index",
+   "score": 2.53
   },
   {
-   "symbol": "GOLDIETF",
-   "cluster": "metals",
-   "score": 3.8
+   "symbol": "LIQUIDCASE",
+   "cluster": "bond",
+   "score": 2.52
   }
  ]
 }
