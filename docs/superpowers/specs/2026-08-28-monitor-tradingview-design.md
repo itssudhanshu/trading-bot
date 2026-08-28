@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-28  
 **Status:** Approved (4 sections, Approach C hybrid, Monitor as default)  
-**Layout:** Card A — Top Bucket Strip + Central Chart (dark #131722)  
+**Layout:** Card C — Full TradingView Clone (dark #131722)  
 **Detail:** Option C (trader + analyst) in Right Drawer (420px)  
 **Bucket Switch:** Bucket (`main` 3/2) / Pool (`pooled`) / ETF_trend (`data/etf_trend/paper_state.json`)
 
@@ -19,30 +19,34 @@ Single React app (`dashboard/src/App.tsx:213`), no new repo. Keep 6 report secti
 
 ---
 
-## 2. Components & Layout (Card A)
+## 2. Components & Layout (Card C — Full TradingView Clone)
 
 ```
-Header (56px): [Bucket Switch v]  [NSE: NATCAPSUQ · micro · breakout · 1D  212.5 +1.2%]  [Watchlist toggle] [Heatmap toggle] [as_of date]
+Header (48px): [≡ Bucket Switch v]  [NSE: NATCAPSUQ  212.5 +1.2%  1D  breakout  micro]  [Search symbol…]  [as_of date]
 Body (flex:1):
-  BucketRail (220px) | ChartPane (flex:1) | RightPanel (280px)
+  LeftToolbar (36px) | ChartPane (flex:1) | RightBucketPanel (260px)
+LeftToolbar: ✏️  📏  🔍  (crosshair/measure/zoom — placeholders, no persistence v1)
+RightBucketPanel: Bucket (5) + queue, P&L%, status; click row → chart + DetailDrawer
 FundamentalsStrip (48px): Revenue 2407Cr (FY24) · OCF 80Cr · Margin 12% · Sector Commodities · visible_from 2024-05-17
 DetailDrawer (420px, anchor="right", on bucket row click)
 ```
 
-**BucketRail:** Vertical 5 rows for active book. Row: symbol, cluster chip (`micro`/`small`/`index`), `P&L%` vs `entry_px`, `status` (open/pending/closed), `queued_on`. Selected `background #2962FF`. Data: `GET /journal?limit=50` filtered `WHERE bucket=:book` (or `GET /etf_trend` for `etf_trend`), plus `GET /watchlist` for count badge. Click → `setSelected(symbol)`.
+**Header:** Single top bar like TradingView: left `Bucket Switch` (Bucket/Pool/ETF_trend) + hamburger, center symbol header `NSE: {symbol}  {close} {change%}  1D  {trigger}  {cluster}`, right symbol search input (filters `GET /watchlist` 1276 micro/small, keyboard ↑↓), `as_of` chip. Height 48px, `background #131722`, `border-bottom #2A2E39`.
 
-**ChartPane:** `lightweight-charts` `CandlestickSeries` with OHLCV from `company_data.get(symbol, as_of).prices` (`day <= as_of`, daily). Overlays: `PriceLine` entry (solid white), stop (red dashed `98.74`), target (green dashed `256.99`), hold window shading. Bottom `HistogramSeries` volume. Left toolbar placeholder (crosshair, zoom) — no drawings in v1.
+**LeftToolbar (36px):** Vertical strip, `background #1E222D`, icons (crosshair, measure, zoom, draw) — visual only in v1, no persistence, keeps TradingView affordance without building a drawing engine.
 
-**RightPanel:** Stacked `WatchlistPanel` (scroll 1276 symbols from `GET /watchlist`, filter input, highlight bucket sector) + `HeatmapPanel` (grid `sectors: {Commodities 164,...}` from `GET /sector/heatmap`, click filters watchlist by `by_sector[sector]`).
+**RightBucketPanel (260px):** Replaces RightPanel's watchlist+heatmap? No — still hosts both but vertically: top `Bucket (5)` list (symbol, cluster chip `micro`/`small`/`index`, `P&L%` vs `entry_px`, `status`, `queued_on`, selected `bg #2962FF`), below it `Watchlist` (collapsible, 1276, search) and `Heatmap` (grid 2-col). Data: `GET /journal?limit=50` filtered `WHERE bucket=:book` (or `GET /etf_trend`), `GET /watchlist`, `GET /sector/heatmap`. Click any row → `setSelected(symbol)`.
 
-**FundamentalsStrip:** Single line below chart: `Revenue · OCF · Margin · Sector · visible_from · year_end` from `company_data.get(...).fundamentals` + `screener` + `sector`. Shows `No fundamentals (stale >550d)` if null.
+**ChartPane:** `lightweight-charts` `CandlestickSeries` OHLCV from `company_data.get(symbol, as_of).prices` (`day <= as_of`, daily). Overlays: `PriceLine` entry (white), stop (red dashed `98.74`), target (green dashed `256.99`), hold shading. Bottom `HistogramSeries` volume. Fills flex, `border #2A2E39`. No live intraday.
 
-**DetailDrawer — Right Drawer, Option C:**
+**FundamentalsStrip:** Same single line below chart as Card A.
 
-- *Trader's* (top half): entry_px/qty/stop/target/hold days left, net/P&L, `exit_reason`, hold countdown, journal table (all `journal` rows for symbol).
-- *Analyst's* (bottom half): fundamentals table (all `timeline` fields for that `as_of`), `screener` OCF, `sector`, `announcements` last 5 from `bse_announcements.timeline`, `score/rank` if available.
+**DetailDrawer — Right Drawer, Option C (covers RightBucketPanel when open):**
 
-**Theme:** Dark `#131722` shell, `#1E222D` panels, `#2962FF` selection, `#26A69A`/`#EF5350` for target/stop. Report pages keep MUI light theme — themes are nested, not global.
+- *Trader's* (top): entry_px/qty/stop/target/hold left, net/P&L, `exit_reason`, hold countdown, journal table.
+- *Analyst's* (bottom): fundamentals table (all `timeline` fields for that `as_of`), `screener` OCF, `sector`, `announcements` last 5, `score/rank`.
+
+**Theme:** Full dark `#131722` shell, `#1E222D` panels, `#2962FF` selection. Report pages keep MUI light via nested `ThemeProvider` — no global bleed.
 
 ---
 
@@ -91,8 +95,8 @@ DetailDrawer (420px, anchor="right", on bucket row click)
 
 ## 5. Files & Interfaces
 
-- Create: `dashboard/src/pages/Monitor.tsx:1-350`, `dashboard/src/components/ChartPane.tsx:1-120` (`lightweight-charts`), `dashboard/src/components/BucketRail.tsx`, `RightPanel.tsx`, `FundamentalsStrip.tsx`, `DetailDrawer.tsx`
-- Modify: `dashboard/src/App.tsx:213` (hash default + Monitor route + ThemeProvider swap + Bucket Switch header), `src/ops/dashboard_api.py:47` (add `GET /etf_trend`), `dashboard/vite.config.ts:1` (add `/snapshot` proxy for dev `→ http://127.0.0.1:8000` or keep fallback)
+- Create: `dashboard/src/pages/Monitor.tsx:1-350` (Card C shell: header + left toolbar + chart + right bucket panel), `dashboard/src/components/ChartPane.tsx:1-120` (`lightweight-charts`), `dashboard/src/components/BucketRail.tsx` → `RightBucketPanel.tsx`, `FundamentalsStrip.tsx`, `DetailDrawer.tsx`, `LeftToolbar.tsx` (36px placeholder)
+- Modify: `dashboard/src/App.tsx:213` (hash `#monitor` default + Monitor lazy route + dark ThemeProvider + bucket switch in header), `src/ops/dashboard_api.py:47` (add `GET /etf_trend`), `dashboard/vite.config.ts:1` (add `/snapshot` proxy `→ http://127.0.0.1:8000` or keep fallback)
 - Consumes: Gold `data/gold/*.parquet` via `dashboard_api` + `company_data`, `data/positions.db:1` (`pos` 13 rows), `data/etf_trend/paper_state.json:1`, `data/sectors.json:1` (1276), `data/screener_raw:1` via `company_data`
 - Produces: Monitor at `/#monitor` (default), `dashboard/dist/index.html:1` + `dashboard/dist/assets/*`
 
@@ -106,4 +110,4 @@ Live intraday candles, drawings persistence, symbol search beyond 1276 watchlist
 
 ## 7. Visual Reference
 
-Card A mockup at `http://localhost:52265/?key=0c00e9cd0a27f36cdb4c2753af89d2ed02e8ad81db7293e7b0c706749e603c4c` `bucket-monitor-layout.html:1` — dark header, left bucket rail (5), center candles+volume+stop/target, right watchlist+heatmap, bottom fundamentals, right drawer on click.
+Card C mockup at `http://localhost:52265/?key=0c00e9cd0a27f36cdb4c2753af89d2ed02e8ad81db7293e7b0c706749e603c4c` `bucket-monitor-layout.html:1` — Card C selected (Full TradingView Clone). Card A was top-bucket-strip; Card C has top symbol bar + left toolbar (36px) + central candles/volume + right bucket panel (260px, with watchlist/heatmap inside), bottom fundamentals, right drawer on click. Browser tab still shows all 3 cards for comparison; the spec's layout is Card C.
