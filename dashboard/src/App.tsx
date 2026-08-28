@@ -40,6 +40,9 @@ const ForwardBook = lazy(() =>
 const Gates = lazy(() =>
   import('./pages/Gates').then((m) => ({ default: m.Gates })),
 )
+const Monitor = lazy(() =>
+  import('./pages/Monitor').then((m) => ({ default: m.default })),
+)
 
 const NAV = [
   { id: 'overview', label: 'Overview', icon: <DashboardIcon /> },
@@ -213,6 +216,19 @@ function Shell({ snap }: { snap: Snapshot }) {
 export default function App() {
   const [snap, setSnap] = useState<Snapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [hash, setHash] = useState<string>(typeof window !== 'undefined' ? window.location.hash : '')
+
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onHash)
+    // default to #monitor (Card C) — report pages stay at #overview etc
+    if (!window.location.hash || window.location.hash === '#') {
+      window.location.hash = '#monitor'
+    } else {
+      onHash()
+    }
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   useEffect(() => {
     // Primary: live API (FastAPI /snapshot from Gold), fallback: static snapshot.json
@@ -231,6 +247,20 @@ export default function App() {
       .then(setSnap)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
+
+  if (hash === '#monitor') {
+    return (
+      <Suspense
+        fallback={
+          <Typography aria-live="polite" role="status" sx={{ py: 24, textAlign: 'center' }}>
+            Loading monitor…
+          </Typography>
+        }
+      >
+        <Monitor />
+      </Suspense>
+    )
+  }
 
   if (error) {
     return (
