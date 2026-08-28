@@ -3623,3 +3623,72 @@ directory named raw that holds derived data is how this went unnoticed.
 The audit starts from today. This channel is context and never a measured input
 (L66/L68), so nothing measured is affected either way — which is the only
 reason it is acceptable to leave the rule alone and collect evidence first.
+
+## L89 — H18: a sector cap clears every gate H17 failed, improves every headline number, and still is not adopted — the tail it exists to protect does not move
+
+L85 closed sector as a score input and left exactly one admissible shape: a CAP,
+because a cap never has to drop an unmapped name — it just never counts one, so
+unmapped is unconstrained and the historical test is strictly WEAKER than the
+live rule would be. 55% of the 195 trades carry a sector against ~100% forward,
+so a null here would be weak evidence and an effect here is strong evidence.
+
+**The binding gate was run FIRST this time**, which is what H17 cost. Measured
+before writing any test module: `max 1 per broad sector` blocks 18 of 195
+entries (9.2%), `max 2` blocks 1 (0.5%), and the book holds two names from one
+sector on 12.6% of sessions. So `max 2` was predicted inert IN WRITING before
+the run, and `max 1` clears the gate that H17's correlation rule failed by a
+factor of ten.
+
+Batch `20260829-sectorcap`, control = no cap:
+
+| arm | CAGR | maxDD | n | per trade | vs control | t | worst block |
+|---|---|---|---|---|---|---|---|
+| **no cap (control, = live)** | **+1.93%** | **32.5%** | **195** | **+0.94% ± 1.12%** | — | — | **−166.4%** |
+| max 1/sector, substitute | +3.35% | 31.8% | 182 | +1.37% | +0.43% | +0.26 | −166.4% |
+| max 1/sector, hold cash | +2.99% | 31.6% | 180 | +1.32% | +0.37% | +0.23 | −166.4% |
+| max 2/sector, either shape | +2.32% | 32.5% | 195 | +1.03% | +0.09% | +0.06 | −166.4% |
+
+**The pre-registered prediction held exactly.** `max 2` moved 4 trades and
+changed nothing; `max 1` moved 25 and 23. The dose-response is the shape the
+docstring predicted, which means the cap does what it says it does.
+
+**And every headline number moved the right way at once** — CAGR up 1.42,
+drawdown down 0.7, per-trade up, BOTH clusters up (micro +0.92 → +1.28, small
++0.97 → +1.51). That combination is rare in this project; most candidates buy
+one axis with another.
+
+**The bar as first written returned ADOPT. It should not have, and the reason is
+the last column.** The worst regime block reads **−166.4% in every single arm**,
+identical to four significant figures, and **0 of the 19 trades the cap removed
+fall inside it**. 2022-H1 is the worst stretch this book has ever had and the
+concentration rule does not touch it. The drawdown gain comes from elsewhere on
+the curve: block by block the improvement is +47.9 in 2021-H2 and +17.5 in
+2025-H1 against −20.9 in 2021-H1. That is three blocks, not a risk reduction.
+
+**A risk rule whose tail does not move has not been shown to reduce risk**,
+whatever the average did. And the average is not evidence either: +0.43% ± 1.63%
+is t = +0.26, far inside its own standard error, with four arms against one
+control, so even a |t| near 2 would be worth a quarter of face value. CLAUDE.md's
+governing rule — adopt nothing that wins by less than its standard error —
+disposes of it on its own.
+
+**Second experiment running, second defective bar, and the defect is the same
+species both times: a clause with no minimum effect size.** H17's bar accepted
+"drawdown improved" by 0.2 points on a rule that changed ONE trade, and treated
+six identical numbers as monotone (L86). H18's bar accepted "drawdown improved"
+by 0.7 points with no error bar on a statistic — max drawdown on a single path —
+that is a single extremum and moves on noise alone. Writing the bar before the
+run is necessary and is not sufficient; a bar can be pre-registered and still be
+too weak to reject anything. The tightening added here is the worst-block
+clause, because the tail is the thing a risk rule is FOR, and it is the column
+that cannot be flattered by a good stretch elsewhere.
+
+**Not adopted, and NOT dismissed either.** This is the strongest lead the
+project has had since the rank-depth slope, and its historical test is
+deliberately weaker than the live rule: the cap sees 55% of trades here and
+would see ~100% forward. The honest next step is not another backtest — it is
+the same argument the whole project rests on. A rule that cannot be resolved in
+195 historical trades is not going to be resolved by re-running them. Running it
+forward in the pool, against the bucket's unchanged rule, would put one variable
+between two books the way `main` and `pooled` already differ — but that is a
+change to a live book and therefore the operator's decision, not this file's.

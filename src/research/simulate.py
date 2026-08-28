@@ -61,7 +61,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
         hold=selection.HOLD_DAYS, max_pos=5,
         capital=None, take_per_cluster=None, refresh=5, cluster_cap=None,
         start_idx=300, trigger="none", offset=0, max_corr=None,
-        decorr_open=False,
+        decorr_open=False, sector_cap=None, sector_map=None, sector_cash=False,
         impact_c=engine.IMPACT_C, sizing="equal", targets=None, stop_to=None,
         atr_stop=None, time_exit=None, tradable=None):
     """`targets` = [(pct, fraction), ...]: a ladder of PARTIAL exits, each
@@ -231,6 +231,12 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
             held_clusters = defaultdict(int)
             for p in open_pos:
                 held_clusters[p["clu"]] += 1
+            held_sectors = defaultdict(int)
+            if sector_map:
+                for p in open_pos:
+                    _s = sector_map.get(p["sym"])
+                    if _s:
+                        held_sectors[_s] += 1
             rows = selection.allocate(
                 selection.build(corpus, day, capital=equity, trigger=trigger),
                 take_per_cluster, offset=offset, max_pos=max_pos)
@@ -261,6 +267,27 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                 # this system -- the corpus carries no industry classification.
                 if cluster_cap and held_clusters[r["cluster"]] >= cluster_cap:
                     continue
+                # Caps positions per BROAD SECTOR (H18). sector_map is passed
+                # in rather than read from disk so the caller owns the
+                # point-in-time question, which for this map is severe: it is a
+                # 2026 scrape and a name missing from it is 66% delisted and 32%
+                # GROWN OUT of the tradeable band (L85). An unmapped name is
+                # therefore UNCONSTRAINED -- never dropped, never counted --
+                # which makes the historical test weaker than the live rule and
+                # never stronger.
+                #
+                # sector_cash chooses the SHAPE, and the two are different bets.
+                # Falling through (`continue`) reaches further down the ranking
+                # to fill the seat, and rank depth costs -1.12% per step, so
+                # substitution is not free. Consuming the seat holds cash
+                # instead, which is what selection.build already does when its
+                # best names have not triggered.
+                if sector_cap and sector_map:
+                    _sec = sector_map.get(r["symbol"])
+                    if _sec and held_sectors[_sec] >= sector_cap:
+                        if sector_cash:
+                            room -= 1
+                        continue
                 s = corpus[r["symbol"]]
                 i = s.index_of(day)
                 if i is None or i + 1 >= len(s):
@@ -319,6 +346,10 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                                  "stop_dist": (e_eff - _stop_px) / e_eff * 100,
                                  "entry_day": days[di + 1], "imp_in": imp})
                 held_clusters[r["cluster"]] += 1
+                if sector_map:
+                    _s = sector_map.get(r["symbol"])
+                    if _s:
+                        held_sectors[_s] += 1
                 taken_n += 1
                 room -= 1
     equity -= sum(max(v, 0.0) for k, v in fy_net.items() if k not in taxed) * STCG
