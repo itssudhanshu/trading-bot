@@ -231,6 +231,15 @@ def parse_rows(rows, master_names):
             "text": (r.get("ATTACHMENTTEXT") or r.get("attchmntText") or "").strip()[:400],
             "source": "bse",
             "bse_scrip": str(r.get("SCRIP_CD") or ""),
+            # The name the match was MADE FROM. Without it a mis-attribution is
+            # invisible: the record says AXISBANK and nothing says which BSE
+            # company's filing it was, so the only evidence of a bad match was
+            # a scrip code that disagreed with its neighbours -- and that proxy
+            # turns out to be unreliable, because a company files legitimately
+            # under its equity code AND its debt-segment codes. 2,671 records
+            # were stored before this field existed and cannot be re-derived
+            # (the feed is forward-only, L72a), so the audit starts from here.
+            "bse_name": (r.get("SLONGNAME") or "").strip(),
             "match_hits": hits,
         })
     out.sort(key=lambda x: (x["symbol"], x["visible_from"], x["an_dt"]))
@@ -253,8 +262,16 @@ def master_names():
     return out
 
 
-def store_day(rows_parsed, day=None):
-    """Append one day's parsed rows per symbol. Returns n stored."""
+def store_day(rows_parsed, day=None, rows_raw=None):
+    """Append one day's parsed rows per symbol. Returns n stored.
+
+    `rows_raw` is the FEED AS RECEIVED. It is written to BSE_RAW, which stored
+    the parsed rows instead until 2026-08-28 -- a directory named raw holding
+    derived data, which is the reason no matcher change can be re-derived
+    against history: name_to_symbol's input was discarded the moment it ran.
+    Kept optional so a caller that has already lost the raw rows still stores
+    something, but the default is now the real thing.
+    """
     day = day or date.today()
     by_sym = {}
     for r in rows_parsed:
@@ -281,7 +298,8 @@ def store_day(rows_parsed, day=None):
                 n += 1
     (BSE_RAW).mkdir(parents=True, exist_ok=True)
     (BSE_RAW / f"{day.isoformat()}.json").write_text(
-        json.dumps(rows_parsed, indent=1) + "\n")
+        json.dumps(rows_raw if rows_raw is not None else rows_parsed,
+                   indent=1) + "\n")
     return n
 
 
@@ -307,7 +325,7 @@ def update(day=None, log=print):
     if not rows:
         return 0, 0
     parsed = parse_rows(rows, master_names())
-    stored = store_day(parsed, day)
+    stored = store_day(parsed, day, rows_raw=rows)
     log(f"bse: {len(rows)} rows fetched, {len(parsed)} mapped, {stored} stored")
     return len(rows), stored
 
@@ -353,18 +371,29 @@ def _selftest():
         r = recs[0]
         assert r["symbol"] == "KENNAMET" and r["source"] == "bse"
         assert r["visible_from"] and r["an_dt"] and r["desc"]
+        # The name the match was made from has to survive into the record, or a
+        # wrong match leaves no trace of which company's filing it really was.
+        assert r["bse_name"] == "Kennametal India Ltd", r
 
         global BSE_PARSED, BSE_RAW
         old_p, old_r = BSE_PARSED, BSE_RAW
         BSE_PARSED = _pl.Path(td) / "parsed"
         BSE_RAW = _pl.Path(td) / "raw"
         try:
-            n1 = store_day(recs, _d(2026, 8, 25))
-            n2 = store_day(recs, _d(2026, 8, 25))
+            n1 = store_day(recs, _d(2026, 8, 25), rows_raw=[row])
+            n2 = store_day(recs, _d(2026, 8, 25), rows_raw=[row])
             assert n1 == 1 and n2 == 0, (n1, n2)   # idempotent: no dup rows
             tl = timeline("KENNAMET")
             assert len(tl) == 1 and tl[0]["bse_scrip"] == "532477"
             assert timeline("KOVAI") == []
+            # BSE_RAW must hold the FEED, not a second copy of the parse. It
+            # held the parsed rows until 2026-08-28, which is why none of the
+            # 2,671 records already on disk can be re-matched.
+            archived = json.loads(
+                (BSE_RAW / "2026-08-25.json").read_text())
+            assert archived and "SLONGNAME" in archived[0], archived[:1]
+            assert "symbol" not in archived[0], \
+                "the raw archive is holding parsed rows again"
         finally:
             BSE_PARSED, BSE_RAW = old_p, old_r
     print("bse_announcements selftest ok")

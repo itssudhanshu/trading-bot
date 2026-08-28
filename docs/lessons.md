@@ -3527,3 +3527,99 @@ something to do in order to land a comment. Until then this lesson is the only
 record that the live book has no diversification rule, which is precisely the
 L58 exposure: the next reader of that file sees a plausible guard and no sign
 that nothing calls it.
+
+## L87 — The lock that ate the audit: opening a database to READ it took a write lock
+
+`positions.db` is opened by three processes — the hourly launchd agent, the
+Telegram listener, and the audit — and on 2026-08-28 the agent's audit job died
+three times out of eleven with `sqlite3.OperationalError: database is locked`.
+The listener's poll hit it too. The failure was not visible as a failure: the
+job wrote a partial `data/audit.log` and exited non-zero, and `/review` — which
+runs after the audit specifically so it can quote the day's self-check — quoted
+the truncated file. **A self-check that dies halfway looks exactly like a
+self-check that passed, to everything downstream of it.**
+
+The cause was not contention between writers. `db()` ran unconditional DDL on
+EVERY open: `DROP TRIGGER`/`CREATE TRIGGER` for both audit triggers, and
+`DROP INDEX`/`CREATE INDEX` for `ux_pos_live`. Both were deliberate — the
+docstring says "rebuilt on every open, so an ALTER cannot leave it behind", and
+that reasoning is correct, because `bucket` and `origin` were both added by
+migration and an audit trigger predating a column silently snapshots rows
+without it. But the consequence was that **reading the book took a write lock**.
+`/wallet`, `positions.summary()`, the audit's own replay: every one of them a
+writer, as far as SQLite was concerned. `busy_timeout` was 5s and the collisions
+outlasted it.
+
+Measured directly, with another connection holding a write transaction:
+
+| | opens that succeeded | "database is locked" |
+|---|---|---|
+| DDL on every open (before) | 0 | 8 |
+| skip when already current (after) | 25 | 0 |
+
+The fix keeps the rebuild-on-drift guarantee and drops the write.
+`_schema_is_current()` compares CONTENT, not just existence: the column list
+embedded in the stored trigger SQL must be today's column list, `ux_pos_live`
+must still be `(symbol, bucket)` over live rows only, and `next_orders` must
+still be gone. Any difference returns False and the full DDL runs. WAL was
+turned on as well, so a reader and the writer can hold the file at once, and
+`busy_timeout` went to 30s.
+
+**Two things nearly went wrong while fixing it, and both were caught by running
+rather than reading.** `SELECT 1 ... HAVING count(*) = 2` is rejected by SQLite
+as a non-aggregate query. And the index check normalised whitespace away with
+`"".join(sql.split())` while the needle it searched for still contained a space
+— `"on pos(symbol,bucket)"` can never match `"onpos(symbol,bucket)"`, so the
+predicate would have returned False forever, silently restoring the exact
+behaviour being removed while every test still passed. A guard that always
+rebuilds and never says so is the same class of bug as a guard that never runs
+(L58). `_reopen_is_read_only_selftest` now asserts sqlite_master is
+byte-identical across a reopen AND that a drifted column list still forces the
+rebuild — one half alone would pass with the hole open.
+
+## L88 — The BSE "raw" archive held parsed rows, so the matcher cannot be audited — and the proxy that suggested it was broken is unreliable
+
+`name_to_symbol` maps a BSE company name onto an NSE symbol by token overlap,
+accepting two shared tokens or one that is unique across the master. AXISBANK's
+timeline carries three filings under BSE scrip **511144**, which is not Axis
+Bank — 532215 is. So cross-company mis-attribution is real and demonstrable.
+
+The obvious next question is how often, and the answer is: **not knowable from
+what is on disk.** `store_day` wrote the PARSED rows into a directory named
+`raw` (line 283), so `SLONGNAME` — the string the match was made from — was
+discarded the moment `parse_rows` ran. 2,671 records exist and not one of them
+records which BSE company it came from. The feed is forward-only by
+construction (L72a), so history cannot be refetched either.
+
+**The proxy used to size the problem does not survive contact with the data.**
+Counting symbols carrying more than one BSE scrip code gives 128 of 1,044, and
+14.9% of records on a non-modal scrip, which reads like a 15% error rate. It is
+not one. Breaking those records down by scrip band:
+
+| scrip band | on the symbol's modal code | off it |
+|---|---|---|
+| 6-digit 5xxxxx/6xxxxx (equity) | 2,030 | 218 |
+| 7-digit 9xxxxxx (debt segment) | 181 | 81 |
+| 6-digit 97xxxx (debt segment) | 35 | 69 |
+
+A company files legitimately under its equity code AND its debt-segment codes,
+so most multi-scrip symbols are one issuer filing in two segments, not two
+issuers collapsed into one symbol. And the confidence signal does not separate
+them the way it should: single-token matches are off-modal 21.1% of the time
+(145 of 686) against 12.8% for two-or-more (254 of 1,985) — worse, but nowhere
+near a clean split, so tightening to `hits >= 2` would discard 686 records to
+address 145 and would break exactly the distinctive single-word brands the rule
+was written for (KENNAMETAL).
+
+**So the acceptance rule was NOT changed.** Changing a matcher on a hypothesis
+with no test set is the parameter-tuning failure this project keeps recording
+(L47), and "criteria may be tightened, never loosened" does not license a
+tightening that is untested. What changed is the evidence: `bse_name` is now
+kept on every parsed record, and `BSE_RAW` now stores the feed as received, so
+a matcher change can be re-derived against history from here on. A selftest
+asserts the raw archive contains `SLONGNAME` and NOT `symbol`, because a
+directory named raw that holds derived data is how this went unnoticed.
+
+The audit starts from today. This channel is context and never a measured input
+(L66/L68), so nothing measured is affected either way — which is the only
+reason it is acceptable to leave the rule alone and collect evidence first.

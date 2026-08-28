@@ -157,18 +157,32 @@ def bucket_cfg(name=MAIN):
 
 def db():
     c = sqlite3.connect(DB)
-    # Two processes write this file -- the hourly launchd agent and the Telegram
-    # listener -- and SQLite's default on a busy file is to fail INSTANTLY with
-    # "database is locked" rather than wait for the other writer to finish.
-    c.execute("PRAGMA busy_timeout=5000")
-    c.executescript("""
-    CREATE TABLE IF NOT EXISTS pos(
-      id INTEGER PRIMARY KEY, symbol TEXT, cluster TEXT, status TEXT,
-      queued_on TEXT, entry_day TEXT, entry_px REAL, qty INTEGER,
-      stop REAL, target REAL, exit_day TEXT, exit_px REAL,
-      exit_reason TEXT, net REAL, features TEXT, fill_source TEXT);
-    CREATE INDEX IF NOT EXISTS ix_pos_status ON pos(status);
-    """)
+    # THREE processes open this file -- the hourly launchd agent, the Telegram
+    # listener and the audit -- and SQLite's default on a busy file is to fail
+    # INSTANTLY with "database is locked" rather than wait for the other writer.
+    # 5s was not enough: the agent's audit job died mid-run three times on
+    # 2026-08-28 and left a truncated audit.log that /review quoted anyway.
+    c.execute("PRAGMA busy_timeout=30000")
+    # WAL lets a reader and the writer hold the file at once, which is the shape
+    # of every collision seen here -- /wallet reading while daily.py fills.
+    # journal_mode is persistent in the file header, so this is a no-op after
+    # the first time; it can only fail if another connection holds the file
+    # exclusively, and an open that cannot upgrade the journal is still a
+    # correct open, so the failure is not fatal.
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.DatabaseError:
+        pass
+    if c.execute("SELECT count(*) FROM sqlite_master "
+                 "WHERE name IN ('pos','ix_pos_status')").fetchone()[0] != 2:
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS pos(
+          id INTEGER PRIMARY KEY, symbol TEXT, cluster TEXT, status TEXT,
+          queued_on TEXT, entry_day TEXT, entry_px REAL, qty INTEGER,
+          stop REAL, target REAL, exit_day TEXT, exit_px REAL,
+          exit_reason TEXT, net REAL, features TEXT, fill_source TEXT);
+        CREATE INDEX IF NOT EXISTS ix_pos_status ON pos(status);
+        """)
     # Existing rows predate the parallel buckets and are the record: they become
     # 'main'. Done as a migration rather than a fresh table so the one live
     # position keeps its id and history.
@@ -226,6 +240,55 @@ def export_record(conn=None, path=None):
     return p
 
 
+def _audit_obj(cols):
+    """The json_object() payload the audit triggers snapshot.
+
+    ONE definition, read both by the CREATE below and by the check that decides
+    whether re-creating is necessary. Two copies would drift, and the copy that
+    drifts silently is the one that decides to skip the write.
+    """
+    return ", ".join(f"'{c}', new.{c}" for c in cols)
+
+
+def _schema_is_current(c, cols):
+    """-> True when every append-only object already exists in the shape
+    _append_only would create it in.
+
+    WHY THIS EXISTS. _append_only ran unconditional DDL on EVERY open --
+    DROP/CREATE for both audit triggers and for ux_pos_live -- so opening the
+    database to READ it took a write lock. Three processes open this file (the
+    hourly agent, the Telegram listener, the audit), and on 2026-08-28 that cost
+    3 of 11 audit runs: the job died mid-check with "database is locked", leaving
+    a truncated data/audit.log that /review then quoted as though it were a
+    finished self-check. A guard that fails silently is worse than no guard.
+
+    The rebuild-on-drift guarantee is UNCHANGED and is the whole reason this
+    compares content rather than just existence: `bucket` and `origin` were both
+    added by migration, and an audit trigger that predates a column snapshots
+    every row without it. Any difference -- a missing object, a stale column
+    list, a resurrected next_orders view -- returns False and the full DDL runs.
+    """
+    have = {name: (sql or "") for name, sql in
+            c.execute("SELECT name, sql FROM sqlite_master")}
+    need = {"pos", "pos_log", "ix_pos_status", "ux_pos_live", "pos_no_delete",
+            "pos_log_no_delete", "pos_log_ins", "pos_log_upd",
+            "pending_orders", "open_orders", "closed_orders"}
+    if not need <= set(have) or "next_orders" in have:
+        return False
+    # The column list the triggers snapshot must be TODAY's column list.
+    obj = _audit_obj(cols)
+    if obj not in have["pos_log_ins"] or obj not in have["pos_log_upd"]:
+        return False
+    # ux_pos_live is (symbol, bucket) over live rows only. It was once (symbol)
+    # alone, which is fatal with two buckets running, so its SHAPE is checked
+    # and not merely its name.
+    # Whitespace is stripped ENTIRELY, so these needles carry none either --
+    # "on pos(" does not survive its own normalisation, and a needle that can
+    # never match turns this into a check that always rebuilds and never says so.
+    ix = "".join(have["ux_pos_live"].split()).lower()
+    return "onpos(symbol,bucket)" in ix and "'pending','open'" in ix
+
+
 def _audit_triggers(cols):
     """Trigger SQL snapshotting every column, BUILT from the live schema.
 
@@ -234,7 +297,7 @@ def _audit_triggers(cols):
     the column that says where a position came from is not an audit trail.
     Rebuilt on every open, so an ALTER cannot leave it behind.
     """
-    obj = ", ".join(f"'{c}', new.{c}" for c in cols)
+    obj = _audit_obj(cols)
     return f"""
     DROP TRIGGER IF EXISTS pos_log_ins;
     DROP TRIGGER IF EXISTS pos_log_upd;
@@ -259,6 +322,10 @@ def _append_only(c):
     exactly that way, by a path that never went through this code.
     """
     cols = [r[1] for r in c.execute("PRAGMA table_info(pos)")]
+    # Already exactly right: opening to READ must not take a write lock. See
+    # _schema_is_current for what "exactly right" checks and why.
+    if _schema_is_current(c, cols):
+        return
     c.executescript("""
     -- No delete, at any depth. Editing is the only way to retire a row, which
     -- is why a wrong entry is closed with an exit_reason rather than removed.
@@ -820,6 +887,62 @@ def _record_selftest():
     print("  record round trip ok")
 
 
+def _reopen_is_read_only_selftest():
+    """Opening an initialised database must not WRITE to it.
+
+    This is the whole of the 2026-08-28 lock fix and it has to be asserted, not
+    described. _append_only used to run DROP/CREATE for both audit triggers and
+    for ux_pos_live on EVERY open, so reading the book took a write lock and
+    three processes contending for it killed 3 of 11 audit runs -- each leaving
+    a truncated audit.log that /review then quoted as a finished check.
+
+    Measured against the real failure: with the schema re-created on every open,
+    8 of 8 opens raised "database is locked" while another connection held a
+    write; with the skip in place, 0 of 25 did.
+
+    The assertion is that sqlite_master is byte-identical across a reopen AND
+    that a drifted column list still forces the rebuild -- a skip that never
+    rebuilds would pass the first half and lose the audit trail's newest column.
+    """
+    import tempfile
+    global DB
+    _odb = DB
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            DB = Path(td) / "p.db"
+            c = db()
+            c.execute("INSERT INTO pos(symbol, status, bucket) "
+                      "VALUES('T','open','main')")
+            c.commit()
+            before = sorted(c.execute("SELECT name, sql FROM sqlite_master"))
+            cols = [r[1] for r in c.execute("PRAGMA table_info(pos)")]
+            assert _schema_is_current(c, cols), "a fresh open did not settle"
+            c.close()
+
+            c2 = db()
+            after = sorted(c2.execute("SELECT name, sql FROM sqlite_master"))
+            assert before == after, "reopening rewrote the schema"
+            # ... and drift must still rebuild, or the skip is just a hole.
+            assert not _schema_is_current(c2, cols + ["origin2"]), \
+                "a new column did not invalidate the audit triggers"
+            # the guarantees the DDL exists for are still live
+            try:
+                c2.execute("DELETE FROM pos WHERE symbol='T'")
+                raise AssertionError("no-delete trigger is gone")
+            except sqlite3.DatabaseError as e:
+                assert "append-only" in str(e), e
+            n = c2.execute("SELECT count(*) FROM pos_log").fetchone()[0]
+            c2.execute("UPDATE pos SET cluster='micro' WHERE symbol='T'")
+            c2.commit()
+            assert c2.execute("SELECT count(*) FROM pos_log").fetchone()[0] == n + 1, \
+                "an update was not written to the audit trail"
+            c2.close()
+    finally:
+        DB = _odb
+    print("  reopening an initialised book writes nothing ok "
+          "(and a new column still rebuilds the audit triggers)")
+
+
 def _append_only_selftest():
     """The four database rules, asserted against the database, not the module.
 
@@ -892,6 +1015,7 @@ def _append_only_selftest():
 def _selftest():
     _bars_held_selftest()
     _append_only_selftest()
+    _reopen_is_read_only_selftest()
     _room_selftest()
     _record_selftest()
     _fill_source_selftest()

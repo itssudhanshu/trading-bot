@@ -59,6 +59,12 @@ data/fundamentals/
 # tick and checked against the live database by audit.py.
 data/positions.db
 data/positions.db.bak-*
+# WAL sidecars. Transient by definition -- SQLite folds -wal back into the
+# database on the last clean close -- and meaningless without the .db they
+# belong to, which is itself untracked. Added when db() moved to WAL so that a
+# reader stops blocking the writer (positions.py, 2026-08-28).
+data/positions.db-wal
+data/positions.db-shm
 
 # Claude Code's config. Tracking it made a local tool setting a repo change,
 # and because the sandbox may not write this path a branch switch could not
