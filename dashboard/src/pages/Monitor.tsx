@@ -6,6 +6,8 @@ import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import { useState } from 'react'
 import ChartPane from '../components/ChartPane'
+import LeftToolbar from '../components/LeftToolbar'
+import RightBucketPanel from '../components/RightBucketPanel'
 
 const SAMPLE = [
   { time: '2024-05-13', open: 100, high: 108, low: 99, close: 106, volume: 1200 },
@@ -17,6 +19,7 @@ const SAMPLE = [
 
 export default function Monitor() {
   const [book, setBook] = useState<'main' | 'pooled' | 'etf_trend'>('main')
+  const [selected, setSelected] = useState<string | null>(null)
   return (
     <Box sx={{ minHeight: '100dvh', bgcolor: '#131722', color: '#D1D4DC', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderBottom: '1px solid #2A2E39', bgcolor: '#131722' }}>
@@ -28,15 +31,15 @@ export default function Monitor() {
             <MenuItem value="etf_trend">ETF_trend</MenuItem>
           </Select>
         </FormControl>
-        <Typography variant="h6" sx={{ color: '#D1D4DC' }}>NSE: NATCAPSUQ · micro · breakout · 1D</Typography>
+        <Typography variant="h6" sx={{ color: '#D1D4DC' }}>NSE: {selected ?? 'NATCAPSUQ'} · micro · breakout · 1D</Typography>
         <Box sx={{ ml: 'auto', color: '#9598A1', fontSize: 12 }}>Monitor — {book} · Card C</Box>
       </Box>
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <Box sx={{ width: 36, bgcolor: '#1E222D', borderRight: '1px solid #2A2E39', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, py: 2, color: '#9598A1', fontSize: 16 }}>✏️<br/>📏<br/>🔍</Box>
+        <LeftToolbar />
         <Box sx={{ flex: 1, p: 1, bgcolor: '#131722' }}>
           <ChartPane data={SAMPLE} entryPx={106} stop={98} target={127} />
         </Box>
-        <Box sx={{ width: 260, bgcolor: '#1E222D', borderLeft: '1px solid #2A2E39', p: 1.5, color: '#9598A1', fontSize: 12 }}>RightBucketPanel (Task 3)</Box>
+        <RightBucketPanel book={book} selected={selected} onSelect={setSelected} />
       </Box>
       <Box sx={{ height: 48, bgcolor: '#1E222D', borderTop: '1px solid #2A2E39', display: 'flex', alignItems: 'center', px: 2, fontSize: 11, color: '#9598A1' }}>Revenue 2407Cr · OCF 80Cr · Sector Commodities · visible_from 2024-05-17 · RightDrawer (Task 4)</Box>
     </Box>
