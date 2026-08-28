@@ -103,10 +103,6 @@ data/news/
 .agents/
 .playwright/
 .superpowers/
-dashboard/dist/
-dashboard/node_modules/
-dashboard/.playwright-cli/
-dashboard/test-results/
 data/screener_raw/
 data/fundamentals_screener/
 data/fund_annual*.log
