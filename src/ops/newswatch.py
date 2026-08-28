@@ -543,21 +543,23 @@ def capture(feeds=None, log=print, fetcher=None):
 
 def _selftest():
     # --- RSS and Atom both parse, and junk does not crash -------------------
-    rss = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+    _now_pub = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
+    _now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rss = f"""<?xml version="1.0"?><rss version="2.0"><channel>
       <item><title>Widget Co wins order</title>
             <link>https://example.com/a</link>
-            <pubDate>Thu, 20 Aug 2026 09:00:00 +0530</pubDate></item>
+            <pubDate>{_now_pub}</pubDate></item>
       <item><title>No link here</title></item>
-    </channel></rss>"""
+    </channel></rss>""".encode()
     got = parse_feed(rss, source="t")
     assert len(got) == 1, f"expected the linkless item dropped, got {got}"
     assert got[0]["title"] == "Widget Co wins order"
     assert got[0]["link"] == "https://example.com/a"
 
-    atom = b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+    atom = f"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
       <entry><title>Atom headline</title>
              <link href="https://example.com/b"/>
-             <updated>2026-08-20T09:00:00Z</updated></entry></feed>"""
+             <updated>{_now_iso}</updated></entry></feed>""".encode()
     got = parse_feed(atom, source="t")
     assert len(got) == 1 and got[0]["link"] == "https://example.com/b", got
 
