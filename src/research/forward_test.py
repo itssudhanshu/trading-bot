@@ -116,6 +116,24 @@ EXPECTED = {
     # rule it obeys and there is no day count to compare against.
     "etf_trend": dict(rate_mo=None, per_trade=1.04, se=1.08, sd=None,
                       win=None, hold=None, occ=None, maxdd=17.8, n=147),
+    # main's ranks with at most one name per broad sector, holding cash rather
+    # than reaching deeper. Frozen from H18's hold-cash arm (batch
+    # 20260829-sectorcap, L89): +2.99% CAGR, 31.6% DD, n=180, win 46%,
+    # occupancy 2.92, +1.32% +/- 1.20 per trade.
+    #
+    # Two fields are DERIVED and say so rather than being measured: `rate_mo`
+    # scales main's 2.86 by 180/195, the two arms' trade counts over the same
+    # span, and `hold` is main's 6.9 because the cap changes WHICH names are
+    # bought and not how long they are held -- the exit rules are byte-identical.
+    # `sd` was not printed by that run and is left unregistered.
+    "capped": dict(rate_mo=2.64, per_trade=1.32, se=1.20, sd=None,
+                   win=46.0, hold=6.9, occ=2.92, maxdd=31.6, n=180,
+                   # It started EIGHT DAYS after the other two, so its expected
+                   # trade count must be measured from its own first session.
+                   # Against the shared FORWARD_FROM it would be charged for a
+                   # week it did not trade -- small now, and exactly the kind of
+                   # quiet bias that makes a gate fire on the wrong book.
+                   since="2026-08-29"),
 }
 MIN_N_EDGE = 195          # trades before the per-trade edge may be judged
 # SIX months, not three, and the arithmetic is why. A 95% Poisson band around
@@ -141,17 +159,18 @@ def _poisson_ok(observed, expected):
     return expected - half <= observed <= expected + half
 
 
-def forward_rows(conn, bucket):
-    """-> the rows of one bucket ENTERED on or after FORWARD_FROM."""
+def forward_rows(conn, bucket, since=None):
+    """-> the rows of one bucket ENTERED on or after its own start date."""
     conn.row_factory = sqlite3.Row
     rows = [dict(r) for r in conn.execute(
         "SELECT * FROM pos WHERE bucket=? AND status IN "
         "('pending','open','closed')", (bucket,))]
     conn.row_factory = None
+    floor = str(since or FORWARD_FROM)
     keep = []
     for r in rows:
         stamp = r.get("entry_day") or r.get("queued_on")
-        if stamp and str(stamp) >= FORWARD_FROM:
+        if stamp and str(stamp) >= floor:
             keep.append(r)
     return keep
 
@@ -160,12 +179,15 @@ def check(conn=None, today=None):
     """-> {bucket: [(name, verdict, detail)]}. verdict in pass/FAIL/too early."""
     c = conn or positions.db()
     today = today or _dt.date.today()
-    start = _dt.date.fromisoformat(FORWARD_FROM)
-    days_live = max((today - start).days, 0)
-    months = days_live / 30.44
     out = {}
     for bucket, exp in EXPECTED.items():
-        rows = forward_rows(c, bucket)
+        # Each book is measured from ITS OWN first session. FORWARD_FROM is the
+        # default because main and pooled began together; a book that started
+        # later says so and is not charged for the weeks before it existed.
+        start = _dt.date.fromisoformat(exp.get("since") or FORWARD_FROM)
+        days_live = max((today - start).days, 0)
+        months = days_live / 30.44
+        rows = forward_rows(c, bucket, since=start)
         closed = [r for r in rows if r["status"] == "closed" and r["entry_px"]]
         pending = [r for r in rows if r["status"] == "pending"]
         res = []
@@ -251,11 +273,21 @@ def report(res):
     bad = 0
     for bucket, rows in res.items():
         exp = EXPECTED[bucket]
-        print(f"{bucket}  (expects {exp['rate_mo']:.2f} trades/mo, "
-              f"{exp['per_trade']:+.2f}% per trade, {exp['occ']:.2f} held)")
+        # A field this book never froze prints as "--", not as a number and
+        # not as a crash. etf_trend registered CAGR, drawdown, n and the
+        # per-trade edge and nothing else (L70).
+        def _n(v, fmt):
+            return format(v, fmt) if v is not None else "--"
+        print(f"{bucket}  (expects {_n(exp['rate_mo'], '.2f')} trades/mo, "
+              f"{_n(exp['per_trade'], '+.2f')}% per trade, "
+              f"{_n(exp['occ'], '.2f')} held)")
         for name, verdict, detail in rows:
+            # A dict lookup, not .get(): an unknown verdict must raise here
+            # rather than print blank and be read as "fine". "n/a" is the
+            # gate this book froze no number for, and it is deliberately not
+            # spelled like a pass.
             mark = {"pass": "ok  ", "FAIL": "FAIL", "too early": "--  ",
-                    "judge now": "JUDGE"}[verdict]
+                    "not registered": "n/a ", "judge now": "JUDGE"}[verdict]
             print(f"   {mark} {name:<16} {detail}")
             bad += verdict == "FAIL"
         print()
@@ -316,6 +348,11 @@ def _selftest():
                     assert got["occupancy"] == "too early", got
                 assert got["per-trade edge"] == "too early", got
                 assert got["fills"] == "pass", got   # no orders is not a stall
+            # report() must survive a book with unregistered fields. It
+            # formatted rate_mo and occ unconditionally and raised TypeError on
+            # the first bucket that left them None -- invisible here until the
+            # selftest exercised the printer as well as the checker.
+            report(res)
             # a stale pending order must FAIL the fill check
             c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,bucket)"
                       " VALUES('AAA','micro','pending',?,10,'main')",

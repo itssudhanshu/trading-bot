@@ -18,6 +18,7 @@ from collections import defaultdict
 
 import clusters
 import engine
+import universe
 import features
 import selection
 
@@ -283,8 +284,14 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                 # instead, which is what selection.build already does when its
                 # best names have not triggered.
                 if sector_cap and sector_map:
-                    _sec = sector_map.get(r["symbol"])
-                    if _sec and held_sectors[_sec] >= sector_cap:
+                    # universe.sector_blocked, not a second copy of the test:
+                    # the forward book queues through the SAME predicate, and a
+                    # rule written twice stops the forward record being a test
+                    # of what was measured here (rules.md R1). It lives in
+                    # universe rather than positions because this is a research
+                    # module and may not reach the order book.
+                    if universe.sector_blocked(held_sectors, r["symbol"],
+                                               sector_cap, sector_map):
                         if sector_cash:
                             room -= 1
                         continue

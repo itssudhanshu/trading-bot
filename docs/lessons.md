@@ -3692,3 +3692,63 @@ the same argument the whole project rests on. A rule that cannot be resolved in
 forward in the pool, against the bucket's unchanged rule, would put one variable
 between two books the way `main` and `pooled` already differ — but that is a
 change to a live book and therefore the operator's decision, not this file's.
+
+## L90 — The sector cap goes forward as a fourth bucket, because 195 backtest trades cannot settle it
+
+H18 (L89) left the sector cap in the only state this project has no machinery
+for: every headline number moved the right way at once — CAGR +1.93% → +2.99%,
+drawdown 32.5% → 31.6%, per trade +0.94% → +1.32%, both clusters up — and not
+one of those clears its own error bar (+0.37% ± 1.64, t = +0.23), while the
+worst regime block does not move at all. The rule was not adopted and was
+explicitly not dismissed.
+
+Re-running the backtest cannot resolve this and never will: 195 trades against a
+0.37% gap is not a measurement, and the historical test is *deliberately weaker*
+than the live rule, because the sector map covers 55% of those trades and ~100%
+of today's universe (L85). Forward is the only place the rule runs at full
+strength. That is the same argument that put `pooled` on the board.
+
+**A fourth bucket, `capped`, from 2026-08-29.** main's rules exactly, plus at
+most one name per broad sector, with a blocked seat holding cash.
+
+**Not bolted onto the pool, and that is the whole design.** The pool already
+differs from main by its ranking; adding the cap there would leave a divergence
+with two possible causes, and the reason the pair is worth running at all is
+that exactly one variable separates them. Same signals, same stops, the same
+Rs 3,00,000, the same per-cluster ranking — the cap is the only difference.
+
+**Hold cash, not substitute.** The two shapes measured indistinguishably in H18
+(+1.42 vs +1.07 CAGR, both t ≈ 0.25), so the number cannot choose between them
+and something else has to. Substituting reaches one rank deeper by construction,
+and rank depth costs −1.12% a step; L56 removed three buckets for knowingly
+buying ranks the score marks as worse. Holding cash is what `build()` already
+does when its best names have not triggered, so the shape follows the book's own
+philosophy rather than a coin flip.
+
+Demonstrated on the day's real picks: YUKEN (Industrials) and UNIPARTS
+(Consumer Discretionary) queue; SHAHALLOYS, Industrials and ranked below YUKEN,
+is blocked and its seat holds cash. main and pooled take all three.
+
+**Three things this change had to get right, each of which was nearly wrong.**
+
+- **The rule exists once.** `universe.sector_blocked` is called by daily.py when
+  it queues forward and by `simulate.run` when it backtests. It was first put in
+  `positions.py`, which would have forced `simulate.py` — a research module — to
+  import the live order book, the exact thing `breakout_untouched` forbids and
+  is right to. Sector is a fact about a symbol, so it lives in `universe.py`.
+- **An unmapped symbol is never blocked.** The cap never drops a name for want
+  of a label, so a missing sector weakens the rule instead of biasing which
+  names survive. That property is what made the rule admissible on a 2026 scrape
+  in the first place (L85), and it is asserted, not assumed.
+- **Each book is measured from its own start.** `forward_test` computed months
+  from one global `FORWARD_FROM`, so a bucket that began eight days later would
+  have been charged for a week it did not trade. Small today, and precisely the
+  quiet bias that makes a gate fire on the wrong book.
+
+`forward_test` monitors all four books. `capped`'s expectation is frozen from
+H18's hold-cash arm; `rate_mo` and `hold` are DERIVED and say so in the file —
+the first by scaling main's rate by 180/195, the second because the cap changes
+which names are bought and not how long they are held. `sd` was never printed by
+that run and stays unregistered rather than invented.
+
+Nothing about main, pooled or the recorded baseline changes.

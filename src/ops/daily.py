@@ -88,6 +88,34 @@ def main(day=None):
                      if cfg["ranking"] == "pooled" else selection.allocate(rows))
         finally:
             selection.RANKING = _was
+        # The sector cap, for the bucket that runs one (H18/L89). Applied HERE
+        # rather than inside queue(), because it needs the ranking ORDER: the
+        # rule is "take the best name in each sector", and queue() sees a list
+        # it is meant to take from in order, not to reorder.
+        #
+        # HOLD CASH: a blocked pick spends the seat instead of handing it to the
+        # next name down. Reaching deeper is the other shape of this rule and it
+        # buys diversification with rank depth, which costs -1.12% a step; this
+        # book holds cash when its best names are not available, and does so
+        # here too. `room` is decremented, and that is the whole mechanism.
+        cap = cfg.get("sector_cap")
+        if cap:
+            import universe
+            counts = positions.held_sectors(name, conn)
+            smap = universe.sector_map()
+            allowed, left = [], room
+            for r in picks:
+                if left <= 0:
+                    break
+                if universe.sector_blocked(counts, r["symbol"], cap, smap):
+                    left -= 1                    # the seat holds cash
+                    continue
+                allowed.append(r)
+                sec = smap.get(r["symbol"])
+                if sec:
+                    counts[sec] = counts.get(sec, 0) + 1
+                left -= 1
+            picks, room = allowed, len(allowed)
         # Pass the WHOLE allocation and let queue() apply the room, because it
         # is the function that knows which names are already live. Slicing here
         # first spent the room on duplicates -- see positions.queue.

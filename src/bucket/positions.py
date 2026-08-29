@@ -90,6 +90,7 @@ COSTS = __import__("engine").Costs()
 MAIN = "main"
 POOLED = "pooled"
 ETF = "etf_trend"
+CAPPED = "capped"
 
 # TWO BUCKETS RUN FORWARD, side by side, on the same signals and the same
 # capital. They differ in ONE thing -- how the five seats are allotted -- so a
@@ -135,6 +136,35 @@ BUCKETS = {
                  queued_by="etf_trend",
                  note="liquid funds above their own trend, exited on an "
                       "SMA100 break -- no target, no day count"),
+    # THE FOURTH BUCKET, from 2026-08-29. main's rules exactly, plus one thing:
+    # at most ONE name per broad sector, and a blocked seat holds cash rather
+    # than reaching further down the ranking.
+    #
+    # It exists because H18 (L89) cannot be settled by backtest. The cap moved
+    # every headline number the right way at once -- CAGR +1.93 -> +2.99,
+    # drawdown 32.5 -> 31.6, per trade +0.94 -> +1.32, both clusters up -- and
+    # none of it clears its error bar (+0.37% +/- 1.64, t = +0.23), while the
+    # worst block does not move at all. 195 historical trades cannot resolve it
+    # and re-running them will not change that. The historical test also
+    # UNDERSTATES the live rule: the sector map covers 55% of those trades and
+    # ~100% of today's universe (L85), so forward is the only place the rule
+    # runs at full strength.
+    #
+    # ONE VARIABLE against main, which is the whole point and the reason it is
+    # not bolted onto the pool: the pool already differs from main by its
+    # ranking, and a second difference would leave a divergence with two
+    # possible causes. Same signals, same stops, same Rs 3,00,000, same
+    # per-cluster ranking -- the cap is the only thing that differs.
+    #
+    # HOLD CASH, not substitute. L56 removed the deeper buckets for knowingly
+    # buying ranks the score marks as worse, and substituting reaches one rank
+    # deeper by construction; the two shapes measured indistinguishably in H18
+    # (+1.42 vs +1.07 CAGR, both t ~ 0.25), so the shape consistent with this
+    # book's own philosophy wins on grounds other than the number.
+    CAPPED: dict(offset=0, stop_pct=None, ranking="per_cluster", seats=5,
+                 queued_by="daily", sector_cap=1,
+                 note="main's ranks, at most one name per broad sector, "
+                      "holding cash rather than reaching deeper"),
 }
 # The rankings that EXIST. A bucket naming anything else would queue another
 # book's picks under its own name and read as a comparison it never ran, which
@@ -177,7 +207,8 @@ BUCKET = BUCKETS[MAIN]        # the old name, still the main bucket's config
 # that holds positions, and that word is bucket. STATE.md calls it a book in
 # prose written before it had a bucket of its own; the label a person reads
 # here follows the vocabulary rather than the prose.
-LABEL = {MAIN: "bucket", POOLED: "pool", ETF: "fund bucket"}
+LABEL = {MAIN: "bucket", POOLED: "pool", ETF: "fund bucket",
+         CAPPED: "capped bucket"}
 
 
 def label(name):
@@ -502,6 +533,18 @@ def queue(rows, day, conn=None, which=MAIN, limit=None):
         n += 1
     c.commit()
     return n
+
+
+def held_sectors(which, conn=None, smap=None):
+    """-> {sector: n} for one bucket's live names."""
+    import universe
+    smap = universe.sector_map() if smap is None else smap
+    out = {}
+    for r in live_rows(which, conn):
+        s = smap.get(r["symbol"])
+        if s:
+            out[s] = out.get(s, 0) + 1
+    return out
 
 
 def mark_open(pos_id, day, px, qty=None, source="confirmed", conn=None):

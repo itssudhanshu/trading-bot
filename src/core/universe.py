@@ -22,6 +22,53 @@ RAW = ROOT / "data" / "raw"
 # and typically already distressed. Not swing-tradeable.
 TRADEABLE_SERIES = {"EQ"}
 
+_SECTORS = None
+
+
+def sector_map():
+    """-> {symbol: broad sector} from data/sectors.json, loaded once.
+
+    POINT-IN-TIME WARNING, and it is why this is only ever used FORWARD: the
+    file is a 2026 scrape. It covers 99.8% of today's tradeable universe and
+    64.8% of 2021's, and the names missing from the older universe are 66%
+    delisted and 32% GROWN OUT of the micro/small band -- so applied to history
+    it filters on "still small in 2026" and truncates BOTH tails of the outcome
+    distribution (L85). Forward it is honest: a name is mapped because it
+    trades now.
+    """
+    global _SECTORS
+    if _SECTORS is None:
+        p = ROOT / "data" / "sectors.json"
+        try:
+            _SECTORS = json.loads(p.read_text()) if p.exists() else {}
+        except (OSError, ValueError):
+            _SECTORS = {}
+    return _SECTORS
+
+
+def sector_blocked(held_counts, symbol, cap, smap=None):
+    """-> True when `symbol`'s broad sector already holds `cap` names.
+
+    ONE definition of the sector cap, called by daily.py when it queues the
+    capped bucket forward and by simulate.run when it backtests one. Written
+    twice they would drift and the forward book would stop being a test of the
+    thing that was measured (rules.md R1).
+
+    It lives in universe.py rather than positions.py because simulate.py is a
+    research module, and research modules may not reach the live order book --
+    tests/breakout_untouched.py enforces that, and it is right to. Sector is a
+    fact about a symbol, which is what this module is for.
+
+    An UNMAPPED symbol is NEVER blocked. That is what makes the rule admissible
+    on a 2026 scrape: it never drops a name for want of a label, so a missing
+    sector weakens the cap instead of biasing which names survive.
+    """
+    if not cap:
+        return False
+    smap = sector_map() if smap is None else smap
+    s = smap.get(symbol)
+    return bool(s) and held_counts.get(s, 0) >= cap
+
 
 @dataclass
 class Bar:
