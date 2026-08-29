@@ -72,7 +72,22 @@ _MAY_READ_ORDER_BOOK = {
     "src/research/forward_test.py":
         "the live forward run IS its subject; it reads the order book and "
         "never writes to it",
+    "src/strategies/etf_trend/paper.py":
+        "the fund bucket TRADES; it is a live paper book like daily.py, not a "
+        "backtest, and since 2026-08-29 its record is the shared order book so "
+        "that every trade sits in one place. It is the first WRITER on this "
+        "list, so it carries the extra condition below: it may not name another "
+        "book's bucket key",
 }
+
+# A writer on the list above gets a second, tighter test. Reading the order
+# book cannot corrupt anything; writing to it can, and the thing that must stay
+# true is that a strategy writes ONLY under its own bucket. Naming MAIN or
+# POOLED is how it would stop being true -- a queue() call with the wrong
+# `which`, a stray filter -- so the allowed writers are checked for it. This is
+# the guarantee check 2 exists to give, held onto rather than exempted.
+_WRITERS = {"src/strategies/etf_trend/paper.py": "ETF"}
+_OTHER_BOOKS = {"MAIN", "POOLED"}
 
 _fails = []
 
@@ -150,6 +165,18 @@ def check_order_book_unreachable():
                      if a not in _LABELS and a != "db"}
             if reach:
                 offenders.append(f"{rel} -> {sorted(reach)}")
+    for rel, own in _WRITERS.items():
+        src = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        named = {a for a in _ATTR.findall(src)} & _OTHER_BOOKS
+        if named:
+            offenders.append(
+                f"{rel} names another book's bucket ({sorted(named)}); an "
+                f"allowed writer may only reference positions.{own}")
+        if f"positions.{own}" not in src:
+            offenders.append(
+                f"{rel} is listed as a writer for positions.{own} and never "
+                f"names it -- the allowlist entry is describing code that "
+                f"moved")
     check("no strategy or research module can reach the live order book",
           not offenders,
           f"reaching: {offenders or 'none'}; "

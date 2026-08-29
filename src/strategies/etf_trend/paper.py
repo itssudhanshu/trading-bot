@@ -1,12 +1,28 @@
 #!/usr/bin/env python3
-"""The trend book's paper bucket: its own ledger, its own state, its own rules.
+"""The fund bucket's paper trading: its own rules, the shared order book.
 
-ISOLATION. This file never imports breakout's selection, positions or order
-book -- the shared order machinery is hardwired to the two equity books'
-semantics (3/2 quota, pooled ranking, TAKE_PER_CLUSTER), and a third book
-squeezed into it would couple three ledgers that must stay separable
-(CLAUDE.md: a mixed ledger cannot be un-mixed). Everything this book writes
-lives under data/etf_trend/.
+WHERE THE RECORD LIVES, and why it moved. Until 2026-08-29 this file kept its
+positions in data/etf_trend/paper_state.json and never imported `positions`,
+on the argument that a third book squeezed into the shared machinery would
+couple three ledgers that must stay separable (CLAUDE.md: a mixed ledger cannot
+be un-mixed). The operator asked for one place to see every trade, and the
+argument turns out to have been about the CONSUMERS rather than the storage.
+
+The storage was never the risk. `bucket` already separates main from pooled and
+separates these the same way, and every consumer that feeds EVIDENCE filters by
+it: learning.for_weights whitelists MAIN, impact_calibrate_test reads
+WHERE bucket='main', forward_test takes a bucket argument. A fund trade cannot
+reach the equity baseline, the weights or overview.py.
+
+What is NOT shared is the RULES. This file still owns them, because they are
+not the equity books': an SMA100 trend break instead of a target and a day
+count, funds instead of companies. It uses positions.queue / mark_open /
+mark_closed, which are record mechanics with no strategy semantics in them, and
+imports NOTHING from breakout. `selection` and `clusters` here resolve to
+etf_trend's own, via paths.STRATEGY.
+
+paper_state.json survives holding two things that are not positions: `last_day`
+(idempotence) and `ranking` (the names next in line, for --status).
 
 WHAT IT DOES, one idempotent step per invocation (`--update`):
   1. read the fund corpus; `today` = newest session on disk;
@@ -43,8 +59,14 @@ import sys
 
 import clusters
 import engine
+import positions
 import selection
 from paths import SDATA
+
+# The bucket key every row this file writes carries. Registered in
+# positions.BUCKETS, so the audit's "nothing is queued outside a registered
+# bucket" check knows about it.
+BOOK = positions.ETF
 
 STATE = SDATA / "paper_state.json"
 LEDGER = SDATA / "paper_trades.jsonl"
@@ -111,18 +133,20 @@ def update(loader=None):
         return f"up to date at {iso}", 0
     first_run = st["last_day"] is None
 
+    # The order book is the record now, not st["positions"]. Read it once and
+    # let every branch below work from the same snapshot.
+    conn = positions.db()
+    live = positions.live_rows(BOOK, conn)
+
     # --- fills --------------------------------------------------------------
-    still_queued = []
-    for q in st.get("queue", []):
-        sym = _sym(q)
+    for p in [r for r in live if r["status"] == "pending"]:
+        sym = p["symbol"]
         s = corpus.get(sym)
         i = s.index_of(today) if s else None
         if i is None:
-            still_queued.append(q)            # did not trade today: order lives
-            continue
+            continue                          # did not trade today: order lives
         if s.high[i] == s.low[i]:
-            still_queued.append(q)            # locked fill bar: no sellers/buyers
-            continue
+            continue                          # locked fill bar: no sellers/buyers
         e = s.open[i]
         qty, _risk = selection.position_size(selection.CAPITAL, e)
         if qty < 1:
@@ -131,38 +155,34 @@ def update(loader=None):
         imp = engine.impact_pct(qty * e, adv, vol,
                                 engine.IMPACT_C) if engine.IMPACT_C else 0.0
         e_eff = e * (1 + imp / 100)
-        st["positions"].append({
-            "symbol": sym,
-            "cluster": clusters.asset_group(sym),
-            "queued_on": st["last_day"],
-            "entry_day": iso,
-            "entry_px": round(e_eff, 4),
-            "qty": qty,
-            "stop": round(e_eff * (1 - selection.STOP_PCT / 100), 4),
-        })
+        positions.mark_open(p["id"], iso, round(e_eff, 4), qty=qty,
+                            source="paper:etf_trend", conn=conn)
+        # The stop is re-derived from the FILL, not from the queued reference:
+        # this book's stop is a percentage of what was actually paid.
+        conn.execute("UPDATE pos SET stop=? WHERE id=?",
+                     (round(e_eff * (1 - selection.STOP_PCT / 100), 4), p["id"]))
+        conn.commit()
         log_trade({"day": iso, "event": "fill", "symbol": sym,
                    "px": round(e_eff, 4), "qty": qty,
                    "impact_pct": round(imp, 3)})
         events += 1
-    st["queue"] = still_queued
 
     # --- manage open positions ---------------------------------------------
-    kept = []
-    for p in st.get("positions", []):
+    for p in [r for r in positions.live_rows(BOOK, conn) if r["status"] == "open"]:
         s = corpus.get(p["symbol"])
         i = s.index_of(today) if s else None
         if s is None or i is None:
-            kept.append(p)                    # suspended today: try tomorrow
-            continue
+            continue                          # suspended today: try tomorrow
         px = why = None
         if s.low[i] <= p["stop"]:
             px, why = min(p["stop"], s.open[i]), "stop"
         elif s.close[i] < clusters.sma(s.close, i, clusters.EXIT_SMA):
             px, why = s.close[i], "trend"
         if px is None:
-            kept.append(p)
             continue
         net, cost_pct, imp_out = _exit_net(s, i, px, p)
+        positions.mark_closed(p["id"], iso, round(px, 4), why, round(net, 2),
+                              conn=conn)
         log_trade({"day": iso, "event": "exit", "symbol": p["symbol"],
                    "why": why, "px": round(px, 4), "qty": p["qty"],
                    "entry_px": p["entry_px"], "entry_day": p["entry_day"],
@@ -171,7 +191,6 @@ def update(loader=None):
                    "cost_pct": round(cost_pct, 3),
                    "impact_exit_pct": round(imp_out, 3)})
         events += 1
-    st["positions"] = kept
 
     # --- re-rank and replace the queue --------------------------------------
     # Unfilled leftovers die here: if a signal still ranks today it re-queues,
@@ -180,43 +199,71 @@ def update(loader=None):
     # the wider gated ranking is stored too, because a person asking "what
     # are the tops?" deserves the list behind the five seats.
     rows = selection.build(corpus, today)
-    held = {p["symbol"] for p in st["positions"]}
+    after = positions.live_rows(BOOK, conn)
+    held = {r["symbol"] for r in after if r["status"] == "open"}
     seats = selection.MAX_POSITIONS - len(held)
     fresh = []
     for r in selection.allocate(rows):
         if len(fresh) >= max(seats, 0):
             break
         if r["symbol"] not in held:
-            fresh.append({"symbol": r["symbol"], "cluster": r["cluster"],
-                          "score": r["score"], "ref": r["ref_close"],
-                          "why": r["why"]})
-    st["queue"] = fresh
+            fresh.append(r)
+    want = {r["symbol"] for r in fresh}
+
+    # A pending row that no longer ranks is a CANCELLED order, and cancelling
+    # is a void rather than a delete -- pos is append-only and an order the
+    # book decided against is not a trade. Same word, same reason, as the VCL
+    # row the circuit-lock guard voided. Void is excluded from `closed`, so a
+    # cancelled queue entry can never reach the performance numbers.
+    for p in [r for r in after if r["status"] == "pending"]:
+        if p["symbol"] in want:
+            continue
+        conn.execute(
+            "UPDATE pos SET status='void', exit_day=?, exit_reason=? "
+            "WHERE id=? AND status='pending'",
+            (iso, f"superseded: no longer in the top {selection.MAX_POSITIONS} "
+                  f"ranks at {iso}", p["id"]))
+        events += 1
+    conn.commit()
+
+    still = {r["symbol"] for r in positions.live_rows(BOOK, conn)}
+    positions.queue([r for r in fresh if r["symbol"] not in still], today,
+                    conn=conn, which=BOOK)
+
     st["ranking"] = [{"symbol": r["symbol"], "cluster": r["cluster"],
                       "score": r["score"]}
                      for r in rows[:12]]
+    st.pop("queue", None)      # the order book holds the queue now
+    st.pop("positions", None)  # ...and the positions
     st["last_day"] = iso
     save_state(st)
 
     tag = "initialised (queue built, fills begin next session)" if first_run \
         else f"processed {iso}"
-    return (f"{tag}: {len(fresh)} queued, {len(st['positions'])} open, "
+    final = positions.live_rows(BOOK, conn)
+    return (f"{tag}: {sum(1 for r in final if r['status'] == 'pending')} queued, "
+            f"{sum(1 for r in final if r['status'] == 'open')} open, "
             f"{events} events"), events
 
 
 def status():
     st = load_state()
-    out = [f"trend book, last processed {st['last_day']}"]
-    if st["positions"]:
-        out.append(f"open ({len(st['positions'])}):")
-        for p in st["positions"]:
-            out.append(f"  {p['symbol']:<14} {p['cluster']:<7} "
+    live = positions.live_rows(BOOK)
+    open_rows = [r for r in live if r["status"] == "open"]
+    out = [f"fund bucket, last processed {st['last_day']}"]
+    if open_rows:
+        out.append(f"open ({len(open_rows)}):")
+        for p in open_rows:
+            out.append(f"  {p['symbol']:<14} {p['cluster'] or '':<7} "
                        f"in {p['entry_day']} @ {p['entry_px']}  "
                        f"stop {p['stop']}")
     else:
         out.append("open: none")
     out.append("")
-    q = st.get("queue") or []
-    held_syms = {p["symbol"] for p in st["positions"]}
+    q = [{"symbol": r["symbol"], "cluster": r["cluster"] or "",
+          "score": 0.0, "why": "queued for the next open"}
+         for r in live if r["status"] == "pending"]
+    held_syms = {p["symbol"] for p in open_rows}
     if q:
         out.append(f"queued for the next open ({len(q)}), best first:")
         for item in q:
@@ -242,15 +289,22 @@ def status():
             out.append(f"  {r['symbol']} — {r.get('cluster', '')} "
                        f"{r.get('score', 0):+.1f}%")
         out.append("")
-    if LEDGER.exists():
-        rows = [json.loads(l) for l in LEDGER.read_text().splitlines() if l]
-        ex = [r for r in rows if r["event"] == "exit"]
-        wins = [r for r in ex if r["net"] > 0]
-        net = sum(r["net"] for r in ex)
-        out.append(f"closed trades: {len(ex)}  win {len(wins)}  "
-                   f"net Rs{net:,.0f}  (fills: {sum(1 for r in rows if r['event'] == 'fill')})")
+    # Performance comes from the ORDER BOOK, which is the record. The jsonl
+    # ledger is still appended as a per-event trace, but two sources for one
+    # number is how they drift apart (rules.md R1).
+    s = positions.summary(which=BOOK)
+    closed = [r for r in s["rows"] if r["status"] == "closed"]
+    if closed:
+        wins = [r for r in closed if (r["net"] or 0) > 0]
+        gross = sum(abs((r["entry_px"] or 0) * (r["qty"] or 0)) for r in closed)
+        out.append(f"closed trades: {len(closed)}  win {len(wins)}  "
+                   f"net Rs{s['realised']:,.0f}"
+                   + (f"  ({s['realised'] / gross * 100:+.2f}% on cost)"
+                      if gross else "")
+                   + f"  (open: {s['open']}, queued: {s['pending']})")
     else:
-        out.append("no closed trades yet")
+        out.append(f"no closed trades yet  (open: {s['open']}, "
+                   f"queued: {s['pending']})")
     # Same rhythm rule as the bot's _spaced(): per-entry blanks must never
     # stack with the blank a section header already carries.
     clean = []
@@ -300,6 +354,12 @@ def _selftest():
     tmp = _tf.mkdtemp()
     STATE = pathlib.Path(tmp) / "state.json"
     LEDGER = pathlib.Path(tmp) / "ledger.jsonl"
+    # THE ORDER BOOK IS NOW REAL. Point it at a throwaway file for the duration:
+    # this selftest queues, fills and stops out three fixture funds, and pos is
+    # append-only, so a run against the live database would write rows that
+    # cannot be deleted -- only voided -- into the forward record.
+    old_db = positions.DB
+    positions.DB = pathlib.Path(tmp) / "positions.db"
     try:
         seen = [days[:clusters.HISTORY_MIN + 10],
                 days[:clusters.HISTORY_MIN + 11],
@@ -313,14 +373,19 @@ def _selftest():
 
         msg, ev = update(loader)
         assert "initialised" in msg and ev == 0, msg
-        st = load_state()
-        assert st["queue"], "an uptrending fund must be queued on day one"
+        # The QUEUE IS THE ORDER BOOK now, so the assertion moved with it --
+        # re-derived, not deleted: the property is still "an uptrending fund
+        # must be queued on day one", asserted where the queue actually lives.
+        pend = [r for r in positions.live_rows(BOOK) if r["status"] == "pending"]
+        assert pend, "an uptrending fund must be queued on day one"
+        assert all(r["bucket"] == BOOK for r in pend), pend
 
         msg, ev = update(loader)
         assert ev >= 1, msg
-        st = load_state()
-        assert any(p["symbol"] in ("UPBEES", "CRASHBEE")
-                   for p in st["positions"]), st
+        opened = [r for r in positions.live_rows(BOOK) if r["status"] == "open"]
+        assert any(p["symbol"] in ("UPBEES", "CRASHBEE") for p in opened), opened
+        # A fill must carry a price and a day, or the record cannot be read back
+        assert all(p["entry_px"] and p["entry_day"] for p in opened), opened
 
         msg, ev = update(loader)
         again, ev2 = update(loader)
@@ -331,8 +396,19 @@ def _selftest():
         ex = [json.loads(l) for l in LEDGER.read_text().splitlines()]
         stops = [r for r in ex if r.get("why") == "stop"]
         assert all(r["ret_pct"] <= 0.5 for r in stops), stops
+        # A closed fund trade must land in the shared book as `closed`, under
+        # this bucket and no other -- that is the whole point of the move.
+        import sqlite3 as _sq
+        _c = positions.db()
+        _c.row_factory = _sq.Row
+        allrows = [dict(r) for r in _c.execute("SELECT * FROM pos")]
+        _c.row_factory = None
+        assert allrows, "the fund bucket wrote nothing to the order book"
+        assert {r["bucket"] for r in allrows} == {BOOK}, \
+            f"a fund trade was written under another bucket: {allrows}"
     finally:
         STATE, LEDGER = old_state, old_ledger
+        positions.DB = old_db
     print("trend.paper selftest ok")
 
 

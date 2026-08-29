@@ -1,53 +1,5 @@
 {
  "last_day": "2026-08-28",
- "queue": [],
- "positions": [
-  {
-   "symbol": "MODEFENCE",
-   "cluster": "index",
-   "queued_on": "2026-08-24",
-   "entry_day": "2026-08-25",
-   "entry_px": 109.7215,
-   "qty": 410,
-   "stop": 98.7494
-  },
-  {
-   "symbol": "PHARMABEES",
-   "cluster": "index",
-   "queued_on": "2026-08-24",
-   "entry_day": "2026-08-25",
-   "entry_px": 27.3124,
-   "qty": 1647,
-   "stop": 24.5811
-  },
-  {
-   "symbol": "SMALLCAP",
-   "cluster": "index",
-   "queued_on": "2026-08-24",
-   "entry_day": "2026-08-25",
-   "entry_px": 49.0063,
-   "qty": 918,
-   "stop": 44.1056
-  },
-  {
-   "symbol": "HDFCSML250",
-   "cluster": "index",
-   "queued_on": "2026-08-24",
-   "entry_day": "2026-08-25",
-   "entry_px": 185.1934,
-   "qty": 243,
-   "stop": 166.6741
-  },
-  {
-   "symbol": "METALIETF",
-   "cluster": "index",
-   "queued_on": "2026-08-24",
-   "entry_day": "2026-08-25",
-   "entry_px": 13.1227,
-   "qty": 3429,
-   "stop": 11.8104
-  }
- ],
  "ranking": [
   {
    "symbol": "MODEFENCE",

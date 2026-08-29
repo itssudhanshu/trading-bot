@@ -89,6 +89,7 @@ COSTS = __import__("engine").Costs()
 # exit on their own rules. Nothing is sold to tidy up a naming decision.
 MAIN = "main"
 POOLED = "pooled"
+ETF = "etf_trend"
 
 # TWO BUCKETS RUN FORWARD, side by side, on the same signals and the same
 # capital. They differ in ONE thing -- how the five seats are allotted -- so a
@@ -106,12 +107,44 @@ POOLED = "pooled"
 # This is NOT the retired deeper-bucket experiment (L56). Those bought ranks
 # the score already marked as worse, to gather evidence faster. Pooled is not
 # worse by construction; it is an equally-ranked alternative rule.
+# The THIRD bucket is not an equity book and does not share their rules. It
+# trades liquid NSE funds on an absolute trend gate, exits on an SMA100 break
+# rather than on a target or a day count, and its rules are FROZEN at the values
+# registered in src/research/trend_fund_test.py because it FAILED its promotion
+# bar (+1.04% +/- 1.08% per trade, t = +1.19, L70). It runs forward to generate
+# evidence, not because it was shown to work.
+#
+# It lives here because the operator asked for one place to see every trade
+# (2026-08-29). paper.py's docstring argued the other way -- that a third book
+# squeezed into the shared machinery would couple three ledgers that must stay
+# separable -- and the argument was about the CONSUMERS, not the storage. The
+# storage was never the risk: `bucket` already separates main from pooled and
+# separates these the same way. What matters is that every consumer of the
+# order book that feeds EVIDENCE filters by bucket, and they do:
+# learning.for_weights whitelists MAIN, impact_calibrate_test reads
+# WHERE bucket='main', forward_test takes a bucket argument. A fund trade
+# cannot reach the equity baseline, the weights, or overview.py.
 BUCKETS = {
     MAIN:   dict(offset=0, stop_pct=None, ranking="per_cluster", seats=None,
                  note="ranks 1-3 micro, 1-2 small -- the top of each band"),
     POOLED: dict(offset=0, stop_pct=None, ranking="pooled", seats=5,
                  note="the best 5 by rank, whatever band they fall in"),
+    ETF:    dict(offset=0, stop_pct=10.0, ranking="trend", seats=5,
+                 note="liquid funds above their own trend, exited on an "
+                      "SMA100 break -- no target, no day count"),
 }
+# The rankings that EXIST. A bucket naming anything else would queue another
+# book's picks under its own name and read as a comparison it never ran, which
+# is what the selftest below is defending. Declared here, once, so the test
+# asserts the property rather than retyping a list that goes stale the moment a
+# book is added -- it said ("per_cluster", "pooled") and rejected the fund
+# bucket on the day it was registered.
+RANKINGS = {
+    "per_cluster": "rank inside each size band (breakout, the bucket)",
+    "pooled":      "rank every eligible name together (breakout, the pool)",
+    "trend":       "absolute trend gate over liquid funds (etf_trend)",
+}
+
 BUCKET = BUCKETS[MAIN]        # the old name, still the main bucket's config
 
 # What a PERSON sees. The stored key stays `main` because the ledger is
@@ -120,7 +153,11 @@ BUCKET = BUCKETS[MAIN]        # the old name, still the main bucket's config
 # display name is the operator's word (rules.md R1): the live one is the
 # BUCKET, the second is the POOL. Never "book", never "portfolio", and never
 # the internal keys, which mean nothing to a reader.
-LABEL = {MAIN: "bucket", POOLED: "pool"}
+# "fund bucket", not "fund book": rules.md R1 keeps ONE word for the container
+# that holds positions, and that word is bucket. STATE.md calls it a book in
+# prose written before it had a bucket of its own; the label a person reads
+# here follows the vocabulary rather than the prose.
+LABEL = {MAIN: "bucket", POOLED: "pool", ETF: "fund bucket"}
 
 
 def label(name):
@@ -447,6 +484,59 @@ def queue(rows, day, conn=None, which=MAIN, limit=None):
     return n
 
 
+def mark_open(pos_id, day, px, qty=None, source="confirmed", conn=None):
+    """Move one PENDING row to open. -> True if a row moved.
+
+    Record mechanics only, no strategy semantics: which day, what price, how
+    many. fill_live() and step() do the same two writes inline for the equity
+    books against breakout's rules; this is the version a book with DIFFERENT
+    rules can call without inheriting them (the fund bucket exits on an SMA
+    break, not on a target or a day count).
+
+    The audit trail is written by the database trigger, not here, so a caller
+    that bypasses this function still gets logged.
+    """
+    c = conn or db()
+    sets = "status='open', entry_day=?, entry_px=?, fill_source=?"
+    args = [str(day), px, source]
+    if qty is not None:
+        sets += ", qty=?"
+        args.append(qty)
+    args.append(pos_id)
+    cur = c.execute(f"UPDATE pos SET {sets} WHERE id=? AND status='pending'",
+                    args)
+    c.commit()
+    return cur.rowcount > 0
+
+
+def mark_closed(pos_id, day, px, reason, net, conn=None):
+    """Move one OPEN row to closed. -> True if a row moved.
+
+    `net` is rupees after charges and impact and is the caller's to compute:
+    the fund bucket pays the same engine costs but reaches them by its own exit
+    rule, and a shared function that recomputed the number would be quietly
+    imposing one book's rules on another.
+    """
+    c = conn or db()
+    cur = c.execute(
+        "UPDATE pos SET status='closed', exit_day=?, exit_px=?, exit_reason=?,"
+        " net=? WHERE id=? AND status='open'",
+        (str(day), px, reason, net, pos_id))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def live_rows(which, conn=None):
+    """-> [{...}] the pending and open rows of one bucket, oldest first."""
+    c = conn or db()
+    c.row_factory = sqlite3.Row
+    rows = [dict(r) for r in c.execute(
+        "SELECT * FROM pos WHERE bucket=? AND status IN ('pending','open')"
+        " ORDER BY id", (which,)).fetchall()]
+    c.row_factory = None
+    return rows
+
+
 def fill_live(day, conn=None):
     """Fill pending orders at TODAY'S opening price, fetched live.
 
@@ -744,7 +834,7 @@ def _two_bucket_selftest():
             # rule would queue main's picks under another name and read as a
             # comparison
             for name, cfg in BUCKETS.items():
-                assert cfg["ranking"] in ("per_cluster", "pooled"), (name, cfg)
+                assert cfg["ranking"] in RANKINGS, (name, cfg)
                 assert slice_of(name), name
                 assert bucket_cfg(name)["ranking"] == cfg["ranking"], name
             # an unknown bucket falls back to main's rules rather than raising,

@@ -868,12 +868,22 @@ def cmd_open_orders(_=None):
     tot_val = tot_pl = 0.0
     for r, labels in _merged(live):
         lq = q.get(r["symbol"]) or {}
-        px = lq.get("ltp") or _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"]
+        # FUNDS ARE NOT IN THE EQUITY CORPUS, by construction: the non-equity
+        # denylist removes them (L61), and this command loads that corpus. So a
+        # fund row falls through to `or r["entry_px"]` and prints entry as if it
+        # were today's price -- P&L exactly Rs 0, every day, on a position that
+        # is really moving. A confident zero is worse than an admitted blank
+        # (rules.md R2), so an unpriced row says so and is left out of the
+        # totals rather than dragging them toward its own entry price.
+        px = lq.get("ltp") or _px_now(corpus, r["symbol"], days[-1])
+        priced = px is not None
+        px = px or r["entry_px"]
         val = r["qty"] * px
         pl = r["qty"] * (px - r["entry_px"])
         pct = (px / r["entry_px"] - 1) * 100
-        tot_val += val
-        tot_pl += pl
+        if priced:
+            tot_val += val
+            tot_pl += pl
         held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
                                    days[-1])
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
@@ -888,12 +898,24 @@ def cmd_open_orders(_=None):
         out.append(f"{icon} *{r['symbol']}* "
                    f"({SIZE.get(r['cluster'], r['cluster'])}){_tag(labels)}"
                    + _mood_tag(mood))
+        # The fund bucket has NEITHER a target NOR a day count -- it exits on
+        # an SMA100 break or its stop, and nothing else. Printing "day 3/10"
+        # and a target for it would be describing the equity rule over a book
+        # that does not run it, which is the kind of confident wrong line
+        # rules.md exists to stop. A row is identified by what it actually
+        # obeys: no target column means no target rule.
+        _timed = r["target"] is not None
         out.append(f"   in {_day_short(r['entry_day'])} · "
-                   f"{r['entry_px']:,.0f}→{px:,.2f} ({pct:+.1f}%) · "
-                   f"day {held}/{selection.HOLD_DAYS}")
-        out.append(f"   qty {r['qty']} · {_rs(val)} · P&L Rs {pl:+,.0f}")
+                   + (f"{r['entry_px']:,.0f}→{px:,.2f} ({pct:+.1f}%)" if priced
+                      else f"in at {r['entry_px']:,.2f} · not priced here")
+                   + (f" · day {held}/{selection.HOLD_DAYS}" if _timed
+                      else ", no time limit"))
+        out.append(f"   qty {r['qty']} · {_rs(val)} · "
+                   + (f"P&L Rs {pl:+,.0f}" if priced
+                      else "P&L in /etf-trend, which prices funds"))
         out.append(f"   stop {r['stop']:,.0f} ({to_stop:+.1f}%) · "
-                   f"target {r['target']:,.0f} ({to_tgt:+.1f}%)")
+                   + (f"target {r['target']:,.0f} ({to_tgt:+.1f}%)" if _timed
+                      else "no target — sold when the trend breaks"))
         out.append("")
     note = _twin_note(live)
     if note:
@@ -1184,14 +1206,22 @@ def cmd_health(_=None):
 def cmd_etf_trend(_=None):
     """The third book: fund trend-following, paper only.
 
-    Reads data/etf_trend/ DIRECTLY -- state and ledger are plain JSON, so no
-    etf_trend module is imported (they derive their data dir from STRATEGY at
-    import time; importing here would point the third book at breakout's
-    data dir) and nothing is spawned (a command must not execute anything;
-    see the selftest's forbidden list). The scheduler owns updates: launchd
-    runs paper.py --update after close on weekdays.
+    POSITIONS COME FROM THE ORDER BOOK, not from paper_state.json. They moved
+    there on 2026-08-29 so every trade this project makes sits in one place;
+    `positions` is SHARED and safe to import, unlike etf_trend's own selection
+    and clusters, which derive their data dir from STRATEGY at import time and
+    would point the fund bucket at breakout's data. Reading the JSON for
+    positions after the move would show a stale copy that paper.py has already
+    stopped writing -- the two-sources-for-one-number failure (rules.md R1).
+
+    What is still read from data/etf_trend/ is `last_day` and `ranking`: they
+    are not positions and the order book has no column for them. Nothing is
+    spawned (a command must not execute anything; see the selftest's forbidden
+    list). The scheduler owns updates: launchd runs paper.py --update after
+    close on weekdays.
     """
     import json as _j
+    import positions as _p
     root = ROOT / "data" / "etf_trend"
     state_p, ledger_p = root / "paper_state.json", root / "paper_trades.jsonl"
     if not state_p.exists():
@@ -1199,18 +1229,19 @@ def cmd_etf_trend(_=None):
                 + "\nNot initialised yet -- no state under data/etf_trend/. "
                   "It fills after close on weekdays.")
     st = _j.loads(state_p.read_text())
+    live = _p.live_rows(_p.ETF)
     out = [_title("ETF TREND BOOK", "third bucket - paper, unvalidated rules"),
            f"last processed {st.get('last_day')}", ""]
-    pos = st.get("positions") or []
+    pos = [r for r in live if r["status"] == "open"]
     if pos:
         out.append(f"open ({len(pos)}):")
         for p in pos:
-            out.append(f"  {p['symbol']:<14} {p.get('cluster', ''):<7} "
+            out.append(f"  {p['symbol']:<14} {p.get('cluster') or '':<7} "
                        f"in {p.get('entry_day')} @ {p.get('entry_px')}  "
                        f"stop {p.get('stop')}")
     else:
         out.append("open: none")
-    q = st.get("queue") or []
+    q = [{"symbol": r["symbol"]} for r in live if r["status"] == "pending"]
 
     def _sym(x):
         return x if isinstance(x, str) else x.get("symbol")
@@ -1240,18 +1271,23 @@ def cmd_etf_trend(_=None):
             out.append(f"  {r['symbol']} — {r.get('cluster', '')} "
                        f"{r.get('score', 0):+.1f}%")
         out.append("")
-    if ledger_p.exists():
-        rows = [_j.loads(l) for l in ledger_p.read_text().splitlines() if l]
-        ex = [r for r in rows if r.get("event") == "exit"]
-        wins = [r for r in ex if r.get("net", 0) > 0]
-        net = sum(r.get("net", 0.0) for r in ex)
+    # PERFORMANCE COMES FROM THE ORDER BOOK, which is the record. The jsonl
+    # ledger is still written as a per-event trace and is deliberately not read
+    # here: two sources for one number is how they drift (rules.md R1), and the
+    # ledger is not even tracked by git, so it is the weaker of the two.
+    _s = _p.summary(which=_p.ETF)
+    _closed = [r for r in _s["rows"] if r["status"] == "closed"]
+    if _closed:
+        wins = [r for r in _closed if (r["net"] or 0) > 0]
         out.append("")
-        out.append(f"closed trades: {len(ex)}  win {len(wins)}  "
-                   f"net Rs{net:,.0f}")
-        for r in ex[-5:]:
-            out.append(f"  {r['day']} {r['symbol']:<14} {r['why']:<6} "
-                       f"{r.get('ret_pct', 0):+.2f}%")
-    else:
+        out.append(f"closed trades: {len(_closed)}  win {len(wins)}  "
+                   f"net Rs{_s['realised']:,.0f}")
+        for r in sorted(_closed, key=lambda x: x["exit_day"] or "")[-5:]:
+            _cost = (r["entry_px"] or 0) * (r["qty"] or 0)
+            out.append(f"  {r['exit_day']} {r['symbol']:<14} "
+                       f"{(r['exit_reason'] or ''):<6} "
+                       f"{((r['net'] or 0) / _cost * 100 if _cost else 0):+.2f}%")
+    elif ledger_p.exists():
         out.append("no closed trades yet")
     return _spaced(out)
 

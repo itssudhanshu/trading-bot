@@ -95,11 +95,27 @@ FORWARD_FROM = "2026-08-21"      # the first session both buckets queue into
 # Frozen expectations. NOT read live: the point is to compare reality against
 # what was believed BEFORE it arrived, so re-deriving these from a fresh
 # backtest would defeat the file. Re-freeze deliberately, with a new batch.
+# A field set to None was NEVER REGISTERED for that book, and its check reports
+# "not registered" instead of running. That is not the same as a check that
+# cannot fail: it says out loud that there is no frozen number to test against,
+# where inventing one would let the book pass a bar nobody set.
+#
+# etf_trend is the case. Its pre-registration (trend_fund_test, batch
+# 20260824-trendfund2, L70) froze CAGR, drawdown, n and the per-trade mean and
+# error -- and nothing else. Re-running the study today to fill in win, hold,
+# occupancy and the trade rate would produce numbers from a corpus five sessions
+# longer than the one the rules were frozen against, which is re-baselining an
+# expectation to fit the book it is supposed to judge.
 EXPECTED = {
     "main":   dict(rate_mo=2.86, per_trade=2.15, se=1.08, sd=15.0,
                    win=47.0, hold=6.9, occ=3.10, maxdd=31.0, n=195),
     "pooled": dict(rate_mo=3.04, per_trade=2.19, se=1.05, sd=15.1,
                    win=46.0, hold=6.8, occ=2.11, maxdd=30.0, n=207),
+    # FAILED its promotion bar (edge t = +1.19, L70) and runs forward anyway as
+    # an evidence generator. Its exit is an SMA100 break, so `hold` is not a
+    # rule it obeys and there is no day count to compare against.
+    "etf_trend": dict(rate_mo=None, per_trade=1.04, se=1.08, sd=None,
+                      win=None, hold=None, occ=None, maxdd=17.8, n=147),
 }
 MIN_N_EDGE = 195          # trades before the per-trade edge may be judged
 # SIX months, not three, and the arithmetic is why. A 95% Poisson band around
@@ -164,8 +180,15 @@ def check(conn=None, today=None):
                     if stale else f"{len(pending)} pending, none stale"))
 
         # -- trade rate
-        expect_n = exp["rate_mo"] * months
-        if months < MIN_MONTHS_RATE:
+        if exp["rate_mo"] is None:
+            res.append(("trade rate", "not registered",
+                        f"{len(rows)} entered; no frozen rate for this book"))
+            expect_n = None
+        elif True:
+            expect_n = exp["rate_mo"] * months
+        if expect_n is None:
+            pass
+        elif months < MIN_MONTHS_RATE:
             res.append(("trade rate", "too early",
                         f"{len(rows)} entered in {months:.1f} months; "
                         f"needs {MIN_MONTHS_RATE}"))
@@ -177,7 +200,10 @@ def check(conn=None, today=None):
 
         # -- occupancy
         live_n = len([r for r in rows if r["status"] == "open"])
-        if days_live < 28:
+        if exp["occ"] is None:
+            res.append(("occupancy", "not registered",
+                        f"{live_n} held; no frozen occupancy for this book"))
+        elif days_live < 28:
             res.append(("occupancy", "too early",
                         f"{live_n} held; needs 4 weeks"))
         else:
@@ -189,7 +215,10 @@ def check(conn=None, today=None):
         holds = [positions.bars_held(None, r["entry_day"], r["exit_day"])
                  for r in closed if r["exit_day"]]
         holds = [h for h in holds if h]
-        if len(closed) < MIN_CLOSED_HOLD:
+        if exp["hold"] is None:
+            res.append(("hold length", "not registered",
+                        "this book exits on a trend break, not a day count"))
+        elif len(closed) < MIN_CLOSED_HOLD:
             res.append(("hold length", "too early",
                         f"{len(closed)} closed; needs {MIN_CLOSED_HOLD}"))
         else:
@@ -273,9 +302,18 @@ def _selftest():
             res = check(c, today=d.fromisoformat(FORWARD_FROM))
             for bucket, rows in res.items():
                 got = {n: v for n, v, _ in rows}
-                assert got["trade rate"] == "too early", got
-                assert got["occupancy"] == "too early", got
-                assert got["hold length"] == "too early", got
+                # The property is that a gate NEVER reads "pass" on no data.
+                # "not registered" is not a pass -- it says out loud that this
+                # book froze no number for that gate (etf_trend registered CAGR,
+                # drawdown, n and the per-trade edge and nothing else, L70), so
+                # it cannot be mistaken for a check that ran and approved.
+                for gate in ("trade rate", "occupancy", "hold length"):
+                    assert got[gate] in ("too early", "not registered"), (gate, got)
+                    assert got[gate] != "pass", (gate, got)
+                # ...and a gate the book DID register must still say "too
+                # early", or the None path is swallowing real expectations.
+                if EXPECTED[bucket]["occ"] is not None:
+                    assert got["occupancy"] == "too early", got
                 assert got["per-trade edge"] == "too early", got
                 assert got["fills"] == "pass", got   # no orders is not a stall
             # a stale pending order must FAIL the fill check
