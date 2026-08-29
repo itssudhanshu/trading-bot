@@ -126,10 +126,13 @@ ETF = "etf_trend"
 # cannot reach the equity baseline, the weights, or overview.py.
 BUCKETS = {
     MAIN:   dict(offset=0, stop_pct=None, ranking="per_cluster", seats=None,
+                 queued_by="daily",
                  note="ranks 1-3 micro, 1-2 small -- the top of each band"),
     POOLED: dict(offset=0, stop_pct=None, ranking="pooled", seats=5,
+                 queued_by="daily",
                  note="the best 5 by rank, whatever band they fall in"),
     ETF:    dict(offset=0, stop_pct=10.0, ranking="trend", seats=5,
+                 queued_by="etf_trend",
                  note="liquid funds above their own trend, exited on an "
                       "SMA100 break -- no target, no day count"),
 }
@@ -144,6 +147,23 @@ RANKINGS = {
     "pooled":      "rank every eligible name together (breakout, the pool)",
     "trend":       "absolute trend gate over liquid funds (etf_trend)",
 }
+
+# WHO FILLS EACH BUCKET'S QUEUE. daily.py loops over BUCKETS and queues every
+# one of them from breakout's selection; that was right while every bucket was
+# an equity book and became wrong the moment the fund bucket was registered.
+# Its ranking is "trend", which breakout's build() does not implement and
+# silently treats as per_cluster -- so the first time a fund position closed and
+# freed a seat, daily.py would have queued a MICROCAP into the fund book. It
+# did not happen only because the bucket was full at 5/5 the day it landed.
+#
+# Ownership is declared, not inferred: a bucket says which runner fills it, and
+# a runner queues only what it owns.
+QUEUED_BY = {"daily", "etf_trend"}
+
+
+def owned_by(runner):
+    """-> [bucket names] whose queue `runner` is responsible for."""
+    return [n for n, c in BUCKETS.items() if c["queued_by"] == runner]
 
 BUCKET = BUCKETS[MAIN]        # the old name, still the main bucket's config
 
@@ -835,8 +855,22 @@ def _two_bucket_selftest():
             # comparison
             for name, cfg in BUCKETS.items():
                 assert cfg["ranking"] in RANKINGS, (name, cfg)
+                # ...and it must say who fills it. A bucket with no owner gets
+                # queued by daily.py's loop over BUCKETS, from breakout's
+                # selection, whatever universe it actually trades.
+                assert cfg["queued_by"] in QUEUED_BY, (name, cfg)
                 assert slice_of(name), name
                 assert bucket_cfg(name)["ranking"] == cfg["ranking"], name
+            # daily.py may only queue buckets that rank the way breakout does.
+            # This is the assertion that would have caught a microcap being
+            # queued into the fund book -- it runs AFTER the loop above, not
+            # inside it: nested here it shadowed `name` and left `cfg` on the
+            # last bucket, so the line above compared main against the fund
+            # bucket's ranking and failed for a reason that had nothing to do
+            # with what it tests.
+            for _n in owned_by("daily"):
+                assert BUCKETS[_n]["ranking"] in ("per_cluster", "pooled"), \
+                    f"daily.py owns {_n}, whose ranking it cannot build"
             # an unknown bucket falls back to main's rules rather than raising,
             # so retired buckets' open rows keep running to their own exits
             assert bucket_cfg("deep2")["ranking"] == "per_cluster"

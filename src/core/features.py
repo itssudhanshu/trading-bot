@@ -69,6 +69,52 @@ def trading_days(start=None, end=None):
 _CORPUS = None
 
 
+def last_close(symbols, day=None):
+    """-> {symbol: close} for `symbols` from ONE session's bhavcopy.
+
+    Exists because the equity corpus cannot price a fund. load_corpus applies
+    the non-equity denylist (L61), correctly -- the backtest must not buy an
+    ETF -- but the fund bucket HOLDS ETFs, and since 2026-08-29 its positions
+    sit in the shared order book beside the equity ones. /open_orders was
+    therefore printing every fund row at its own entry price, so P&L read
+    exactly Rs 0 for as long as the position stayed open.
+
+    One session, not a corpus: pricing five rows needs the last bar, and
+    building a full history to get it costs the ~40s the listener spends
+    warming. No denylist and no series assembly -- this reads the file and
+    answers the question. Series-building for funds stays in etf_trend's
+    fund_corpus, which needs the history this deliberately does not load.
+    """
+    import csv as _csv, io as _io
+    want = set(symbols or ())
+    if not want:
+        return {}
+    if day is None:
+        days = trading_days()
+        if not days:
+            return {}
+        day = days[-1]
+    p = RAW / str(day) / "bhavcopy_delivery.csv"
+    if not p.exists():
+        return {}
+    out = {}
+    import universe as _u
+    for r in _csv.DictReader(_io.StringIO(p.read_text(errors="replace")),
+                             skipinitialspace=True):
+        sym = (r.get("SYMBOL") or "").strip()
+        if sym not in want:
+            continue
+        if (r.get("SERIES") or "").strip() not in _u.TRADEABLE_SERIES:
+            continue
+        try:
+            c = float(r["CLOSE_PRICE"])
+        except (KeyError, ValueError):
+            continue
+        if c > 0:
+            out[sym] = c
+    return out
+
+
 def load_corpus(start=None, end=None, min_bars=200, require_master=True) -> dict:
     """-> {symbol: Series}, chronological. Symbols with too little history are
     dropped: an indicator seeded on 20 bars is noise, not signal.

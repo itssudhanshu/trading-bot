@@ -65,7 +65,12 @@ def main(day=None):
     # main is first and its path is unchanged: same capital, same allocate()
     # defaults, same room arithmetic, so the recorded baseline still reproduces.
     queued = {}
-    for name, cfg in positions.BUCKETS.items():
+    # ONLY the buckets this runner owns. The fund bucket is registered in
+    # BUCKETS so the order book and the audit know about it, and it is filled by
+    # its own scheduler against its own universe -- queueing it from breakout's
+    # selection would put a microcap in a fund book (positions.QUEUED_BY).
+    for name in positions.owned_by("daily"):
+        cfg = positions.BUCKETS[name]
         bs = s if name == positions.MAIN else positions.summary(conn, which=name)
         seats = cfg["seats"] or selection.MAX_POSITIONS
         room = seats - (bs["open"] + bs["pending"])

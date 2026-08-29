@@ -144,9 +144,31 @@ def name_to_symbol(longname, master_names):
     """-> (NSE symbol, n_token_hits) best master match for a BSE company name.
 
     master_names is {symbol: company name}. Token-overlap count. Accept when
-    TWO tokens match, or when ONE matches and that token is UNIQUE across all
-    masters -- KENNAMETAL appears in exactly one company's name, and demanding
-    a second hit would drop precisely the distinctive single-word brands.
+    TWO tokens match, or when ONE matches, that token is UNIQUE across all
+    masters, AND THE BSE NAME HAS NO OTHER DISTINCTIVE WORD LEFT OVER --
+    KENNAMETAL appears in exactly one company's name, and demanding a second
+    hit would drop precisely the distinctive single-word brands.
+
+    THE THIRD CONDITION WAS ADDED ON 2026-08-29 AND IT IS THE ONE WITH
+    EVIDENCE BEHIND IT (L88a). Unique-across-the-NSE-master is not the same as
+    unambiguous: BSE lists issuers NSE does not, so "Axis Solutions Ltd" shared
+    only AXIS, that token was unique among NSE names, and three of its filings
+    were written into AXISBANK's timeline. Measured on 433 rows once the source
+    name was finally being stored: 54 of them (12.5%) attached one company's
+    announcement to another company's symbol -- Ajanta SOYA under AJANTPHARM,
+    Dhanlaxmi COTEX under DHANBANK, Cochin MINERALS under COCHINSHIP -- and
+    every one was a single-token match where the BSE name carried a second
+    distinctive word the master name could not account for.
+
+    The distinction the rule draws: "Avantel Ltd" against "Avantel Limited"
+    shares AVANTEL and leaves NOTHING unexplained, so it is the same company
+    under a shorter name and is kept. "Ajanta Soya Ltd" against "Ajanta Pharma
+    Limited" leaves SOYA unexplained, so it is a different company that happens
+    to share a word, and is dropped. On the 433 labelled rows this keeps all 39
+    genuine single-token matches and rejects all 54 mis-attributions.
+
+    A rejected row is DROPPED, never reassigned: the right symbol may not be in
+    the NSE master at all, which is exactly how these arose.
     Ties broken by the longer shared name. Returns (None, hits) when nothing
     reaches the bar -- an unmatched BSE name is DROPPED, not guessed: a filing
     attached to the wrong symbol is worse than a missing one.
@@ -166,7 +188,11 @@ def name_to_symbol(longname, master_names):
         hits = len(shared)
         unique = any(spread.get(t) == 1 for t in shared)
         extra = len(have - want)          # master words the BSE name lacks
-        scored.append((hits, unique, extra, sym))
+        # ...and the other direction, which is the one that matters on a
+        # single hit: BSE words the MASTER cannot account for. SOYA in
+        # "Ajanta Soya" is this; "Avantel Ltd" has none.
+        unexplained = len(want - shared)
+        scored.append((hits, unique, extra, sym, unexplained))
     scored = [s for s in scored if s[0] > 0]
     if not scored:
         return None, 0
@@ -174,8 +200,8 @@ def name_to_symbol(longname, master_names):
     # "City Union Bank Limited" on the same two shared tokens, and the exact
     # name is the one with no leftover master words.
     scored.sort(key=lambda s: (-s[0], s[2], not s[1]))
-    hits, unique, _, best = scored[0]
-    if hits >= 2 or (hits >= 1 and unique):
+    hits, unique, _, best, unexplained = scored[0]
+    if hits >= 2 or (hits >= 1 and unique and unexplained == 0):
         return best, hits
     return None, hits
 
@@ -345,6 +371,24 @@ def _selftest():
     assert sym == "UNIONBANK", (sym, hits)
     sym, hits = name_to_symbol("Some Unrelated Company Limited", master)
     assert sym is None, "an unmatched name must be dropped, not guessed"
+
+    # L88a, BOTH directions. A single shared token is only enough when the BSE
+    # name leaves nothing unexplained; these are the real pairs that were
+    # mis-filed for weeks, and the real pair that must keep working.
+    real = {"AJANTPHARM": "Ajanta Pharma Limited",
+            "AXISBANK": "Axis Bank Limited",
+            "DHANBANK": "Dhanlaxmi Bank Limited",
+            "AVANTEL": "Avantel Limited"}
+    for bse_name in ("Ajanta Soya Ltd", "Axis Solutions Ltd",
+                     "Dhanlaxmi Cotex Ltd"):
+        sym, hits = name_to_symbol(bse_name, real)
+        assert sym is None, \
+            f"{bse_name!r} was attached to {sym} on {hits} shared token(s)"
+    # ...and the same-company-shorter-name case must survive, or the fix has
+    # simply turned the feed off: 39 of the 433 labelled rows look like this.
+    assert name_to_symbol("Avantel Ltd", real)[0] == "AVANTEL"
+    assert name_to_symbol("Kennametal India Ltd", master)[0] == "KENNAMET", \
+        "the distinctive single-word brand this rule exists to keep was dropped"
 
     row = {"SCRIP_CD": 532477, "SLONGNAME": "Kennametal India Ltd",
            "NEWS_SUBMISSION_DT": "25-Aug-2026T10:00:00",

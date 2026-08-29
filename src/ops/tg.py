@@ -410,10 +410,47 @@ def _lag_note():
             f"yet — the agent runs after 18:00._")
 
 
+class _Cal:
+    """A bare trading calendar, for counting bars on a symbol the equity
+    corpus does not carry. bars_held only ever reads `.days`, and the exchange
+    calendar is the same one the funds trade on -- without this a fund position
+    reports "day 0" forever, because corpus.get() returns None for it."""
+
+    def __init__(self, days):
+        self.days = days
+
+
+_OFF_CORPUS_PX = {}
+
+
 def _px_now(corpus, sym, day):
+    """-> the last close for `sym` on `day`, corpus or not.
+
+    A symbol the EQUITY corpus does not carry is not necessarily unpriced: the
+    non-equity denylist removes funds from load_corpus (L61, correctly -- the
+    backtest must not buy an ETF), and the fund bucket holds exactly those. Its
+    rows sit in the shared order book since 2026-08-29, so every caller here
+    would otherwise fall through to `or r["entry_px"]` and report a position as
+    flat for as long as it stayed open.
+
+    Fixed HERE rather than at each call site because there are four of them --
+    /wallet twice, /open-orders, /closed-orders -- and four copies of a
+    fallback is how three of them stay wrong (rules.md R1).
+
+    Cached per (symbol, day): a bhavcopy read per row per command would turn one
+    file read into dozens.
+    """
     s = corpus.get(sym)
     i = s.index_of(day) if s else None
-    return s.close[i] if i is not None else None
+    if i is not None:
+        return s.close[i]
+    import features
+    key = (sym, str(day))
+    if key not in _OFF_CORPUS_PX:
+        _OFF_CORPUS_PX.update(
+            {(k, str(day)): v for k, v in features.last_close([sym], day).items()})
+        _OFF_CORPUS_PX.setdefault(key, None)
+    return _OFF_CORPUS_PX[key]
 
 
 # ============================================================ MONEY
@@ -484,12 +521,15 @@ def cmd_wallet(_=None):
             px = ((q.get(r["symbol"]) or {}).get("ltp")
                   or _px_now(corpus, r["symbol"], days[-1]) or r["entry_px"])
             pct = (px / r["entry_px"] - 1) * 100 if r["entry_px"] else 0.0
-            held = positions.bars_held(corpus.get(r["symbol"]),
+            held = positions.bars_held(corpus.get(r["symbol"]) or _Cal(days),
                                        r["entry_day"], days[-1])
             icon = "🟢" if pct > 0 else ("🔴" if pct < 0 else "⚪")
             tag = "" if labels == [name] else _tag(labels)
+            # No target means no day count: this book sells on a trend break,
+            # and "day 3/10" over it describes a rule it does not run.
             out.append(f"{icon} {r['symbol']}{tag} {pct:+.1f}% "
-                       f"day {held}/{selection.HOLD_DAYS}"
+                       + (f"day {held}/{selection.HOLD_DAYS}"
+                          if r["target"] is not None else f"day {held}")
                        + _mood_tag(mood_all.get(r["symbol"])))
         if base and key == positions.MAIN:
             held_n = open_n + pend_n
@@ -870,11 +910,12 @@ def cmd_open_orders(_=None):
         lq = q.get(r["symbol"]) or {}
         # FUNDS ARE NOT IN THE EQUITY CORPUS, by construction: the non-equity
         # denylist removes them (L61), and this command loads that corpus. So a
-        # fund row falls through to `or r["entry_px"]` and prints entry as if it
-        # were today's price -- P&L exactly Rs 0, every day, on a position that
-        # is really moving. A confident zero is worse than an admitted blank
-        # (rules.md R2), so an unpriced row says so and is left out of the
-        # totals rather than dragging them toward its own entry price.
+        # fund row used to fall through to `or r["entry_px"]` and print entry as
+        # if it were today's price -- P&L exactly Rs 0, every day, on a position
+        # that is really moving. features.last_close reads the one bar it needs
+        # straight from the bhavcopy, no denylist and no corpus build. A row
+        # that STILL cannot be priced says so rather than showing a confident
+        # zero (rules.md R2), and stays out of the totals.
         px = lq.get("ltp") or _px_now(corpus, r["symbol"], days[-1])
         priced = px is not None
         px = px or r["entry_px"]
@@ -884,15 +925,15 @@ def cmd_open_orders(_=None):
         if priced:
             tot_val += val
             tot_pl += pl
-        held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
-                                   days[-1])
+        held = positions.bars_held(corpus.get(r["symbol"]) or _Cal(days),
+                                   r["entry_day"], days[-1])
         icon = "🟢" if pl > 0 else ("🔴" if pl < 0 else "⚪")
         to_stop, to_tgt = _away(px, r["stop"]), _away(px, r["target"])
         mood = _mood_of([r["symbol"]], days[-1]).get(r["symbol"])
         # bars_held, not a date subtraction: a calendar gap counts weekends
         # and would print a number the 10-day exit rule does not use.
-        held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
-                                   days[-1])
+        held = positions.bars_held(corpus.get(r["symbol"]) or _Cal(days),
+                                   r["entry_day"], days[-1])
         # Four SHORT lines. The previous three carried everything and wrapped
         # to six on a phone; each line here stays under a screen width.
         out.append(f"{icon} *{r['symbol']}* "
@@ -909,7 +950,7 @@ def cmd_open_orders(_=None):
                    + (f"{r['entry_px']:,.0f}→{px:,.2f} ({pct:+.1f}%)" if priced
                       else f"in at {r['entry_px']:,.2f} · not priced here")
                    + (f" · day {held}/{selection.HOLD_DAYS}" if _timed
-                      else ", no time limit"))
+                      else " · no time limit"))
         out.append(f"   qty {r['qty']} · {_rs(val)} · "
                    + (f"P&L Rs {pl:+,.0f}" if priced
                       else "P&L in /etf-trend, which prices funds"))
@@ -953,8 +994,8 @@ def cmd_closed_orders(_=None):
                             key=lambda t: t[0]["exit_day"] or "")[-15:]:
         pct = (r["exit_px"] / r["entry_px"] - 1) * 100
         icon = "✅" if (r["net"] or 0) > 0 else "❌"
-        held = positions.bars_held(corpus.get(r["symbol"]), r["entry_day"],
-                                   r["exit_day"])
+        held = positions.bars_held(corpus.get(r["symbol"]) or _Cal(days),
+                                   r["entry_day"], r["exit_day"])
         why = ("stop" if r["stop"] and r["exit_px"] <= r["stop"]
                else "target" if r["target"] and r["exit_px"] >= r["target"]
                else "time")
