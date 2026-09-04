@@ -3752,3 +3752,58 @@ which names are bought and not how long they are held. `sd` was never printed by
 that run and stays unregistered rather than invented.
 
 Nothing about main, pooled or the recorded baseline changes.
+
+## L91 — WAL took the live book down for three days, and every other job kept saying "ok"
+
+The lock fix (L87) did two things: it stopped `db()` running DDL on every open,
+and it turned on WAL. The first was measured — contended opens went from 0 of 8
+to 25 of 25. The second was **additive, unmeasured, and broke the book**.
+
+From 2026-09-02 every agent tick died opening the order book:
+
+    sqlite3.OperationalError: disk I/O error
+
+`pbook`, `fill`, `audit` and `review` failed on it. `snapshot`, `catchup`,
+`news`, `bse` and `ann` all returned **ok**, so `data/agent.log` read as a
+healthy scheduler while the forward book — the only evidence this project has —
+had not stepped for three sessions. It was found on 2026-09-04 only because the
+operator asked for a catch-up run, and the tell was in `agent_state.json`:
+`last_pbook`, `last_fill`, `last_audit` and `last_review` all stuck on
+2026-09-01 while everything else read 2026-09-04.
+
+**The cause is the filesystem.** WAL needs a shared-memory `-shm` mapping beside
+the database. This repo lives under `~/Documents`, which is iCloud-synced —
+`.gitignore` has carried a rule for iCloud conflict copies (`* 2.*`) since long
+before this. A synced volume does not reliably support that mapping. The
+evidence on disk: `-shm` left at mode 600, `-wal` at zero bytes, and
+`positions.db` itself untouched since the last good tick.
+
+**Reverted to the rollback journal, and nothing was given up.** The half of L87
+with a measurement behind it was the DDL skip, and it is untouched: an open on
+an initialised book still writes nothing, and `_reopen_is_read_only_selftest`
+still asserts it. WAL was the half with no measurement and, now, a demonstrated
+cost. `PRAGMA integrity_check` reads ok, 23 rows and 50 audit-trail entries
+intact.
+
+**The record survived, and that was luck, not design.** `step()` evaluates a
+single bar — `s.low[i]`, `s.high[i]` — so a stop or target breached on 2026-09-02
+or 09-03 would have been missed outright if price recovered by the 4th. All 19
+filled positions were checked against those two bars: zero breaches. Time exits
+would have self-corrected regardless, because `bars_held` counts bars rather
+than steps. Had one breached, the forward record would have carried an exit that
+never happened at a price that never traded, and no test in this repo would have
+noticed.
+
+**Three rules of thumb out of it.**
+
+- **A performance change to a database is a deployment change.** WAL is the
+  standard advice for exactly the contention that was being fixed, and the
+  standard advice assumes a local disk. Nothing in the measurement said WAL
+  helped; it was added because it is what one adds.
+- **Fix the thing you measured, and ship only that.** Both halves went in
+  together under one lesson, so when it broke there was no way to tell which
+  half was responsible without reasoning it out afterwards.
+- **A scheduler that reports per-job success needs a per-job STALENESS check.**
+  Nine jobs, five green, four silently three days behind, and the summary line
+  said "done: snapshot, catchup, news, bse, ann" — which was true, and useless.
+  `agent_state.json` held the answer the whole time and nothing read it.

@@ -230,8 +230,21 @@ def slice_of(name=MAIN):
     if cfg["ranking"] == "pooled":
         return (f"the best {cfg['seats'] or selection.MAX_POSITIONS} by rank, "
                 f"any size band")
-    return ", ".join(f"ranks 1-{k} {c}"
+    # A book that does not rank the way breakout does gets its OWN sentence.
+    # This function reads breakout's TAKE_PER_CLUSTER, so every bucket that
+    # reached the `return` below was described as "ranks 1-3 micro, ranks 1-2
+    # small" -- including the fund bucket, which trades no micro caps at all
+    # and holds ETFs. daily.py printed that line over it every session.
+    if cfg["ranking"] != "per_cluster":
+        return cfg.get("note") or cfg["ranking"]
+    base = ", ".join(f"ranks 1-{k} {c}"
                      for c, k in selection.TAKE_PER_CLUSTER.items())
+    # ...and a bucket that adds a rule says so, or two books print one
+    # description and the reader cannot tell which is which.
+    if cfg.get("sector_cap"):
+        base += (f", at most {cfg['sector_cap']} per broad sector "
+                 f"(a blocked seat holds cash)")
+    return base
 
 
 def bucket_cfg(name=MAIN):
@@ -251,16 +264,27 @@ def db():
     # 5s was not enough: the agent's audit job died mid-run three times on
     # 2026-08-28 and left a truncated audit.log that /review quoted anyway.
     c.execute("PRAGMA busy_timeout=30000")
-    # WAL lets a reader and the writer hold the file at once, which is the shape
-    # of every collision seen here -- /wallet reading while daily.py fills.
-    # journal_mode is persistent in the file header, so this is a no-op after
-    # the first time; it can only fail if another connection holds the file
-    # exclusively, and an open that cannot upgrade the journal is still a
-    # correct open, so the failure is not fatal.
-    try:
-        c.execute("PRAGMA journal_mode=WAL")
-    except sqlite3.DatabaseError:
-        pass
+    # NO WAL. It was turned on with the lock fix on 2026-08-28 and REVERTED on
+    # 2026-09-04, because it took the live book down for three days: from
+    # 2026-09-02 every agent tick died on
+    #
+    #     sqlite3.OperationalError: disk I/O error
+    #
+    # opening this file, so pbook, fill, audit and review all stopped while
+    # snapshot, catchup, news and the two announcement jobs carried on saying
+    # "ok" -- the book was not stepping and the scheduler looked healthy.
+    #
+    # WAL needs a shared-memory -shm mapping beside the database. This repo
+    # lives under ~/Documents, which is iCloud-synced (see the "* 2.*" conflict
+    # rule in .gitignore), and a synced volume does not reliably support that
+    # mapping; the -shm was left mode 600 and the -wal zero bytes while the
+    # database itself had not been written since the last good tick.
+    #
+    # NOTHING IS LOST BY REMOVING IT. The measured half of the lock fix was
+    # never WAL -- it was skipping the DDL that made every open a writer, and
+    # that alone took contended opens from 0 of 8 to 25 of 25 (L87). WAL was
+    # additive, unmeasured, and is now the only part with a demonstrated cost.
+    # Rollback journal is the default and works on this filesystem.
     if c.execute("SELECT count(*) FROM sqlite_master "
                  "WHERE name IN ('pos','ix_pos_status')").fetchone()[0] != 2:
         c.executescript("""
