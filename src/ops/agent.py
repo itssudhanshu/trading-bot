@@ -131,6 +131,63 @@ PLAIN = {
 }
 
 
+# HOW OFTEN EACH JOB OWES A RUN. This has to be declared, because the cadence
+# lives inside due()'s conditions as prose-and-arithmetic and nothing could read
+# it back -- which is exactly how a three-day outage went unnoticed on
+# 2026-09-02..09-04 (L91): pbook, fill, audit and review all failed on the same
+# broken database while the other five returned ok, and agent.log's per-tick
+# "done: snapshot, catchup, news, bse, ann" was true every time.
+#
+#   "session"  every trading day (weekends and holidays owe nothing)
+#   "daily"    every calendar day, weekends included -- the forward-only
+#              captures, whose missed days can never be recovered
+#
+# The selftest asserts every job in _JOBS appears here, so a new job cannot be
+# added and left unmonitored: it fails loudly instead.
+CADENCE = {
+    "snapshot": "session", "catchup": "session", "pbook": "session",
+    "fill": "session", "audit": "session", "review": "session",
+    "news": "daily", "bse": "daily", "ann": "daily",
+}
+
+# Sessions (or days) a job may be behind before it is a problem. ONE is normal:
+# pbook is not due until 18:00, so at noon it is legitimately a session behind.
+# TWO means a run was skipped and the next one did not recover it.
+STALE_AFTER = 2
+
+
+def stale_jobs(now=None, state=None):
+    """-> [(job, last_run_or_None, behind)] for jobs that owe a run and have
+    not made one. Empty is the normal, good state.
+
+    `behind` counts TRADING SESSIONS for session-cadence jobs and calendar days
+    for the daily ones, because a weekend is not a missed run and a monitor that
+    fires every Saturday gets ignored -- and then the real alarm is missed too.
+    """
+    import features
+    st = _state() if state is None else state
+    today = (now or datetime.now()).date()
+    sessions = [d for d in features.trading_days() if d <= today]
+    out = []
+    for job in _JOB_NAMES:
+        last = st.get(f"last_{job}")
+        if not last:
+            out.append((job, None, None))       # never run: a different alarm
+            continue
+        try:
+            when = date.fromisoformat(str(last))
+        except ValueError:
+            out.append((job, str(last), None))
+            continue
+        if CADENCE[job] == "daily":
+            behind = (today - when).days
+        else:
+            behind = sum(1 for d in sessions if d > when)
+        if behind >= STALE_AFTER:
+            out.append((job, str(last), behind))
+    return out
+
+
 def _cmd_for(job):
     import sys as _s
     return [_s.executable] + _JOBS[job]
@@ -283,6 +340,21 @@ def attention():
     # is missed too.
     if _jobs_loaded() == []:
         out.append("no launchd job registered -- nothing runs on a schedule")
+
+    # A job can fail every tick while the ones beside it succeed, and the log
+    # line "done: snapshot, catchup, news, bse, ann" stays true throughout. That
+    # is how pbook, fill, audit and review sat three days behind unnoticed
+    # (L91). The state file knew; nothing read it.
+    for job, last, behind in stale_jobs(state=st):
+        if last is None:
+            out.append(f"{PLAIN.get(job, job)} has NEVER run")
+        elif behind is None:
+            out.append(f"{PLAIN.get(job, job)} has an unreadable last-run "
+                       f"date ({last})")
+        else:
+            unit = "day" if CADENCE[job] == "daily" else "session"
+            out.append(f"{PLAIN.get(job, job)} last ran {last} -- "
+                       f"{behind} {unit}s behind")
 
     # Surveillance is the one unrecoverable data stream: NSE serves the current
     # day only, so a gap is permanent and silent.
@@ -611,6 +683,37 @@ def _selftest():
     # reports today's bucket, audit so it quotes today's self-check.
     _t = due(datetime(2026, 8, 12, 19))
     assert "review" in _t and _t.index("review") > _t.index("pbook"), _t
+
+    # Every job owes a declared cadence, or it is monitored by nothing. Adding
+    # a job and forgetting this line is exactly how the next outage stays
+    # invisible for three days.
+    assert set(CADENCE) == set(_JOB_NAMES), (
+        f"jobs with no declared cadence: {set(_JOB_NAMES) - set(CADENCE)}; "
+        f"cadence for jobs that do not exist: {set(CADENCE) - set(_JOB_NAMES)}")
+
+    # ...and the check must actually FIRE on the state that broke the book, and
+    # stay quiet on a healthy one. A staleness monitor that cannot fire is the
+    # thing it was written to replace.
+    import datetime as _dtm
+    _broken = {"last_catchup": "2026-09-04", "last_pbook": "2026-09-01",
+               "last_audit": "2026-09-01", "last_review": "2026-09-01",
+               "last_fill": "2026-09-01", "last_snapshot": "2026-09-04",
+               "last_news": "2026-09-04", "last_bse": "2026-09-04",
+               "last_ann": "2026-09-04"}
+    _at = _dtm.datetime.fromisoformat("2026-09-04T18:30")
+    _hit = {j for j, _l, _b in stale_jobs(now=_at, state=_broken)}
+    assert {"pbook", "audit", "review", "fill"} <= _hit, _hit
+    assert "snapshot" not in _hit and "news" not in _hit, _hit
+    # a book that ran everything today is silent
+    _good = {f"last_{j}": "2026-09-04" for j in _JOB_NAMES}
+    assert stale_jobs(now=_at, state=_good) == [], stale_jobs(now=_at, state=_good)
+    # ...and so is a Monday reading Friday's weekday runs: a weekend is not a
+    # missed session, and a monitor that fires every Saturday gets ignored.
+    _fri = {f"last_{j}": "2026-09-04" for j in _JOB_NAMES}
+    _fri.update({"last_news": "2026-09-06", "last_bse": "2026-09-06",
+                 "last_ann": "2026-09-06"})
+    _mon = _dtm.datetime.fromisoformat("2026-09-07T12:00")
+    assert stale_jobs(now=_mon, state=_fri) == [], stale_jobs(now=_mon, state=_fri)
     assert "audit" in _t and _t.index("review") > _t.index("audit"), _t
     print("agent selftest ok")
 

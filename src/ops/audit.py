@@ -467,6 +467,26 @@ def main():
           f"{n_sh} paths in {len(list((paths.ROOT / 'scripts').rglob('*.sh')))} scripts"
           if not stale_sh else " | ".join(stale_sh))
 
+    # A job can fail on every tick while the ones beside it succeed. On
+    # 2026-09-02..09-04 pbook, fill, audit and review all died opening the order
+    # book while snapshot, catchup, news, bse and ann returned ok, so agent.log
+    # read "done: snapshot, catchup, news, bse, ann" -- true every time, and the
+    # book had not stepped for three sessions (L91). agent_state.json held the
+    # answer throughout and nothing compared its dates.
+    #
+    # agent.stale_jobs owns the cadence; this asserts on it rather than
+    # restating it, because a second copy of the schedule is how the two drift
+    # and the monitor starts describing a scheduler nobody runs.
+    import agent as _ag
+    _stale = _ag.stale_jobs()
+    check("every scheduled job has run recently enough",
+          not _stale,
+          f"{len(_ag.CADENCE)} jobs, none more than {_ag.STALE_AFTER - 1} "
+          f"behind" if not _stale else
+          " | ".join(f"{j} last ran {l or 'NEVER'}"
+                     + (f", {b} behind" if b is not None else "")
+                     for j, l, b in _stale))
+
     # -------------------------------------------------------------- BUCKET
     section("THE BUCKET")
     import positions
