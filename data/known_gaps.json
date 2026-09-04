@@ -1,0 +1,27 @@
+{
+  "_": [
+    "Days a forward-only stream did not collect, and CANNOT be refetched.",
+    "",
+    "Every stream here serves TODAY and only today -- NSE's ASM/GSM/ban lists,",
+    "BSE's announcements feed (L72a: any past window returns 0 rows) and the",
+    "news capture. A day not collected is a day that never existed for them,",
+    "so these entries never clear and would otherwise sit in /health forever.",
+    "A monitor showing the same three lines every morning is one you stop",
+    "reading, and then the real alarm is missed too.",
+    "",
+    "ACKNOWLEDGING IS NOT FIXING. The gap is still a hole in the record; this",
+    "file is what stops it being mistaken for a QUIET day (absent is not",
+    "quiet). Only the exact date+stream pairs listed here are silenced -- any",
+    "new gap still fires, and agent.py's selftest asserts exactly that.",
+    "",
+    "Add an entry only after confirming the day is genuinely unrecoverable."
+  ],
+  "gaps": [
+    {
+      "date": "2026-09-03",
+      "streams": ["surveillance", "bse", "news"],
+      "why": "the machine was asleep for the whole session: no snapshot job ran, so ASM/GSM/ban, the BSE feed and the news capture all lost the day. The bhavcopy was refetched by --catchup and the NSE weekly filings self-healed, both being resumable; these three are not.",
+      "acknowledged": "2026-09-04"
+    }
+  ]
+}

@@ -156,6 +156,26 @@ CADENCE = {
 STALE_AFTER = 2
 
 
+def known_gaps():
+    """-> {(date_iso, stream)} the collection gaps already accounted for.
+
+    data/known_gaps.json is a LEDGER, not a mute button. The streams it covers
+    are forward-only -- they serve today and nothing else -- so their gaps never
+    clear and would report every morning for the life of the project. Only the
+    exact date+stream pairs listed are silenced; a new gap still fires, and the
+    selftest asserts it.
+    """
+    p = ROOT / "data" / "known_gaps.json"
+    if not p.exists():
+        return set()
+    try:
+        doc = json.loads(p.read_text())
+    except (OSError, ValueError):
+        return set()
+    return {(g["date"], s) for g in doc.get("gaps", [])
+            for s in g.get("streams", [])}
+
+
 def stale_jobs(now=None, state=None):
     """-> [(job, last_run_or_None, behind)] for jobs that owe a run and have
     not made one. Empty is the normal, good state.
@@ -374,9 +394,13 @@ def attention():
             out.append(f"newest surveillance snapshot is {gap} days old "
                        f"({snaps[-1]}) -- these gaps are PERMANENT")
 
+    _ack = known_gaps()
+    _acked = 0
     try:
         import snapshot as _s
         mb, ms = _s.gaps()
+        ms = [d for d in ms if (str(d), "surveillance") not in _ack]
+        _acked += len(_s.gaps()[1]) - len(ms)
         if ms:
             out.append(f"{len(ms)} trading days missing surveillance, unrecoverable")
         if mb:
@@ -394,9 +418,10 @@ def attention():
     # empty list from a genuinely silent day, and nothing distinguishes them.
     # 2026-09-03 is exactly that -- the machine was asleep and all three streams
     # lost the day.
-    for label, folder, suffix in (
-            ("BSE filings", ROOT / "data" / "announcements" / "bse" / "raw", ".json"),
-            ("news", ROOT / "data" / "news", ".jsonl")):
+    for label, stream, folder, suffix in (
+            ("BSE filings", "bse",
+             ROOT / "data" / "announcements" / "bse" / "raw", ".json"),
+            ("news", "news", ROOT / "data" / "news", ".jsonl")):
         try:
             have = {p.name[:-len(suffix)] for p in folder.glob(f"*{suffix}")}
         except OSError:
@@ -407,9 +432,21 @@ def attention():
         gaps = [d for d in (first + timedelta(days=k)
                             for k in range((today - first).days + 1))
                 if d < today and d.isoformat() not in have]
-        if gaps:
-            out.append(f"{len(gaps)} day(s) missing {label}, unrecoverable "
-                       f"(newest gap {max(gaps)})")
+        fresh = [d for d in gaps if (d.isoformat(), stream) not in _ack]
+        _acked += len(gaps) - len(fresh)
+        if fresh:
+            out.append(f"{len(fresh)} day(s) missing {label}, unrecoverable "
+                       f"(newest gap {max(fresh)})")
+    # Silenced is not forgotten. The count stays on the page, phrased so it
+    # reads as a standing fact rather than a thing to act on -- the holes are
+    # still holes and a later reader must not take an empty day for a quiet one.
+    if _acked:
+        # Backticks are not decoration: /health renders through Telegram, a
+        # bare underscore opens italics, and an unbalanced one makes the API
+        # REJECT the whole message -- so a line about data hygiene would have
+        # silenced the entire health report. audit.py's markup check caught it.
+        out.append(f"({_acked} permanent collection gap(s) acknowledged in "
+                   f"`data/known_gaps.json`) -- nothing to do")
 
     # Can the bucket still fill its mix? If fewer names survive the
     # 200-day-average gate, the surveillance flags and the sizing cap than the
@@ -710,6 +747,21 @@ def _selftest():
     # reports today's bucket, audit so it quotes today's self-check.
     _t = due(datetime(2026, 8, 12, 19))
     assert "review" in _t and _t.index("review") > _t.index("pbook"), _t
+
+    # The gap ledger silences EXACT date+stream pairs and nothing wider. If it
+    # ever silenced a whole stream or a whole date, a new collection hole would
+    # land inside an existing acknowledgement and never be reported -- which is
+    # the failure the ledger exists to prevent, arriving by the door marked
+    # "fix".
+    _kg = known_gaps()
+    if _kg:
+        _d, _s = sorted(_kg)[0]
+        assert (_d, _s) in _kg
+        assert (_d, _s + "_other") not in _kg, \
+            "a whole DATE is being silenced, not one stream of it"
+        _next = (date.fromisoformat(_d) + timedelta(days=1)).isoformat()
+        assert (_next, _s) not in _kg, \
+            "a whole STREAM is being silenced, not one date of it"
 
     # Every job owes a declared cadence, or it is monitored by nothing. Adding
     # a job and forgetting this line is exactly how the next outage stays
