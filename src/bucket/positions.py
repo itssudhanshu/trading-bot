@@ -747,10 +747,15 @@ def step(corpus, day, conn=None):
         # Stop and target are recomputed from the ACTUAL fill, not from the
         # reference close used when queueing -- an overnight gap moves both.
         sp = bucket_cfg(p["bucket"])["stop_pct"]
+        # NAME THE SOURCE. fill_live records 'live:upstox' and mark_open records
+        # its caller, but this path -- the one that fills from the stored
+        # bhavcopy when the live quote was never taken -- left the column NULL,
+        # so four rows in the book could not say how their entry price was got.
+        # A fill with no source is indistinguishable from a fill nobody checked.
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
-                  " target=?, features=? WHERE id=?",
+                  " target=?, features=?, fill_source=? WHERE id=?",
                   (str(day), px, px * (1 - sp / 100), px * (1 + TARGET_PCT / 100),
-                   json.dumps(learning.entry_features(s, i)), p["id"]))
+                   json.dumps(learning.entry_features(s, i)), "corpus:open", p["id"]))
         filled.append((p["symbol"], px))
 
     for p in c.execute("SELECT * FROM pos WHERE status='open'").fetchall():

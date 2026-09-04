@@ -384,6 +384,33 @@ def attention():
     except Exception:
         pass
 
+    # THE FORWARD-ONLY CAPTURES, whose missing days are as permanent as the
+    # surveillance ones and were reported by nothing. Both feeds serve TODAY and
+    # only today (L72a for BSE, the same by construction for news), so a day the
+    # agent did not run is a day that does not exist and can never be fetched.
+    #
+    # It matters because ABSENT IS NOT QUIET: a later reader asking "what did
+    # this company file on 2026-09-03" gets an empty list from a gap and an
+    # empty list from a genuinely silent day, and nothing distinguishes them.
+    # 2026-09-03 is exactly that -- the machine was asleep and all three streams
+    # lost the day.
+    for label, folder, suffix in (
+            ("BSE filings", ROOT / "data" / "announcements" / "bse" / "raw", ".json"),
+            ("news", ROOT / "data" / "news", ".jsonl")):
+        try:
+            have = {p.name[:-len(suffix)] for p in folder.glob(f"*{suffix}")}
+        except OSError:
+            continue
+        if not have:
+            continue
+        first = date.fromisoformat(min(have))
+        gaps = [d for d in (first + timedelta(days=k)
+                            for k in range((today - first).days + 1))
+                if d < today and d.isoformat() not in have]
+        if gaps:
+            out.append(f"{len(gaps)} day(s) missing {label}, unrecoverable "
+                       f"(newest gap {max(gaps)})")
+
     # Can the bucket still fill its mix? If fewer names survive the
     # 200-day-average gate, the surveillance flags and the sizing cap than the
     # mix needs, the bucket quietly under-fills -- and that looks identical to

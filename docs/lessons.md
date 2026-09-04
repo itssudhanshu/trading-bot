@@ -3807,3 +3807,62 @@ noticed.
   Nine jobs, five green, four silently three days behind, and the summary line
   said "done: snapshot, catchup, news, bse, ann" — which was true, and useless.
   `agent_state.json` held the answer the whole time and nothing read it.
+
+## L92 — Reconciling the outage: one fill was 7.67% wrong, and three data streams lost a day that cannot be got back
+
+After the WAL outage (L91) the record was surveyed rather than assumed correct.
+Four things were wrong or blank, and one of them mattered.
+
+**A fill three sessions late, on the capped bucket's first trade.** Order 23,
+WELENT, was queued 2026-09-01 and the rule is unambiguous — it fills at the NEXT
+open, 2026-09-02 at 707.50. The book did not step on the 2nd or the 3rd, so it
+filled at the 4th's open instead:
+
+| | entry | stop | target |
+|---|---|---|---|
+| as recorded | 2026-09-04 @ 761.80 | 685.62 | 914.16 |
+| what the rule says | 2026-09-02 @ 707.50 | 636.75 | 849.00 |
+
+**7.67% adverse**, on the first trade of the experiment the capped bucket exists
+to run. Corrected, and the reasoning is the part worth keeping: this is a PAPER
+book whose purpose is to record what the RULES do. The correct price is not a
+guess — it is the deterministic output of a documented rule against a bhavcopy
+that was already on disk, which is exactly what `simulate.run` computes in every
+backtest. The three-session delay was a defect in this repo's own code, not
+market friction and not a decision the strategy made.
+
+The counter-argument was weighed and is real: a forward book earns its value by
+including friction a backtest cannot see, and rewriting fills whenever the
+infrastructure fails turns it into a second backtest. The line drawn is that
+FRICTION IS THE MARKET'S — a gap, a lock, a price that moved — while an
+unhandled exception is the author's. Had the fill been merely bad rather than
+absent, it would stand. Checked before correcting: no stop or target would have
+triggered between the 2nd and the 4th, so the position is still open and only
+its entry moved. `qty` is set at queue time and did not change.
+
+**Four rows could not say how they were filled.** `positions.step()` — the path
+that fills from the stored bhavcopy when no live quote was taken — set status,
+entry day, price, stop, target and features, and left `fill_source` NULL, while
+`fill_live` recorded `live:upstox` and `mark_open` recorded its caller. A fill
+with no named source is indistinguishable from one nobody checked. `step()` now
+writes `corpus:open`; the four existing rows are backfilled and marked as such.
+
+**2026-09-03 is gone from three streams and reported by none of them.** The
+machine was asleep. What survived: the bhavcopy (refetchable, and `--catchup`
+got it) and the NSE weekly filings (resumable, self-healed). What did not:
+the ASM/GSM/ban surveillance snapshot, the BSE filings feed and the news
+capture — all three serve TODAY and only today, so a day not collected is a day
+that never existed.
+
+Surveillance already had a gap report. The other two had nothing, and that is
+the defect: **absent is not quiet**. A reader asking what a company filed on
+2026-09-03 gets an empty list from a collection gap and an empty list from a
+genuinely silent day, with nothing to tell them apart — and the second is
+evidence while the first is a hole. `attention()` now reports missing days for
+both forward-only captures, so `/health` names all three permanent gaps
+instead of one.
+
+**Nothing was found wrong with the closed trades.** All nine were recomputed
+from entry, exit, quantity and the charge model: zero mismatches, realised
+Rs +11,294 across the books (main −1,592 on 6, pooled +12,886 on 3). The record
+now replays 24 rows and 58 audit-trail entries against the live database.
