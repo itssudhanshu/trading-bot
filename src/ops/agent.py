@@ -394,6 +394,33 @@ def attention():
             out.append(f"newest surveillance snapshot is {gap} days old "
                        f"({snaps[-1]}) -- these gaps are PERMANENT")
 
+    # THE UPSTOX TOKEN, reported BEFORE the fill fails rather than after.
+    # Upstox tokens are issued by an interactive login and expire DAILY around
+    # 03:30 IST -- i.e. every token dies before the next 09:25 fill window, so
+    # the morning fill fails unless a fresh one was pasted. On 2026-09-07 that
+    # was discovered from data/agent_fill.log AFTER the job had failed for four
+    # sessions; the token's own expiry says so in advance.
+    #
+    # live_source.token_hours_left owns the arithmetic. Nothing identifying is
+    # decoded and the token is never echoed -- only hours.
+    try:
+        import live_source as _ls
+        _tok = _ls.env_value("UPSTOX_ACCESS_TOKEN")
+        if not _tok:
+            out.append("no `UPSTOX_ACCESS_TOKEN` in .env -- the morning fill "
+                       "cannot price anything")
+        else:
+            _left = _ls.token_hours_left(_tok)
+            if _left is not None and _left <= 0:
+                out.append(f"Upstox token EXPIRED {-_left:.0f}h ago -- paste a "
+                           f"fresh one into .env or the 09:25 fill fails")
+            elif _left is not None and _left < 18:
+                # Under 18h cannot survive to the next weekday open.
+                out.append(f"Upstox token expires in {_left:.0f}h, before the "
+                           f"next 09:25 fill -- refresh it in the morning")
+    except Exception:
+        pass
+
     _ack = known_gaps()
     _acked = 0
     try:
