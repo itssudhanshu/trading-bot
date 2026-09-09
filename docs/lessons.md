@@ -3866,3 +3866,88 @@ instead of one.
 from entry, exit, quantity and the charge model: zero mismatches, realised
 Rs +11,294 across the books (main −1,592 on 6, pooled +12,886 on 3). The record
 now replays 24 rows and 58 audit-trail entries against the live database.
+
+## L93 — The audit failed on its own staleness for four days, and could not recover by construction
+
+The staleness check added on 2026-09-04 (L91) asserted that every scheduled job
+had run recently enough. Including itself. `agent.once()` stamps `last_<job>`
+only when the job SUCCEEDS:
+
+    if run_task(t, log=log):
+        st[f"last_{t}"] = str(date.today())
+
+so the audit failed on the staleness of its own previous run, was therefore not
+stamped, and was one session staler at the next tick. It failed every hour from
+2026-09-04 to 2026-09-09 and **the only thing that could have cleared it was the
+run it was failing**. Everything else in the system was fine throughout: pbook,
+fill, review, snapshot, news, bse and ann all ran and stamped normally.
+
+A job cannot testify to its own freshness from inside itself. `stale_jobs` now
+takes `exclude`, `audit.py` passes `{"audit"}`, and the selftest asserts three
+things: that the fixture is genuinely stale (or it proves nothing), that audit
+is not reported when excluded, and that excluding one job does not excuse the
+others.
+
+**What watches the audit is `attention()`**, which runs from the bot rather than
+from the audit -- so an audit that stops running is still reported, just not by
+the thing that stopped. That split is the actual fix; `exclude` only makes it
+legal.
+
+**The shape to remember: a monitor that is itself monitored must not be its own
+monitor.** The check was written to catch jobs that fail silently while their
+neighbours succeed, and its first casualty was itself, in exactly that pattern
+-- one job red, eight green, a summary line that stayed true.
+
+## L94 — "Today-only" was wrong for two weeks: BSE serves any single past date
+
+L72a recorded, as a probe result not to be re-derived:
+
+    ANY past window returns 0 rows, in-browser or not, any param spelling.
+    pageno does NOT walk back in time. This endpoint is therefore TODAY-ONLY
+    and the archive it builds is FORWARD-ONLY.
+
+That conclusion is wrong, and three collection gaps were acknowledged as
+permanent on the strength of it (L91, L92). Tested against the live endpoint on
+2026-09-09:
+
+| query | rows |
+|---|---|
+| `strPrevDate=20260905&strToDate=20260905` (single past DATE) | **2,089** |
+| `strPrevDate=20260904&strToDate=20260908` (past WINDOW) | 0 |
+| today | 36 |
+
+A past **window** returns nothing, which is almost certainly what was tested and
+is where "any param spelling" came from. A past **single date** returns the day,
+50 rows to a page, walked by `pageno`. Every row carried the queried date;
+2026-09-03 gave 2,198 and 2026-09-05 gave 2,089, all unique `NEWSID`.
+
+Both gaps are filled. `fetch_past_day()` and a `--backfill YYYY-MM-DD` verb do
+it, deliberately separate from `--update` because it reads a different source.
+
+**IT IS A THINNER SOURCE, and that matters more than the recovery.** Refetching
+days already held, against the live RSS capture of the same day:
+
+| day | live feed | dated API |
+|---|---|---|
+| 2026-09-06 (Sunday) | 230 | 221 |
+| 2026-09-07 (Monday) | 10,760 | 2,153 |
+
+so on a weekday the API returns about a fifth, filtered by its mandatory
+`strSearch=P`. A backfilled day is thin BY COLLECTION METHOD, and a later reader
+comparing row counts would read that as a quiet day. `data/known_gaps.json`
+therefore grew a `partial` section beside `gaps`: absent is not quiet, and
+**recovered is not equivalent**.
+
+A first comparison suggested the two sources barely overlapped at all, which was
+an artefact of the key: `NEWSSUB` is formatted differently by each -- the API
+prefixes company and scrip ("NLC India Ltd - 513683 - Reg. 34 (1) Annual
+Report.") where the feed gives the bare subject. Cosmetic, but it means the two
+cannot be de-duplicated on subject text.
+
+**The lesson is not about BSE.** A probe result was written down as a property
+of the world, carried for two weeks, and used to declare three days of data
+permanently lost. It was never re-tested because it was recorded as settled. The
+surveillance and news gaps ARE unrecoverable -- checked the same day, NSE's
+reportASM/reportGSM have no date parameter and no archive, and the news feeds
+serve recent items only -- but that is now a tested claim rather than an
+inherited one.

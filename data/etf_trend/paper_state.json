@@ -1,65 +1,65 @@
 {
- "last_day": "2026-09-04",
+ "last_day": "2026-09-08",
  "ranking": [
+  {
+   "symbol": "MON100",
+   "cluster": "index",
+   "score": 55.71
+  },
   {
    "symbol": "SMALLCAP",
    "cluster": "index",
-   "score": 21.79
+   "score": 21.35
   },
   {
    "symbol": "HDFCSML250",
    "cluster": "index",
-   "score": 21.34
-  },
-  {
-   "symbol": "MODEFENCE",
-   "cluster": "index",
-   "score": 20.65
+   "score": 19.99
   },
   {
    "symbol": "PHARMABEES",
    "cluster": "index",
-   "score": 17.66
+   "score": 17.5
+  },
+  {
+   "symbol": "MODEFENCE",
+   "cluster": "index",
+   "score": 17.02
   },
   {
    "symbol": "METALIETF",
    "cluster": "index",
-   "score": 13.27
+   "score": 9.96
   },
   {
    "symbol": "MID150BEES",
    "cluster": "index",
-   "score": 10.67
+   "score": 9.11
   },
   {
    "symbol": "JUNIORBEES",
    "cluster": "index",
-   "score": 9.88
+   "score": 8.3
   },
   {
    "symbol": "AUTOBEES",
    "cluster": "index",
-   "score": 4.3
+   "score": 3.06
   },
   {
    "symbol": "LIQUID1",
    "cluster": "bond",
-   "score": 2.53
+   "score": 2.5
   },
   {
    "symbol": "LIQUIDPLUS",
    "cluster": "bond",
-   "score": 2.51
+   "score": 2.48
   },
   {
    "symbol": "CASHIETF",
    "cluster": "index",
-   "score": 2.51
-  },
-  {
-   "symbol": "LIQUIDCASE",
-   "cluster": "bond",
-   "score": 2.5
+   "score": 2.48
   }
  ]
 }

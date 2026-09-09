@@ -23,12 +23,19 @@ day of guessing to learn, do not re-derive):
           strScrip=, strSearch=P, strToDate=YYYYMMDD, strType=C,
           subcategory=-1. strSearch=P is MANDATORY -- empty returns {} -- and
           is what the site's own XHR sends.
-  today   strPrevDate=strToDate=today returns the day's rows. ANY past window
-          returns 0 rows, in-browser or not, any param spelling. pageno does
-          NOT walk back in time. This endpoint is therefore TODAY-ONLY and
-          the archive it builds is FORWARD-ONLY, exactly like newswatch's:
-          history before the first fetch is absent, and `absent is not quiet`
-          applies to it permanently.
+  today   strPrevDate=strToDate=today returns the day's rows.
+  past    CORRECTED 2026-09-09 (L93). This probe recorded "ANY past window
+          returns 0 rows, in-browser or not, any param spelling", and that is
+          wrong. A past WINDOW does return 0 -- strPrevDate=20260904 with
+          strToDate=20260908 gives nothing, which is almost certainly what was
+          tested -- but a past SINGLE DATE, strPrevDate == strToDate, returns
+          that day's rows, 50 to a page, walked by pageno. 2026-09-03 gave
+          2,198 rows and 2026-09-05 gave 2,089, every row carrying the queried
+          date. fetch_past_day() uses this.
+          The archive is therefore NOT forward-only, though what the API
+          returns is a FIFTH of what the feed carries on a weekday, so a
+          backfilled day is thin by collection method. `absent is not quiet`
+          still applies; so does `recovered is not equivalent`.
   client  plain urllib passes Akamai for the api host (TLS-gated, not
           cookie-gated, once the param names are right); the headless browser
           is fingerprint-blocked and the headed browser is redirected to the
@@ -40,6 +47,10 @@ against the equity master, scored with the same token-overlap matcher
 sentiment.py uses for news attribution, accepted at a fixed bar with the
 match stored beside the record so a wrong match is auditable rather than
 silent.
+
+Backfill a missed day with:
+
+    python3 src/core/bse_announcements.py --backfill 2026-09-05
 
 Records use the SAME shape as announcements.parse_rows ({symbol,
 visible_from, an_dt, desc, text}) through announcements' own visible_from,
@@ -63,9 +74,11 @@ BSE_RAW = DATA / "announcements" / "bse" / "raw"
 BSE_PARSED = DATA / "announcements" / "bse_parsed"
 # PRIMARY: BSE's PUBLISHED RSS feed (beta.bseindia.com/rss-feed.html lists it
 # for feed readers -- an invited fetch, plain client, ~1,000 items a day).
-# FALLBACK (superseded for yield, kept as the probe record): the app's
-# AnnSubCategoryGetData JSON endpoint -- today-only AND filtered to ~8 rows
-# by its mandatory strSearch=P, vs 1,039 on the feed the same morning.
+# FALLBACK for today, and the ONLY source for a past day: the app's
+# AnnSubCategoryGetData JSON endpoint. Filtered by its mandatory strSearch=P to
+# roughly a fifth of the feed's volume (2,153 against 10,760 on 2026-09-07), so
+# it is the lesser source when both are available -- but it is DATED, which the
+# feed is not, and that makes it the only way to fill a missed day (L93).
 RSS_URL = "https://beta.bseindia.com/data/xml/announcements.xml"
 API = ("https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w"
        "?pageno={pageno}&strCat=-1&strPrevDate={d0}&strScrip=&strSearch=P"
@@ -131,6 +144,72 @@ def fetch_day(day=None, timeout=30):
             "NEWSSUB": (desc.group(1).strip() if desc else ""),
             "NEWS_SUBMISSION_DT": ts.isoformat(sep=" "),
         })
+    return out
+
+
+def fetch_past_day(day, max_pages=80, delay=0.15):
+    """-> a PAST day's announcements from the dated API, same row shape as
+    fetch_day. [] when the day yields nothing.
+
+    L72a RECORDED THAT THIS IS IMPOSSIBLE AND IT IS NOT. That probe concluded
+    "ANY past window returns 0 rows, in-browser or not, any param spelling",
+    and the live endpoint disagrees: a SINGLE-DATE query
+    (strPrevDate == strToDate == the past date) returns that day's rows, 50 to
+    a page, walked by pageno. What genuinely returns 0 is a multi-day WINDOW --
+    strPrevDate=20260904&strToDate=20260908 gives nothing -- which is very
+    likely what was tested. Verified 2026-09-09 by fetching 2026-09-03 (2,198
+    rows) and 2026-09-05 (2,089 rows), every row carrying the queried date.
+
+    IT IS A PARTIAL SOURCE AND THAT MATTERS MORE THAN THE RECOVERY. Refetching
+    days we already hold, against the RSS capture of the same day:
+
+        2026-09-06 (Sunday)   RSS    230 rows   API    221
+        2026-09-07 (Monday)   RSS 10,760 rows   API  2,153
+
+    so on a weekday this returns about a fifth of what the live feed carries --
+    the mandatory strSearch=P filters it. A backfilled day is therefore THINNER
+    than a live-captured one, and a later reader comparing them would read the
+    difference as a quiet day rather than as a different collection method.
+    Anything storing these rows must say so; data/known_gaps.json is where.
+
+    The row shape is normalised to fetch_day's so parse_rows and the whole
+    downstream path are unchanged. NEWSSUB differs in FORMAT between the two
+    sources -- the API prefixes company and scrip ("NLC India Ltd - 513683 -
+    Reg. 34 (1) Annual Report.") where the feed gives the bare subject -- which
+    is cosmetic here but is why the two cannot be de-duplicated by subject text.
+    """
+    import time
+    import urllib.parse
+    day = day if isinstance(day, str) else day.isoformat()
+    stamp = day.replace("-", "")
+    out, page = [], 1
+    while page <= max_pages:
+        q = {"pageno": page, "strCat": "-1", "subcategory": "-1",
+             "strPrevDate": stamp, "strToDate": stamp, "strSearch": "P",
+             "strType": "C"}
+        url = (API.split("?")[0] + "?" + urllib.parse.urlencode(q))
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=30) as r:
+                rows = json.loads(r.read().decode(errors="replace")).get("Table") or []
+        except Exception:
+            break
+        if not rows:
+            break
+        for r in rows:
+            ts = r.get("News_submission_dt") or r.get("NEWS_DT")
+            if not ts:
+                continue          # parse_rows drops these anyway; be explicit
+            out.append({
+                "SCRIP_CD": str(r.get("SCRIP_CD") or ""),
+                "SLONGNAME": (r.get("SLONGNAME") or "").strip(),
+                "NEWSSUB": (r.get("NEWSSUB") or "").strip(),
+                "NEWS_SUBMISSION_DT": str(ts).replace("T", " ")[:19],
+            })
+        page += 1
+        # One page a day is the load the robots override was granted for; a
+        # backfill is dozens at once, so it waits between them.
+        time.sleep(delay)
     return out
 
 
@@ -446,6 +525,21 @@ def _selftest():
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         _selftest()
+    elif "--backfill" in sys.argv:
+        # A missed day, from the DATED endpoint. Deliberately a separate verb
+        # from --update: it reads a different, thinner source, and a day
+        # recovered this way is recorded in data/known_gaps.json under
+        # `partial` so nothing later mistakes its row count for a quiet day.
+        import datetime as _d
+        _i = sys.argv.index("--backfill")
+        _day = sys.argv[_i + 1] if len(sys.argv) > _i + 1 else None
+        if not _day:
+            sys.exit("--backfill needs a date: --backfill 2026-09-05")
+        _rows = fetch_past_day(_day)
+        _parsed = parse_rows(_rows, master_names())
+        _n = store_day(_parsed, _d.date.fromisoformat(_day), rows_raw=_rows)
+        print(f"bse backfill {_day}: {len(_rows)} fetched, {len(_parsed)} "
+              f"mapped, {_n} stored")
     elif "--update" in sys.argv:
         n_fetched, n_stored = update()
         sys.exit(0 if n_fetched or n_stored >= 0 else 1)

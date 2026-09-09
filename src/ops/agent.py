@@ -176,9 +176,23 @@ def known_gaps():
             for s in g.get("streams", [])}
 
 
-def stale_jobs(now=None, state=None):
+def stale_jobs(now=None, state=None, exclude=()):
     """-> [(job, last_run_or_None, behind)] for jobs that owe a run and have
     not made one. Empty is the normal, good state.
+
+    `exclude` drops jobs the CALLER is itself performing. audit.py must pass
+    {"audit"}, and the reason is a deadlock this check created on 2026-09-04:
+    the agent stamps last_<job> only when the job SUCCEEDS, and audit.py
+    asserting its own freshness meant the audit failed on the staleness of its
+    own previous run, was therefore never stamped, and grew one session staler
+    every tick. It failed every hour for four days and could never recover,
+    because the only thing that could have cleared it was the run it was
+    failing.
+
+    A job cannot testify to its own freshness from inside itself. What watches
+    the audit is attention(), which runs from the bot rather than from the
+    audit -- so an audit that stops running is still reported, just not by the
+    audit.
 
     `behind` counts TRADING SESSIONS for session-cadence jobs and calendar days
     for the daily ones, because a weekend is not a missed run and a monitor that
@@ -190,6 +204,8 @@ def stale_jobs(now=None, state=None):
     sessions = [d for d in features.trading_days() if d <= today]
     out = []
     for job in _JOB_NAMES:
+        if job in exclude:
+            continue
         last = st.get(f"last_{job}")
         if not last:
             out.append((job, None, None))       # never run: a different alarm
@@ -774,6 +790,23 @@ def _selftest():
     # reports today's bucket, audit so it quotes today's self-check.
     _t = due(datetime(2026, 8, 12, 19))
     assert "review" in _t and _t.index("review") > _t.index("pbook"), _t
+
+    # A JOB MUST NOT BE ABLE TO FAIL ON ITS OWN STALENESS. once() stamps
+    # last_<job> only when the job succeeds, so any job that asserts its own
+    # freshness from inside itself deadlocks: it fails, is not stamped, and is
+    # staler next tick. audit.py did exactly that for four days.
+    import datetime as _dtm
+    _self = {f"last_{j}": "2026-09-04" for j in _JOB_NAMES}
+    _at2 = _dtm.datetime.fromisoformat("2026-09-09T10:00")
+    assert "audit" in {j for j, _l, _b in stale_jobs(now=_at2, state=_self)}, \
+        "the fixture is not stale, so this asserts nothing"
+    assert "audit" not in {j for j, _l, _b in
+                           stale_jobs(now=_at2, state=_self, exclude={"audit"})}, \
+        "audit can still fail on its own staleness -- the deadlock is back"
+    # ...and excluding one job must not excuse the others.
+    assert "pbook" in {j for j, _l, _b in
+                       stale_jobs(now=_at2, state=_self, exclude={"audit"})}, \
+        "exclude is silencing more than it was given"
 
     # The gap ledger silences EXACT date+stream pairs and nothing wider. If it
     # ever silenced a whole stream or a whole date, a new collection hole would

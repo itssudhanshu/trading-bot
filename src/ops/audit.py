@@ -478,7 +478,14 @@ def main():
     # restating it, because a second copy of the schedule is how the two drift
     # and the monitor starts describing a scheduler nobody runs.
     import agent as _ag
-    _stale = _ag.stale_jobs()
+    # EXCLUDING ITSELF, and not as a convenience. The agent stamps last_<job>
+    # only on success, so an audit that fails on its own staleness is never
+    # stamped and is staler next tick -- it failed hourly for four days and
+    # could not recover, because the run it was failing was the only thing that
+    # could clear it. While this code is executing, the audit is running; the
+    # thing that watches whether the audit STOPPED is attention(), which runs
+    # from the bot instead.
+    _stale = _ag.stale_jobs(exclude={"audit"})
     check("every scheduled job has run recently enough",
           not _stale,
           f"{len(_ag.CADENCE)} jobs, none more than {_ag.STALE_AFTER - 1} "

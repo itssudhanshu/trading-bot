@@ -1,27 +1,51 @@
 {
   "_": [
-    "Days a forward-only stream did not collect, and CANNOT be refetched.",
+    "Days a forward-only stream did not collect.",
     "",
-    "Every stream here serves TODAY and only today -- NSE's ASM/GSM/ban lists,",
-    "BSE's announcements feed (L72a: any past window returns 0 rows) and the",
-    "news capture. A day not collected is a day that never existed for them,",
-    "so these entries never clear and would otherwise sit in /health forever.",
-    "A monitor showing the same three lines every morning is one you stop",
-    "reading, and then the real alarm is missed too.",
+    "`gaps` are holes that remain. `partial` are days recovered from a THINNER",
+    "source than the live capture -- they are not holes any more, but they are",
+    "not comparable to a normally-collected day either, and a reader who does",
+    "not know that will read a thin day as a quiet one. Both entries exist so",
+    "that absent is not quiet AND recovered is not equivalent.",
     "",
-    "ACKNOWLEDGING IS NOT FIXING. The gap is still a hole in the record; this",
-    "file is what stops it being mistaken for a QUIET day (absent is not",
-    "quiet). Only the exact date+stream pairs listed here are silenced -- any",
-    "new gap still fires, and agent.py's selftest asserts exactly that.",
+    "ACKNOWLEDGING IS NOT FIXING. Only the exact date+stream pairs under `gaps`",
+    "are silenced in /health; any new gap still fires, and agent.py's selftest",
+    "asserts the ledger cannot silence a whole date or a whole stream.",
     "",
-    "Add an entry only after confirming the day is genuinely unrecoverable."
+    "Add an entry only after confirming the day is genuinely unrecoverable --",
+    "and check that it IS, because the BSE feed was recorded as today-only for",
+    "two weeks (L72a) and turned out to serve any single past date (L93)."
   ],
   "gaps": [
     {
       "date": "2026-09-03",
-      "streams": ["surveillance", "bse", "news"],
-      "why": "the machine was asleep for the whole session: no snapshot job ran, so ASM/GSM/ban, the BSE feed and the news capture all lost the day. The bhavcopy was refetched by --catchup and the NSE weekly filings self-healed, both being resumable; these three are not.",
+      "streams": ["surveillance", "news"],
+      "why": "the machine was asleep for the whole session. NSE's reportASM/reportGSM are current-state endpoints with no date parameter and no historical archive; the news feeds (ET, Livemint, Bing) serve recent items only. Neither can be asked for a past day. The bhavcopy was refetched by --catchup, the NSE weekly filings self-healed, and the BSE filings were recovered later -- see `partial`.",
       "acknowledged": "2026-09-04"
+    },
+    {
+      "date": "2026-09-05",
+      "streams": ["news"],
+      "why": "Saturday; no wake is scheduled outside weekday evenings, so the capture did not run. The news feeds cannot be asked for a past day. BSE filings for this date were recovered -- see `partial`.",
+      "acknowledged": "2026-09-09"
+    }
+  ],
+  "partial": [
+    {
+      "date": "2026-09-03",
+      "stream": "bse",
+      "recovered": "2026-09-09",
+      "rows": 2198,
+      "mapped": 1060,
+      "why": "backfilled with bse_announcements.fetch_past_day, which reads the dated AnnSubCategoryGetData endpoint. That endpoint's mandatory strSearch=P filters it: refetching days we already hold gives 2,153 rows against the live feed's 10,760 on a weekday, so roughly a fifth. This day is THIN by collection method, not by how much was filed."
+    },
+    {
+      "date": "2026-09-05",
+      "stream": "bse",
+      "recovered": "2026-09-09",
+      "rows": 2089,
+      "mapped": 775,
+      "why": "same source and same caveat as 2026-09-03. A Saturday, so the true volume was lower anyway -- but the thinness here is still partly the filter, and the two cannot be told apart from the row count alone."
     }
   ]
 }
