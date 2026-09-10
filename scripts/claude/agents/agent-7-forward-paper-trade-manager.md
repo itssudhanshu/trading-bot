@@ -63,6 +63,12 @@ pipeline:
   and track P&L as if real: same −10% stop, same +20% target, same 10-trading-day
   hold, impact model at c=1.0, circuit-lock guard applied. Increment
   `trades_triggered`.
+  **Record `rank` and `cluster` for the trigger and for whatever replaced it.**
+  Without them the rank-depth slope cannot be computed from forward evidence —
+  and that slope is the secondary check on almost every bar, so a promotion
+  would defer forever on a clause nobody can evaluate. The rehearsal hit exactly
+  that: the promotion was sound on the primary metric and its secondary check
+  was unmeasurable.
 - **Rule would not have triggered** — confirm it did not interfere with the live
   bucket. Increment `trades_total` only.
 

@@ -116,6 +116,14 @@ All five bar sub-keys are required and the pipeline checks them. A bar written
 in prose is a bar that can be reinterpreted after the run, which is this
 project's oldest failure.
 
+**Every clause must be checkable by whoever will check it.** `secondary_check`
+is usually the rank-depth slope, and Agent 5 can measure that because it has the
+whole corpus. Agent 7 cannot: its evidence is forward triggers, and a trigger
+carries no cohort. A bar whose secondary check only Agent 5 can evaluate must
+say so — name the agent that owns each clause. A promotion deferred forever on a
+clause nobody can compute is a rule that never lands, and the rehearsal found
+exactly that.
+
 `RANK_SLOPE_IMPACT` is the one that matters most. The rank-depth slope is the
 only claim that survived both the circuit-lock guard and the non-equity
 correction — −1.12% per cohort step (std err 0.28%, t=−3.95, n=1,062). The score
