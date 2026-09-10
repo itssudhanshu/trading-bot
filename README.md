@@ -121,7 +121,7 @@ python3 src/ops/backfill.py --years 4           # historical bars
 python3 src/strategies/breakout/clusters.py       # today's selection, per cluster
 python3 src/ops/daily.py                        # evening: fill, exit, re-select
 python3 src/ops/daily.py --fill-live            # morning: fill pending at the open
-python3 src/ops/audit.py                        # 35 cross-checks against the real system
+python3 src/ops/audit.py                        # 41 cross-checks against the real system
 python3 src/ops/overview.py                     # status, gates, and the honest verdict
 python3 tests/run_selftests.py                  # every selftest, then the audit
 ```
@@ -150,7 +150,7 @@ launchctl load   ~/Library/LaunchAgents/com.sudhanshu.tradingbot.{agent,telegram
 
 `audit.py` checks both installed plists afterwards: that launchd can parse each
 one, that its filename matches its Label, and that every repo path it names still
-exists. That check FAILS today, which is why the listener is down.
+exists. A third job, `com.sudhanshu.tradingbot.etf_trend`, runs the fund book.
 
 ## docs/lessons.md
 
@@ -161,16 +161,22 @@ property of the market; *"lookback=47 worked"* is overfitting.
 
 ## Status
 
-No strategy has established an edge. `data/breakout/baseline.json` still records
-**+7.59% CAGR, 31.0% max drawdown, 195 trades**, and that figure is known to be
-wrong: the point-in-time non-equity denylist could only recognise a fund that
-was still trading, so delisted ETFs sat in the historical universe and the
-bucket bought 22 of them. Measured without them the same rules give **+2.42%
-CAGR, 32.5% max drawdown, 193 trades** (L61, batch `20260820-nonequity3`), and
-`audit.py` fails on the drift on purpose -- re-recording is a deliberate step
-(`--rebaseline`). It is a BACKTEST either way, and not evidence the approach
-works forward. Forward paper trades closed: 0. Run `overview.py` for the
-current figures rather than trusting this paragraph.
+No strategy has established an edge. `data/breakout/baseline.json` was
+re-recorded on 2026-08-23 (commit `af100ed2`) and reads **+2.18% CAGR, 32.5% max
+drawdown, 194 trades**, down from +7.59% / 31.0% / 195: the point-in-time
+non-equity denylist could only recognise a fund that was still trading, so
+delisted ETFs sat in the historical universe and the bucket bought 22 of them
+(L61, batch `20260820-nonequity3`). `audit.py` fails on baseline drift on
+purpose -- re-recording is a deliberate step (`--rebaseline`).
+
+It is a BACKTEST either way, and not evidence the approach works forward.
+**Forward paper trades closed: 9** across four books, which resolves nothing --
+the live edge needs roughly 859. What the first month DID establish is that the
+machinery is right: the forward exit mix (44% stop / 22% target / 33% time)
+matches the backtest's (42/20/38), and a variance decomposition found that
+**66-74% of return is which of the three exits fired**, not which stock was
+picked (L95, batch `20260910-h19-attrib`). Run `overview.py` for the current
+figures rather than trusting this paragraph.
 
 The harness has found several real defects in its own results — an unreachable
 target rule, ETF contamination, a float-precision R:R rejection, R-multiple

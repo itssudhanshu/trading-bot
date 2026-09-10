@@ -24,10 +24,15 @@ wrong build:
   "book", never "holdings" -- all three existed at once and none of them
   helped (rules.md R1).
 - **rank** = a position in the score-sorted list, within a cluster.
-- **TWO books run forward, since 2026-08-21**: the **bucket** (`main`, ranks
+- **FOUR books run forward.** Since 2026-08-21: the **bucket** (`main`, ranks
   inside each band, fills the 3/2 quota) and the **pool** (`pooled`, ranks every
   eligible name together and takes the best five, so the split lands where merit
-  puts it). Same signals, same stops, Rs 3,00,000 each, one variable different.
+  puts it). Since 2026-08-24 the **fund bucket** (`etf_trend`, its own strategy
+  directory and scheduler, trading liquid NSE funds on an absolute trend gate --
+  a forward evidence generator whose backtest FAILED its promotion bar, L70), and
+  since 2026-09-01 the **capped bucket** (`capped`, `main` plus a one-name-per-
+  sector cap, L89/L90). Same signals, same stops, Rs 3,00,000 each, one variable
+  different.
   Backtests cannot separate them -- +0.04% per trade at t = +0.03 (L65) -- which
   is precisely why they run forward instead. `positions.BUCKETS` is the registry
   and `positions.LABEL` the words a person reads.
@@ -484,6 +489,36 @@ asserts no inactive strategy is reachable.
 cannot be un-mixed, and the recorded baseline is what the audit compares
 against.
 
+## The order book is append-only, and it bites
+
+`data/positions.db` is the record of every forward trade across all four books.
+Three things about it are not discoverable from the code and have each cost a
+session:
+
+- **Rows are voided, never deleted.** `pos` carries `pos_log` triggers that
+  refuse a DELETE and snapshot every column on every edit. Fixture rows written
+  into the live book (it has happened) must be voided, not removed.
+- **Any write makes `data/positions_record.sql` stale, and the audit fails on
+  it.** That is deliberate -- the committed record is what proves the database
+  was not edited by hand. Regenerate it after any write:
+
+      python3 -c "import sys;sys.path.insert(0,'src');import paths,positions;print(positions.export_record())"
+
+- **It cannot use WAL.** The repo lives under iCloud-synced `~/Documents`, which
+  cannot host the `-shm` file. WAL was tried, took the live book down for three
+  sessions with `disk I/O error`, and was reverted (L91). `busy_timeout=30000`
+  plus the DDL-skip is the half that measured well and stays.
+
+**A module whose selftest touches the book must redirect `positions.DB`, not
+just STATE and LEDGER.** `paper.py --selftest` redirected two of the three and
+wrote two fixture positions into the live order book.
+
+**Entry features are captured at the SIGNAL close, on both fill paths**
+(`positions.entry_snapshot`). The morning `fill_live()` path has no corpus and
+captured nothing for a month, so 22 of 26 filled positions carried no feature
+vector and never reached the learning ledger (L95). `reconcile()` backfills it;
+an audit check counts the rows.
+
 ## Layout, and the one command that checks it
 
 Source is under `src/` (`core`, `bucket`, `research`, `ops`, `strategies`), shell
@@ -509,6 +544,22 @@ exists on disk, and it caught exactly that the day the files moved.
 
     python3 tests/run_selftests.py
 
+**There is no build step, no linter and no dependencies.** Stdlib Python only --
+every import in `src/` and `tests/` resolves to the standard library or to a
+module in this repo, and there is no `requirements.txt`, `pyproject.toml` or
+Makefile to look for. The selftest sweep IS the test suite, the lint and the
+integration check.
+
+**~3m45s for 68 modules. While iterating, run the ONE module you changed** --
+every module is directly executable and carries its own `--selftest`:
+
+    python3 src/bucket/positions.py --selftest        # ~2s
+    python3 src/ops/audit.py                          # 41 cross-checks, ~90s
+
+There is no `--only` flag and none is wanted: the sweep's value is that its
+module list is DISCOVERED, so a filter would be a second, hand-maintained list
+of what got checked. Run the module, then the sweep before you commit.
+
 Runs every module's `--selftest` and then the audit. The module list is
 DISCOVERED from `paths.SRC`, not maintained by hand: the old sweep was a shell
 loop retyped from memory, and a module missing from it was a module nobody
@@ -518,6 +569,11 @@ was a fifth until its exclusion ("probes live quote providers") turned out to be
 untrue -- its selftest registers its own providers and reads a cached instrument
 master -- and the exclusion had been hiding a selftest that failed on any day the
 Upstox token was expired, which is most of them.
+
+`README.md` carries the data-flow pipeline -- snapshot/backfill -> universe ->
+features -> clusters -> entry -> selection -> engine -> simulate/positions ->
+agent/tg/audit -- and is the fastest way to see how a day's bars become a
+position. This file assumes it.
 
 See `docs/glossary.md` for what every term here means in plain English, and
 `docs/performance-change.md` for what the circuit-lock guard did to the numbers.
