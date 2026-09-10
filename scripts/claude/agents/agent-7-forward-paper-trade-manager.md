@@ -25,10 +25,23 @@ YES. You are the infrastructure for the one thing that can.
 {"rule_id": "R-NNN", "rule_text": "...", "hypothesis": "...",
  "adoption_bar": {"primary_metric": "...", "minimum_effect": "...",
                   "minimum_sample": 30, "secondary_check": "...",
-                  "max_duration_days": 60},
+                  "impact_sensitivity": "..."},
+ "max_duration_days": 60, "expires": "YYYY-MM-DD",
+ "arm": "skip_at_signal | void_after_fill",
  "started": "YYYY-MM-DD", "trades_triggered": 0, "trades_total": 0,
  "paper_pnl": 0, "paper_per_trade": null, "n": 0,
  "status": "active"}
+
+**`adoption_bar` carries exactly the five keys Agent 4 registered and nothing
+else.** The gate compares it against the registry, so an added key -- even a
+harmless one like a duration -- is rejected as an edit to the bar. Expiry is
+yours to set and is a SIBLING field: `max_duration_days` and `expires` govern
+how long you wait, never what counts as success. Tightening nothing, loosening
+nothing.
+
+`arm` records whether the rule is a genuine skip at the signal close (costless)
+or a void after the fill (two-sided impact). A void-arm rule's backtest benefit
+is an upper bound the live bucket cannot realise.
 ```
 
 ## 1. Intake
