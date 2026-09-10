@@ -45,6 +45,16 @@
    "retirement_reason": null,
    "hits": 0,
    "last_hit_batch": null
+  },
+  {
+   "id": "SC-005",
+   "description": "Every filled trade records whether its fill open sat at or near the upper circuit band (within 0.05 points of the exchange limit for that name). Checkable on one row: compare the fill open against the signal close and the band. This accumulates the data a band-relative rule shape would need, without proposing one.",
+   "source_batch": "20260911",
+   "added": "2026-09-11",
+   "status": "active",
+   "retirement_reason": null,
+   "hits": 0,
+   "last_hit_batch": null
   }
  ],
  "rule_registry": [

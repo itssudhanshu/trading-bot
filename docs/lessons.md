@@ -4144,3 +4144,64 @@ body of the `if` is `pass`. A FAIL or INCONCLUSIVE from Agent 5 stops nothing.
 all three, patched by none of them, deliberately: a gate rewritten mid-cycle by
 the agent it constrains is not a gate. This is L58's shape in the review process
 rather than in the fills — *a check that nothing ever called.*
+
+## L97 — A bar is a set, and the set is fixed at pre-registration
+
+Two judgements from the promotion rehearsal (batch `20260911`, stages 4-5-7 on a
+synthetic rule in an isolated state directory). Both were made by Agent 7, both
+are the kind a person gets wrong under time pressure, and both are written down
+here because the next agent will face them without the argument in front of it.
+
+**A criterion added after seeing the data is neither a tightening nor a
+loosening. It is a new hypothesis wearing the old one's clothes.**
+
+R-002 promoted on n=35: benefit +8.22 points per trigger, std err 3.03, t=+2.71,
+against a pre-registered bar of "affected mean at least 2.00 points above
+unaffected". The 95% interval was [+2.28, +14.16] -- the whole interval above the
+bar, with 0.28 points of margin at the lower bound.
+
+The per-cluster split did not look like that. Micro carried it at +12.62 +/- 4.87
+(t=+2.59, n=18); small read +3.55 +/- 3.29, which clears the bar on the point
+estimate and reads t=+0.47 against it. The tempting move is to require both
+clusters to clear -- CLAUDE.md does say to report per cluster and never blended,
+and "criteria may be tightened, never loosened" appears to license it.
+
+It does not. That rule governs **pre-registered** criteria. The bar Agent 4
+registered names "per-trade return on affected trades": one set, no per-cluster
+clause. Adding one after seeing which cluster carried the result is choosing a
+criterion because of the answer it gives, which is this project's oldest failure
+in its most flattering costume -- it feels like rigour. Agent 7 promoted on the
+registered bar and **recorded the asymmetry on the queue entry** rather than
+absorbing it into the criterion.
+
+The rule that follows: **a bar is a set, and the set is fixed at
+pre-registration. Observations that do not fit the set are recorded, not
+absorbed into it.** If per-cluster agreement matters, it belongs in the NEXT
+rule's bar, written before that rule is run.
+
+**A clause nobody can compute is a promotion that never lands.**
+
+The same bar's `secondary_check` required the rank-depth slope not to degrade by
+more than 0.3 points per cohort step. Agent 7 could not evaluate it at all: its
+evidence is forward triggers, and a trigger carried no rank and no cohort. Agent
+5 can measure that slope because it holds the whole corpus; Agent 7 structurally
+cannot.
+
+It said so, rather than approximating. It offered a proxy -- the replacement
+names returned +2.56% per trade (n=35) against the recorded +1.07% (n=193), which
+is the opposite of a reach-deeper penalty -- and labelled it a proxy, carrying
+the real check forward as an open condition.
+
+That is the correct handling, and it exposed a gap in the architecture rather
+than in the rule: **every** bar's secondary check is the slope, so every
+promotion would have deferred forever on a clause its evaluator could not reach.
+The fix is at both ends -- Agent 4 now names which agent owns each clause of the
+bar, and Agent 7 records `rank` and `cluster` for the trigger and for whatever
+replaced it, which is what makes the slope computable from forward evidence.
+
+**Why this is in lessons.md and not only in a prompt.** A prompt can be argued
+with; that is what produced a weight table where two of five variants "beat" the
+live bucket at t < 0.5. Neither of these is mechanically enforceable -- no gate
+can tell a legitimate pre-registered per-cluster clause from one invented after
+the fact. They are judgement, and judgement that is not written down is
+re-litigated every cycle with a different answer.
