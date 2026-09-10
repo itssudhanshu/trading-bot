@@ -1277,6 +1277,20 @@ def _selftest():
         assert STAGES["performance_tracker"]["after"] == () and \
             STAGES["forward_manager"]["after"] == (), \
             "6 and 7 must run in cycles where 5 does not (weekly, daily)"
+        # Agent 3's prompt STATES the significance threshold; _check_miner
+        # ENFORCES it. Nothing kept the two in step, so a prompt could come to
+        # say n >= 3 while the gate still refused anything under 5 -- an agent
+        # reasoning to a bar the harness does not hold, which is the same shape
+        # as a status message that is not evidence.
+        _a3 = (paths.ROOT / "scripts" / "claude" / "agents"
+               / "agent-3-pattern-miner.md").read_text()
+        assert f"n >= {MIN_PATTERN_N}" in _a3, (
+            f"agent-3's prompt no longer states n >= {MIN_PATTERN_N}, which is "
+            "what _check_miner enforces")
+        assert f"{MIN_CONSECUTIVE}+ consecutive" in _a3, (
+            f"agent-3's prompt no longer states {MIN_CONSECUTIVE}+ consecutive "
+            "batches, which is what _check_miner enforces")
+
         assert set(TRANSITIONS) == set(RULE_STATUS), \
             "a status with no transition row can never be left"
         assert TRANSITIONS["applied"] == ("rolled_back",), \

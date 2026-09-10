@@ -4205,3 +4205,37 @@ live bucket at t < 0.5. Neither of these is mechanically enforceable -- no gate
 can tell a legitimate pre-registered per-cluster clause from one invented after
 the fact. They are judgement, and judgement that is not written down is
 re-litigated every cycle with a different answer.
+
+**The significance threshold is itself a pre-registered bar.** Agent 3's rule --
+n >= 5 across the lookback, AND either a deviation above 2 standard errors or
+the same mechanism in 3+ consecutive batches -- is not a parameter. It was set
+because at n ~ 195 with per-trade sd near 16%, nothing under about 3 points per
+trade is resolvable, and a slice below n = 5 cannot speak at all. Changing it
+needs a new justification carrying the same weight as the original, written
+before the change, not a run that came back empty too many times.
+
+This matters because of where the dial-change gate lives. Agent 4 cannot propose
+a new value for an existing parameter -- the gate refuses it. But that gate is
+downstream of Agent 3, and Agent 3's own threshold is the one number in the
+system with no gate above it. The failure will not look like loosening the
+adoption bar. It will look like this: four cycles of `no_actionable_pattern`, a
+stable error profile, and the thought *"the pipeline is working but it is not
+FINDING anything -- perhaps the threshold is too strict."* Lowering n >= 5 to
+n >= 3 does not feel like relaxing a criterion. It feels like tightening the
+definition of a pattern. It is the same move in the other direction, and it will
+produce a Finding in the next cycle that passes every gate below it, because
+every gate below it is checking a sample that is now large enough.
+
+Two things stand against that, and neither is a gate. The threshold is stated in
+`scripts/claude/agents/agent-3-pattern-miner.md` AND enforced by `MIN_PATTERN_N`
+and `MIN_CONSECUTIVE` in `pipeline.py`, so changing it takes a deliberate edit to
+two tracked files and appears in a diff a person reads. And `pipeline._selftest`
+now asserts the two agree, so the prompt cannot quietly come to describe a bar
+the harness does not hold. The guard is visibility, not enforcement -- no check
+can ask whether a threshold change is motivated by impatience.
+
+**A run of null results is not evidence that the threshold is wrong.** It is the
+expected output of a bucket closing 7 to 11 trades a cycle against a bar built for
+n ~ 195. `overview.py` already encodes the general form of this: no number of
+positive simulations can produce a YES. The same holds in reverse -- no number of
+empty cycles can license a lower bar.
