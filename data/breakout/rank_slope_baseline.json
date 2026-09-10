@@ -1,0 +1,13 @@
+{
+ "slope_pct_per_step": -1.1306,
+ "std_err": 0.2798,
+ "t": -4.041,
+ "n": 1078,
+ "batch": "20260910-rankslope",
+ "top_minus_deepest": {
+  "value": 5.7951,
+  "std_err": 1.5117,
+  "t": 3.834
+ },
+ "measured_by": "src/research/rank_test.py"
+}

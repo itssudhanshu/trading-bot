@@ -4078,3 +4078,69 @@ trades are the only thing that shrinks the error bars — CLAUDE.md's improvemen
 mechanism that turns them into evidence had been broken since before the first
 fill. Nothing measured this because every check asked whether the pipeline RAN,
 and none asked whether it produced rows.
+
+## L96 — The first review cycle on forward trades: no rule, and the batch's entire gain was smaller than the one trade it cannot claim
+
+Cycle 2 of the eight-agent review (batch `20260910`, the first to reach
+`batch_history`; cycle 1 aborted inside Agent 1). **11 closed rows across main +
+pooled + capped → 10 independent price paths → 7 in main, which is the record.**
+`etf_trend` excluded and counted: 0 closed. NATCAPSUQ collapsed 2 rows to 1 path
+(same fill 215.24, same exit 193.716, same reason — only per-bucket sizing
+differs). The two WELENT rows were NOT merged and are not two independent draws
+either: different signal day, different fill, different exit rule, windows
+overlapping 2026-08-27..09-04, so **effective n is 9, not 10.**
+
+**Result: `no_actionable_pattern`.** Agents 4-7 were not invoked. Nothing in the
+batch reaches n ≥ 5 with |t| > 2 — the strongest observation anywhere is a
+per-cluster split at |t| = 1.58 on n=6 — and the recurrence door (same mechanism
+in 3+ consecutive batches) was arithmetically unreachable with an empty history.
+Two Shapes carried, four Noise, and **three patterns archived as dial-only**:
+zero target exits in 7 paths (`TARGET_PCT`), three stops filling at exactly
+nominal −10.0% against a −12.10% stop-class mean on n=195 (`STOP_PCT`, favourable
+luck that will regress), and the seductive one — YUKEN held 12 bars and returned
++12.31% where its own bar 10 closed at +7.47%, which is `HOLD_DAYS`, measured to
+exhaustion at t = −0.02 on n=193 vs 184.
+
+**The headline is an accounting one and it points the wrong way.** main realised
+**+Rs 5,048.17 (n=7)**. One path is Process Deviation — YUKEN's time exit fired
+on the 09-04 catch-up rather than its own bar, because the L91 outage stopped
+`step()` for 2026-09-02..04 — so **unearned P&L is +Rs 5,479.80 and adjusted P&L
+is −Rs 431.63.** The batch's whole recorded gain is smaller than the single trade
+the rule makes unattributable, and the deviation was FAVOURABLE. *A process
+failure that pays reads as skill unless the window is checked independently of
+P&L.* Per-trade, main is +2.01% ± 4.50% (n=7), indistinguishable from the live
+reference +1.07% ± 1.12% (n=193) and from zero.
+
+**Two further contaminations of the first forward record, neither of them a
+strategy question.** GMMPFAUDLR and SAHYADRI were bought by the retired
+rank-cohort experiment (pbook `cohort2`/`cohort3`) two and three steps down the
+−1.12%/step slope, and sat inside main's total worth **−Rs 3,488.83** — marked
+only by `pos.origin`, a column `docs/STATE.md` says plainly nothing reads. They
+were classified Thesis Error on the selection logic, one at +2.92% and one at
+−10.00%, because *classifying only the losers would have hidden half the
+population.* Strip both and the unearned YUKEN, and what the live rule actually
+produced this batch is **n=4 at +2.21% (se 8.0, t = +0.28)** — the cleanest read
+available and empty.
+
+**Three standing checks earned, all measurement hygiene and none of them a rule.**
+None maps onto the four improvement types, which is the point: the four-way
+classification has no place for a defect in how a trade is *recorded*.
+SC-001 makes something read `origin`. SC-002 pins `fill_source` to the set
+`positions.py` actually writes — HAPPYFORGE carries `corpus:open (backfilled)`
+from an out-of-band UPDATE that no code under `src/` produces, and an equality
+test against the canonical three silently fails to match it. **Three more
+annotated rows are still open (ids 14, 15, 23), so this recurs next batch by
+arithmetic.** SC-003 requires a time exit at exactly `HOLD_DAYS` and, where it is
+not, the signed displacement in points and rupees — a failure mode that **cannot
+exist in backtest**, since a backtest cannot miss a scheduler run, so no amount
+of history can resolve it.
+
+**And the gate that could not be skipped was not enforced.** Three agents
+independently read `pipeline.gate()` lines 730-733: for `performance_tracker` and
+`forward_manager` it loads the validator's verdict into `v`, tests it, and the
+body of the `if` is `pass`. A FAIL or INCONCLUSIVE from Agent 5 stops nothing.
+`_check_steward` has the sibling gap — it takes `records_received` on trust where
+`_check_orchestrator` verifies its count against `data/positions.db`. Reported by
+all three, patched by none of them, deliberately: a gate rewritten mid-cycle by
+the agent it constrains is not a gate. This is L58's shape in the review process
+rather than in the fills — *a check that nothing ever called.*

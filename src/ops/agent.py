@@ -890,6 +890,31 @@ if __name__ == "__main__":
                  ", ".join(jobs) if jobs else "NONE INSTALLED"))
         for k in ("last_snapshot", "last_runner", "last_research"):
             print(f"  {k:<16}: {st.get(k, 'never')}")
+        # One line about the review cycle, because this is where the operator
+        # already looks. Defensive on purpose: the scheduler's status must not
+        # go dark because the review pipeline has a problem, and --status here
+        # keeps meaning "what is due", not "what is the pipeline doing".
+        try:
+            import pipeline
+            cur = pipeline.read_current()
+            if not cur:
+                print("  review cycle    : never run "
+                      f"(start: python3 {paths.script('ops/pipeline.py')} "
+                      "--open-cycle --batch YYYYMMDD)")
+            else:
+                who = cur.get("current_agent") or "idle"
+                hb = cur.get("last_heartbeat", "")
+                mins = ((datetime.now() - datetime.fromisoformat(hb))
+                        .total_seconds() / 60) if hb else None
+                warn = (" !! STALE" if mins is not None and mins > pipeline.STALE_MIN
+                        and cur.get("current_agent") else "")
+                print(f"  review cycle    : batch {cur.get('batch_id')} — {who}"
+                      + (f", {mins:.0f} min ago" if mins is not None else "")
+                      + warn)
+                print(f"                    (details: python3 "
+                      f"{paths.script('ops/pipeline.py')} --current)")
+        except Exception as e:
+            print(f"  review cycle    : unavailable ({type(e).__name__})")
         print()
         digest()
         print(DIGEST.read_text())

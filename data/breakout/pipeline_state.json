@@ -1,0 +1,1674 @@
+{
+ "version": 1,
+ "strategy": "breakout",
+ "cycle": 2,
+ "open": false,
+ "batch_id": "20260910",
+ "revisions": 0,
+ "standing_checks": [
+  {
+   "id": "SC-001",
+   "description": "Every closed trade must have pos.origin read and reported. A trade whose origin is not the live selection path (daily.py queueing into main, pooled or capped) is named in the handoff and its P and L stated separately from the bucket total, never folded into it. Batch 20260910: GMMPFAUDLR (pbook cohort2) and SAHYADRI (cohort3) sat inside main's Rs 5,048.17 worth minus Rs 3,488.83 between them, n=2 of 7 main paths, marked only by a column no report reads. Checkable per trade because origin is a stored column with a value on every row.",
+   "source_batch": "20260910",
+   "added": "2026-09-10",
+   "status": "active",
+   "retirement_reason": null,
+   "hits": 0,
+   "last_hit_batch": null
+  },
+  {
+   "id": "SC-002",
+   "description": "Every closed trade's fill_source must be exactly one of confirmed, corpus:open, reconciled, live:<feed>, or paper:etf_trend for the fund strategy. Any other value is reported as an anomaly and the entry price verified against that day's corpus open before the trade is categorised. Batch 20260910: HAPPYFORGE main id 3 reads corpus:open (backfilled) from an out-of-band UPDATE, n=1 of 11 records. Three further rows carry annotated variants and are still OPEN (ids 14 and 15 pooled, id 23 capped), so this recurs in a future batch by arithmetic. Checkable per trade by string equality against the set positions.py actually writes.",
+   "source_batch": "20260910",
+   "added": "2026-09-10",
+   "status": "active",
+   "retirement_reason": null,
+   "hits": 0,
+   "last_hit_batch": null
+  },
+  {
+   "id": "SC-003",
+   "description": "Every closed trade with exit_reason=time must have bars_held equal to selection.HOLD_DAYS exactly. Where it does not, compute the signed displacement against the close of the bar the rule named, in percentage points and in rupees, and report the sign explicitly. A favourable displacement is categorised as Process Deviation exactly as an unfavourable one is. Batch 20260910: YUKEN main id 1 held 12 bars and exited at plus 12.31 percent against plus 7.47 percent on its own bar 10, Rs 2,221 of the Rs 5,479.80 outage-attributable and FAVOURABLE, n=1 of 5 time exits. Checkable per trade from bars_held and exit_reason on the row, with no need to know which sessions the scheduler missed.",
+   "source_batch": "20260910",
+   "added": "2026-09-10",
+   "status": "active",
+   "retirement_reason": null,
+   "hits": 0,
+   "last_hit_batch": null
+  }
+ ],
+ "rule_registry": [
+  {
+   "rule_id": "R-P01",
+   "source": "pre-pipeline",
+   "pattern_addressed": "market impact tail: 3.1% of trades pay >2% and supply 25% of all impact",
+   "rule_text": "skip a name whose order exceeds x% of ADV",
+   "hypothesis": "capping participation removes the worst impact trades",
+   "adoption_bar": "monotone improvement across cap levels and a lower maximum impact",
+   "improvement_type": "new_rule_shape",
+   "failure_mode": "a selection-time estimate does not bind execution-time reality",
+   "status": "rejected",
+   "cycle": 0,
+   "applied_date": null,
+   "rollback_date": null,
+   "evidence": "tested at 10/5/2/1%: non-monotonic (2% best, 1% and 5% worse) and the 2% cap produced a HIGHER maximum impact than no cap",
+   "forward_evidence": {
+    "trades": 0,
+    "effect": null
+   }
+  },
+  {
+   "rule_id": "R-P02",
+   "source": "pre-pipeline",
+   "pattern_addressed": "fill premium: per-trade return falls as the fill open sits above the signal close",
+   "rule_text": "refuse entries whose fill open exceeds +2.29% over the signal close",
+   "hypothesis": "the top fill-premium tercile returns -3.71%/trade, so refusing it lifts the bucket",
+   "adoption_bar": "variant minus control clears its own standard error",
+   "improvement_type": "new_rule_shape",
+   "failure_mode": "the spread is real in the harvest but does not survive at bucket n",
+   "status": "rejected",
+   "cycle": 0,
+   "applied_date": null,
+   "rollback_date": null,
+   "evidence": "batch 20260826-premskip: +4.03% vs +2.18% CAGR, but variant minus control +0.78%/trade +/- 1.72, t=+0.45 -- inside the noise (n=149 vs 194)",
+   "forward_evidence": {
+    "trades": 0,
+    "effect": null
+   }
+  }
+ ],
+ "batch_history": [
+  {
+   "batch_id": "20260910",
+   "date": "2026-09-10",
+   "trades_processed": 11,
+   "independent_paths": 10,
+   "effective_independent_paths": 9,
+   "effective_independent_paths_note": "The WELENT pair is one stock over holding windows overlapping 2026-08-27..09-04. Two real entries and two real exits, but two CORRELATED observations, never two independent draws.",
+   "n": 7,
+   "n_note": "n=7 is main, and main is the record. 10 independent paths across main+pooled+capped. pooled's 4 are shown for comparison and never added: main and pooled held the same stocks twice in this batch alone (NATCAPSUQ, WELENT), so pooling them would put one price path in twice. capped closed 0 and is reported as 0.",
+   "error_profile": {
+    "thesis": 2,
+    "execution": 1,
+    "variance": 3,
+    "process_deviation": 1,
+    "n": 7
+   },
+   "error_profile_scope": "MAIN ONLY, n=7. thesis = GMMPFAUDLR + SAHYADRI (both inherited from the retired rank-cohort experiment), execution = ARCHIDPLY (fill premium +4.47% against the +2.29% bound), variance = HAPPYFORGE + WELENT/main + NATCAPSUQ, process_deviation = YUKEN.",
+   "error_profile_all_paths": {
+    "thesis": 2,
+    "execution": 1,
+    "variance": 5,
+    "process_deviation": 2,
+    "n": 10
+   },
+   "unearned_pnl": 5479.8,
+   "unearned_pnl_note": "MAIN ONLY, and deliberately so. Rupees, the sum of Process Deviation P&L in both signs, of which main has exactly one path: YUKEN, +Rs 5,479.80, FAVOURABLE. WELENT/pooled's +Rs 8,830.69 is unearned within pooled and is neither added here nor subtracted from main -- subtracting a pooled rupee from a main total is the same double-count as adding one, with the sign flipped. n=7.",
+   "unearned_pnl_pooled_shown_not_counted": {
+    "unearned_pnl": 8830.69,
+    "n": 4,
+    "note": "pooled. Gate-forced: WELENT/pooled's execution was demonstrably correct (target 794.40 unreachable on both missed bars, filled at max(target, open) on the first bar that could produce it). The category is the date window, not the trade."
+   },
+   "adjusted_pnl": -431.63,
+   "adjusted_pnl_note": "Rupees. main total Rs 5,048.17 minus unearned Rs 5,479.80, n=7. The batch's entire recorded gain is smaller than the one trade the outage rule makes unattributable, so main's adjusted result is a small LOSS. No error bar around this survives contact with the ~16% per-trade sd at n=7.",
+   "per_cluster_main_adjusted": {
+    "micro": {
+     "n": 3,
+     "winners": 0,
+     "losers": 3,
+     "pnl": -13930.93,
+     "per_trade_rupees": -4643.64,
+     "note": "main, unearned YUKEN removed. Every micro path the strategy can claim this batch is a loser. Inside the noise at n=3, recorded for continuity."
+    },
+    "small": {
+     "n": 3,
+     "winners": 3,
+     "losers": 0,
+     "pnl": 13499.3,
+     "per_trade_rupees": 4499.77,
+     "note": "unchanged -- no small path in main is Process Deviation. Inside the noise at n=3."
+    }
+   },
+   "per_trade_pct_main": {
+    "n": 7,
+    "mean": 2.01,
+    "std_err": 4.5,
+    "note": "gross of charges. Indistinguishable from the live reference +1.07% +/- 1.12% (n=193) and from zero. Unearned YUKEN removed: +0.29% +/- 4.92% (n=6). Strip the two rank-cohort trades as well and the live rule's own record is +2.21% (se 8.0, t=+0.28, n=4)."
+   },
+   "patterns_found": [
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "P7",
+    "P8",
+    "P9"
+   ],
+   "pattern_tags": {
+    "P1": "Shape",
+    "P2": "Shape",
+    "P3": "Noise",
+    "P4": "Noise",
+    "P5": "Noise",
+    "P6": "Noise",
+    "P7": "dial_only_archived",
+    "P8": "dial_only_archived",
+    "P9": "dial_only_archived"
+   },
+   "pattern_detail": {
+    "P1": {
+     "pattern": "micro loses while small wins, in main",
+     "tag": "Shape",
+     "n": 6,
+     "t": -1.58,
+     "consecutive_batches": 1,
+     "why_not_a_finding": "|t|=1.58 below the |t|>2 door. Inverts the historical per-cluster ordering (micro +3.375% n=137 vs small +2.359% n=94 in findings.jsonl) so it is worth counting again, but the whole gap is one cluster drawing three stops in a 3.5-week window."
+    },
+    "P2": {
+     "pattern": "a scheduler outage moves the exit to a bar the rule did not name",
+     "tag": "Shape",
+     "n": 2,
+     "t": 1.08,
+     "consecutive_batches": 1,
+     "why_not_a_finding": "n=2 against a floor of 5 and consecutive_batches=1 against a floor of 3. Both gate doors shut. Now covered by SC-003, which is where it belongs: a backtest cannot miss a scheduler run, so no backtest can ever resolve it."
+    },
+    "P3": {
+     "pattern": "positions inherited from the retired rank-cohort experiment sit inside main's total",
+     "tag": "Noise",
+     "n": 2,
+     "t": -0.31,
+     "why_noise": "direction inconsistent (+2.92% and -10.00%) and the population is CLOSED -- exactly 2 rank-cohort rows exist in data/positions.db and both are now closed, verified. Discarded as a PATTERN, kept as a fact: worth -Rs 3,488.83 to main this batch. Now covered by SC-001."
+    },
+    "P4": {
+     "pattern": "fill-premium outlier at entry (ARCHIDPLY +4.47%)",
+     "tag": "Noise",
+     "n": 1,
+     "why_noise": "n=1, and the batch median premium is +0.325% against the published +1.20%. Has no route to Agent 4 regardless: R-P02 already carries status rejected and pipeline.py refuses the rule text."
+    },
+    "P5": {
+     "pattern": "fill_source outside the vocabulary any module writes",
+     "tag": "Noise",
+     "n": 1,
+     "why_noise": "n=1 in this batch and zero P&L effect -- a provenance-label defect, not a trade defect. Now covered by SC-002. The orchestrator's own read of data/positions.db found three MORE annotated rows still open (ids 14, 15, 23), so the next batch meets it again."
+    },
+    "P6": {
+     "pattern": "main's win rate this batch",
+     "tag": "Noise",
+     "n": 7,
+     "t": 0.39,
+     "why_noise": "4 of 7 = 57.1% against 49.8% (115 of 231) in the hold-10d row. Remove the unearned YUKEN and it is 3 of 6 = 50.0% at t=+0.01 -- the baseline to a rounding error, and the apparent outperformance was one displaced exit."
+    },
+    "P7": {
+     "pattern": "main drew zero target exits in 7 paths",
+     "tag": "dial_only_archived",
+     "n": 7,
+     "dial_named": "TARGET_PCT or HOLD_DAYS",
+     "log": "Pattern P7 archived: only fix is a dial change"
+    },
+    "P8": {
+     "pattern": "all three stops filled at exactly nominal -10.0%",
+     "tag": "dial_only_archived",
+     "n": 3,
+     "dial_named": "selection.STOP_PCT",
+     "log": "Pattern P8 archived: only fix is a dial change"
+    },
+    "P9": {
+     "pattern": "the outage's natural experiment says holding longer paid",
+     "tag": "dial_only_archived",
+     "n": 1,
+     "dial_named": "selection.HOLD_DAYS",
+     "log": "Pattern P9 archived: only fix is a dial change",
+     "note": "The most seductive misread in the batch, and the exact dial measured to exhaustion: 10d vs 15d reads t=-0.02 on the corrected corpus (n=193 vs 184). Not to be confused with P2 -- same trade, different question."
+    }
+   },
+   "rule_proposed": null,
+   "rule_status": "no_actionable_pattern",
+   "rule_status_note": "Agent 3 returned no_actionable_pattern with actionable_findings empty, so Agents 4, 5, 6 and 7 were NOT invoked and the cycle ends at Agent 3. That is a valid outcome, not a failure. Nothing was routed to Agent 4 and nothing skipped Agent 5 -- there was no rule for Agent 5 to see. Registry unchanged at 2 entries (R-P01, R-P02, both rejected before the pipeline existed).",
+   "gate_reachability_note": "The recurrence door (same mechanism in 3+ consecutive batches) is arithmetically unreachable in cycle 2 because batch_history was empty. Only the |t|>2 at n>=5 door was open and the strongest observation anywhere in the batch is P1 at |t|=1.58 on n=6.",
+   "standing_checks_active": [
+    "SC-001",
+    "SC-002",
+    "SC-003"
+   ],
+   "standing_checks_added": [
+    "SC-001",
+    "SC-002",
+    "SC-003"
+   ],
+   "standing_checks_retired": [],
+   "standing_checks_note": "Agent 2 checked all 10 paths against an EMPTY list, which was correct at the time -- cycle 1 aborted before Agent 2 ran, so no check had been earned. These three are earned now. Each is stateable against a single future trade from a stored column: origin (SC-001), fill_source (SC-002), bars_held with exit_reason (SC-003). Two candidates were REFUSED for being unstateable that way and are carried in next_step instead: aggregate reproducibility (Agent 3 could not reproduce Agent 2's +0.53% fill-premium median, immaterial to the conclusion, but it is a handoff-level property and not a per-trade one) and the rank-depth slope living only in prose. A third was refused as check inflation: the WELENT overlapping-window correlation was caught correctly by all three agents and did not get through.",
+   "delta_vs_previous_batch": "NO PREVIOUS BATCH. batch_history was empty and this is the first record it holds, so every count is an opening value and consecutive_batches is 1 for everything by construction rather than by evidence. Opening values, main only, n=7: thesis 2, execution 1, variance 3, process_deviation 1, premium outliers 1. Across all 10 paths: thesis 2, execution 1, variance 5, process_deviation 2. Applied rule: none has ever been applied and no follow-up is owed. Rank-depth slope not measurable this batch (all live picks are top-of-list, no cohort spread, n=7) and untouched by anything in it -- the baseline stands at -1.12% per cohort step (std err 0.28%, t=-3.95, n=1,062). Variance is a PLURALITY in main (3 of 7), not the majority the process predicts, and the shortfall is one outage plus two positions from a closed experiment.",
+   "next_step": "1. Fix the two pipeline.py defects DELIBERATELY, outside a cycle, now that three agents have independently confirmed each: (a) gate() lines 730-733, where the performance_tracker and forward_manager branch reads Agent 5's verdict into v, tests it, and the body of the if is `pass`, so a FAIL or INCONCLUSIVE does not in fact stop Agents 6 or 7 -- the gate I was told I could not skip is not enforced by the code that claims to enforce it. (b) _check_steward takes records_received on trust, never opening data/positions.db, where _check_orchestrator verifies scope.closed_positions against it -- a steward that silently dropped a closed row would pass. Both are gaps in pipeline.py, named as required rather than worked around. Neither was patched mid-cycle. 2. Restart the Telegram listener after that edit (pkill -f 'tg.py --listen') and re-run python3 tests/run_selftests.py, because tg.py holds the modules in memory. No rule was applied this cycle, so the positions_record.sql regeneration and the selftest sweep are owed to the pipeline.py edit and to nothing else -- data/positions_record.sql was verified byte-stable against data/positions.db during this close. 3. Record the rank-depth slope in machine-readable form: it is the one claim that survived both the circuit-lock guard and the non-equity correction, it is NOT in simulations.jsonl (32 rows) or findings.jsonl (13 rows), and it is re-derivable only by re-running rank_test.py. That is exactly the failure mode baseline.json had for three days. 4. Open cycle 3 when new closed positions exist -- 3 pooled and capped rows are open and carry the annotated fill_source that SC-002 now catches. Agent 2 will have a non-empty check list for the first time.",
+   "cycle": 2,
+   "stages_ran": [
+    "orchestrator",
+    "data_steward",
+    "trade_auditor",
+    "pattern_miner"
+   ],
+   "at": "2026-09-10T23:04:02"
+  }
+ ],
+ "handoff": {
+  "orchestrator": {
+   "batch_id": "20260910",
+   "opened_at": "2026-09-10T22:09:00",
+   "cycle_note": "This is cycle 2. Cycle 1 opened on 2026-09-10T19:12 and was ABORTED partway through Agent 1 (interrupted, not failed); it wrote nothing to batch_history, so cycle 2 is the first cycle that will produce a batch_history record. The counter reads 2 and is not reset: an aborted attempt stays in the trail.",
+   "standing_checks_active": [],
+   "standing_checks_note": "Empty, and correct. No standing check has been earned yet -- cycle 1 aborted before Agent 2 ran, so nothing could be added. Agent 2 therefore has nothing to check each trade against this cycle. An empty list is not a gap and must not be filled speculatively.",
+   "rule_registry_size": 2,
+   "rule_registry_note": "Both entries carry status 'rejected' from before the pipeline existed: R-P01 (a participation cap -- skip a name whose order exceeds x% of ADV) and R-P02 (refuse entries whose fill open exceeds +2.29% over the signal close). Agent 4 may not re-propose either text, and pipeline.py refuses it on the rule text if it tries. Neither rule is open, so there is no follow-up owed from a previous cycle.",
+   "scope": {
+    "since_batch": null,
+    "since_batch_note": "batch_history is empty, so this cycle takes every closed equity position rather than a delta. Cycle 1's aborted open read the same 11 rows and passed none of them downstream, so nothing has been consumed.",
+    "closed_positions": 11,
+    "buckets": [
+     "main",
+     "pooled",
+     "capped"
+    ],
+    "verified_against": "read-only sqlite3 connection to data/positions.db, query: SELECT COUNT(*) FROM pos WHERE status='closed' AND exit_px IS NOT NULL AND bucket != 'etf_trend'",
+    "closed_by_bucket": {
+     "main": 7,
+     "pooled": 4,
+     "capped": 0
+    },
+    "closed_by_cluster": {
+     "micro": 5,
+     "small": 6
+    },
+    "closed_by_bucket_and_cluster": {
+     "main": {
+      "micro": 4,
+      "small": 3
+     },
+     "pooled": {
+      "micro": 1,
+      "small": 3
+     },
+     "capped": {
+      "micro": 0,
+      "small": 0
+     }
+    },
+    "capped_note": "capped opened 2026-09-01 and holds 2 open positions, neither closed: its earliest possible time exit falls after this batch. capped contributes zero trades and must be reported as 0, not omitted -- a bucket silently dropped is a bucket nobody notices is missing.",
+    "entry_day_range": {
+     "first": "2026-08-17",
+     "last": "2026-08-28"
+    },
+    "exit_day_range": {
+     "first": "2026-08-24",
+     "last": "2026-09-10"
+    },
+    "etf_trend_excluded": {
+     "closed": 0,
+     "open": 5,
+     "void": 2,
+     "note": "A separate strategy in its own directory under paths.py isolation. Excluded by rule. Zero closed rows this batch, so the exclusion costs nothing here -- Agent 1 must still state it explicitly rather than let it pass silently."
+    },
+    "distinct_price_paths_after_exact_dedup": 10,
+    "dedup_candidates": [
+     {
+      "symbol": "NATCAPSUQ",
+      "rows": [
+       "main id 12",
+       "pooled id 13"
+      ],
+      "entry_day": "2026-08-28",
+      "exit_day": "2026-09-01",
+      "identical_price_path": true,
+      "note": "Same entry day, same fill price 215.24, same exit day, same exit price 193.716, same exit reason (stop). Quantity differs only through per-bucket sizing (203 vs 210). ONE independent path, not two."
+     },
+     {
+      "symbol": "WELENT",
+      "rows": [
+       "pooled id 9",
+       "main id 10"
+      ],
+      "entry_day": "pooled 2026-08-26 at 662.00 / main 2026-08-27 at 689.90",
+      "exit_day": "pooled 2026-09-04 (target) / main 2026-09-10 (time)",
+      "identical_price_path": false,
+      "note": "Different entry day, different fill price, different exit day and a different exit reason -- so NOT an exact duplicate. But one stock, with windows overlapping 2026-08-27..09-04. Two correlated observations, not two independent ones. Agent 1 decides and records the decision in dedup_notes; it must not pass unexamined in either direction."
+     }
+    ],
+    "feature_vector_coverage": {
+     "closed_rows_checked": 11,
+     "carrying_a_feature_vector": 11,
+     "feature_gap_rows": 0,
+     "note": "All 11 carry the six features (rs, deliv, liq, off_high, near_high, rsi -- rsi is null on every row). HAPPYFORGE main id 3 reads fill_source 'corpus:open (backfilled)': captured by reconcile() after L95, not natively recorded at the signal close. Agent 1 carries that provenance forward rather than treating it as equivalent."
+    }
+   },
+   "handed_to_agent_1_for_verification": [
+    {
+     "item": "YUKEN main id 1, entry 2026-08-19, exit 2026-09-04, reason time",
+     "observation": "Held 12 trading days where the rule names 10. Every other time exit in this batch fired at exactly 10.",
+     "cause_on_record": "audit.py carries this as a named, defended exception in _KNOWN_HOLD_DEVIATIONS: the L91 WAL outage stopped step() for 2026-09-02..04, so the time exit could not fire on its bar. Sold at +12.31% where the rule specified +7.47%.",
+     "expected_flag": "outage_window",
+     "gate_consequence": "pipeline.py refuses an outage_window trade categorised as anything but Process Deviation, and unearned P&L sums Process Deviation in BOTH signs. This one is favourable -- the sign that gets counted as skill if nobody looks."
+    },
+    {
+     "item": "order value at the fill price above the Rs 45,000 per-stock ceiling",
+     "observation": "Five of 11 closed rows price out above Rs 45,000 at entry_px * qty, verified by arithmetic on the order record: ARCHIDPLY main 46250.50, YUKEN main 45900.00, NATCAPSUQ pooled 45200.40, SOMANYCERA pooled 45200.00, WELENT pooled 45016.00. Largest overshoot 2.8%. The other six sit between 43463.70 and 44755.20.",
+     "cause_on_record": "Not established. Sizing off the signal close and filling at the NEXT open would explain an overshoot of this size and would be expected behaviour, not a breach.",
+     "expected_flag": null,
+     "gate_consequence": "Verify before classifying. If it is next-open drift it is not a deviation; if sizing read the fill price it is one. Read the sizing path in selection.py -- a status message is not evidence."
+    },
+    {
+     "item": "data/positions_record.sql",
+     "observation": "Regenerated during cycle 1's open after the 12:48:38 writes (the WELENT/main and SOMANYCERA/pooled exits and the KOVAI pending row) left it stale. Re-checked at this open: two consecutive regenerations produce byte-identical output, so it is in sync with data/positions.db. It remains uncommitted against HEAD, which is the expected state of a working tree with forward trades in it.",
+     "cause_on_record": "the writer at 12:48 did not regenerate it",
+     "expected_flag": null,
+     "gate_consequence": "Housekeeping, not a trade finding. Recorded here so it is not re-discovered downstream as an anomaly."
+    }
+   ],
+   "next_step": "Agent 1 (data steward) builds the feature vector for all 11 closed equity rows, applies dedup, and states the independent path count PER CLUSTER. Its handoff must carry: etf_trend excluded and counted at 0 closed; NATCAPSUQ resolved to one path; an explicit recorded decision on the WELENT pair; a per-cluster breakdown rather than a blended number; feature_gap counted at 0 with HAPPYFORGE's backfilled provenance named; and the Rs 45,000 overshoot resolved from the sizing code rather than assumed.",
+   "cycle": 2,
+   "at": "2026-09-10T22:10:06"
+  },
+  "data_steward": {
+   "batch_id": "20260910",
+   "date": "2026-09-10",
+   "records_received": 11,
+   "records_received_note": "11 closed rows with an exit price across main+pooled+capped, read from data/positions.db. Voided rows are not trades and are excluded: HAPPYFORGE id 2 (duplicate entry), VCL id 6 (upper circuit lock at the trigger bar), UPBEES id 16 and CRASHBEE id 17 (paper.py selftest fixtures, etf_trend).",
+   "etf_trend_excluded": 0,
+   "etf_trend_exclusion_statement": "etf_trend excluded: 0 trades (separate strategy)",
+   "etf_trend_exclusion_detail": {
+    "closed_with_exit_price": 0,
+    "open": 5,
+    "void": 2,
+    "note": "A separate strategy with its own directory (src/strategies/etf_trend) and its own scheduler (positions.QUEUED_BY), whose names are funds denylisted from the equity corpus. Zero closed rows this batch, so the exclusion costs nothing here and is stated anyway. pipeline._check_steward refuses an etf_trend row outright."
+   },
+   "independent_paths": 10,
+   "independent_paths_per_cluster": {
+    "micro": 4,
+    "small": 6
+   },
+   "effective_independent_paths": 9,
+   "effective_independent_paths_note": "10 paths by the dedup rule, but two of them are the same stock (WELENT) over overlapping windows. For any statistic that assumes independence the usable count is at most 9, and Agent 3 must not treat the WELENT pair as two independent draws.",
+   "dedup_notes": [
+    "11 records collapsed to 10 independent paths.",
+    "2 records (main+pooled) collapsed to 1 path: NATCAPSUQ. Same signal day 2026-08-27, same entry day 2026-08-28, same fill 215.24, same exit day 2026-09-01, same exit 193.716, same exit reason (stop). Only quantity differs (203 main / 210 pooled) and that is per-bucket sizing off each bucket's own equity, not a second price path. Flagged duplicate_path.",
+    "WELENT is TWO paths, NOT merged, and they are TWO CORRELATED OBSERVATIONS, NOT TWO INDEPENDENT ONES. pooled id 9 signalled 2026-08-25, filled 2026-08-26 at 662.00, exited 2026-09-04 at 794.40 on target. main id 10 signalled 2026-08-26, filled 2026-08-27 at 689.90, exited 2026-09-10 at 797.95 on time. Different signal day, different fill price, different exit day, different exit reason and different exit price, so the dedup key (ticker+entry_date+entry_price+exit_price) does not match on any of the three price fields and merging would destroy a real second entry and a real second exit rule. But the holding windows overlap on 2026-08-27..2026-09-04 (7 of pooled's 7 bars and 7 of main's 10), so both read the same underlying price path over most of their lives. Treat as n=2 records, n=1 stock.",
+    "capped contributed 0 closed paths. Reported as 0, not omitted: it opened 2026-09-01 and its two open positions cannot reach a time exit before this batch closes.",
+    "No cross-bucket merge was applied to any other name. KENNAMET, HAPPYFORGE, GMMPFAUDLR, SAHYADRI, ARCHIDPLY and SOMANYCERA each appear in exactly one bucket."
+   ],
+   "trades": [
+    {
+     "ticker": "SAHYADRI",
+     "path_id": "SAHYADRI-2026-08-18",
+     "pos_ids": [
+      5
+     ],
+     "buckets": [
+      "main"
+     ],
+     "cluster": "micro",
+     "flags": [
+      "stop_at_nominal"
+     ],
+     "pnl_pct": -10.0,
+     "fill_premium_pct": -0.04,
+     "bars_held": 4,
+     "exit_reason": "stop",
+     "signal_date": "2026-08-17",
+     "signal_close": 388.15,
+     "entry_date": "2026-08-18",
+     "entry_price": 388.0,
+     "exit_date": "2026-08-24",
+     "exit_price": 349.2,
+     "stop_price": 349.2,
+     "target_price": 465.6,
+     "bars_signal_to_exit": 5,
+     "qty_by_bucket": {
+      "main": 115
+     },
+     "net_rupees_by_bucket": {
+      "main": -4619.67
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.26433224755700313,
+      "deliv": 69.28,
+      "liq": 1443000.0,
+      "off_high": 3.23,
+      "near_high": -3.23,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-17",
+     "entry_bar_high": 393.95,
+     "entry_bar_low": 374.0,
+     "order_value_at_fill": 44620.0
+    },
+    {
+     "ticker": "ARCHIDPLY",
+     "path_id": "ARCHIDPLY-2026-08-25",
+     "pos_ids": [
+      8
+     ],
+     "buckets": [
+      "main"
+     ],
+     "cluster": "micro",
+     "flags": [
+      "premium_outlier",
+      "stop_at_nominal"
+     ],
+     "pnl_pct": -10.0,
+     "fill_premium_pct": 4.47,
+     "bars_held": 2,
+     "exit_reason": "stop",
+     "signal_date": "2026-08-24",
+     "signal_close": 111.51,
+     "entry_date": "2026-08-25",
+     "entry_price": 116.5,
+     "exit_date": "2026-08-27",
+     "exit_price": 104.85,
+     "stop_price": 104.85,
+     "target_price": 139.8,
+     "bars_signal_to_exit": 3,
+     "qty_by_bucket": {
+      "main": 397
+     },
+     "net_rupees_by_bucket": {
+      "main": -4786.18
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.37091222030981075,
+      "deliv": 74.61,
+      "liq": 651000.0,
+      "off_high": 2.18,
+      "near_high": -2.18,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-24",
+     "entry_bar_high": 124.78,
+     "entry_bar_low": 112.5,
+     "order_value_at_fill": 46250.5
+    },
+    {
+     "ticker": "KENNAMET",
+     "path_id": "KENNAMET-2026-08-24",
+     "pos_ids": [
+      7
+     ],
+     "buckets": [
+      "pooled"
+     ],
+     "cluster": "small",
+     "flags": [],
+     "pnl_pct": 20.0,
+     "fill_premium_pct": 0.08,
+     "bars_held": 4,
+     "exit_reason": "target",
+     "signal_date": "2026-08-21",
+     "signal_close": 4044.7,
+     "entry_date": "2026-08-24",
+     "entry_price": 4048.0,
+     "exit_date": "2026-08-28",
+     "exit_price": 4857.6,
+     "stop_price": 3643.2,
+     "target_price": 4857.6,
+     "bars_signal_to_exit": 5,
+     "qty_by_bucket": {
+      "pooled": 11
+     },
+     "net_rupees_by_bucket": {
+      "pooled": 8734.28
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.39544592030360515,
+      "deliv": 61.92,
+      "liq": 28096000.0,
+      "off_high": 2.66,
+      "near_high": -2.66,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-21",
+     "entry_bar_high": 4260.0,
+     "entry_bar_low": 4048.0,
+     "order_value_at_fill": 44528.0
+    },
+    {
+     "ticker": "HAPPYFORGE",
+     "path_id": "HAPPYFORGE-2026-08-17",
+     "pos_ids": [
+      3
+     ],
+     "buckets": [
+      "main"
+     ],
+     "cluster": "small",
+     "flags": [],
+     "pnl_pct": 13.18,
+     "fill_premium_pct": 1.99,
+     "bars_held": 10,
+     "exit_reason": "time",
+     "signal_date": "2026-08-14",
+     "signal_close": 2089.6,
+     "entry_date": "2026-08-17",
+     "entry_price": 2131.2,
+     "exit_date": "2026-08-31",
+     "exit_price": 2412.0,
+     "stop_price": 1918.08,
+     "target_price": 2557.44,
+     "bars_signal_to_exit": 11,
+     "qty_by_bucket": {
+      "main": 21
+     },
+     "net_rupees_by_bucket": {
+      "main": 5728.09
+     },
+     "fill_source": "corpus:open (backfilled)",
+     "feature_vector": {
+      "rs": 0.6005971018714047,
+      "deliv": 52.43,
+      "liq": 120163000.0,
+      "off_high": 0.44,
+      "near_high": -0.44,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-08-19T05:37:29 (at insert)",
+     "feature_vector_as_of": "signal close 2026-08-14",
+     "entry_bar_high": 2207.8,
+     "entry_bar_low": 2115.1,
+     "order_value_at_fill": 44755.2
+    },
+    {
+     "ticker": "GMMPFAUDLR",
+     "path_id": "GMMPFAUDLR-2026-08-18",
+     "pos_ids": [
+      4
+     ],
+     "buckets": [
+      "main"
+     ],
+     "cluster": "small",
+     "flags": [],
+     "pnl_pct": 2.92,
+     "fill_premium_pct": -0.34,
+     "bars_held": 10,
+     "exit_reason": "time",
+     "signal_date": "2026-08-17",
+     "signal_close": 1056.55,
+     "entry_date": "2026-08-18",
+     "entry_price": 1053.0,
+     "exit_date": "2026-09-01",
+     "exit_price": 1083.8,
+     "stop_price": 947.7,
+     "target_price": 1263.6,
+     "bars_signal_to_exit": 11,
+     "qty_by_bucket": {
+      "main": 42
+     },
+     "net_rupees_by_bucket": {
+      "main": 1130.84
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.21379746108334752,
+      "deliv": 57.67,
+      "liq": 79512000.0,
+      "off_high": 2.12,
+      "near_high": -2.12,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-17",
+     "entry_bar_high": 1059.0,
+     "entry_bar_low": 1020.0,
+     "order_value_at_fill": 44226.0
+    },
+    {
+     "ticker": "NATCAPSUQ",
+     "path_id": "NATCAPSUQ-2026-08-28",
+     "pos_ids": [
+      12,
+      13
+     ],
+     "buckets": [
+      "main",
+      "pooled"
+     ],
+     "cluster": "micro",
+     "flags": [
+      "duplicate_path",
+      "stop_at_nominal"
+     ],
+     "pnl_pct": -10.0,
+     "fill_premium_pct": 0.5,
+     "bars_held": 2,
+     "exit_reason": "stop",
+     "signal_date": "2026-08-27",
+     "signal_close": 214.16,
+     "entry_date": "2026-08-28",
+     "entry_price": 215.24,
+     "exit_date": "2026-09-01",
+     "exit_price": 193.72,
+     "stop_price": 193.72,
+     "target_price": 258.29,
+     "bars_signal_to_exit": 3,
+     "qty_by_bucket": {
+      "main": 203,
+      "pooled": 210
+     },
+     "net_rupees_by_bucket": {
+      "main": -4525.08,
+      "pooled": -4678.94
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.31693518632394535,
+      "deliv": 74.78,
+      "liq": 1111000.0,
+      "off_high": 1.0,
+      "near_high": -1.0,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-27",
+     "entry_bar_high": 219.7,
+     "entry_bar_low": 203.5,
+     "order_value_at_fill": 43693.72
+    },
+    {
+     "ticker": "YUKEN",
+     "path_id": "YUKEN-2026-08-19",
+     "pos_ids": [
+      1
+     ],
+     "buckets": [
+      "main"
+     ],
+     "cluster": "micro",
+     "flags": [
+      "outage_window",
+      "time_exit_mismatch"
+     ],
+     "pnl_pct": 12.31,
+     "fill_premium_pct": 2.05,
+     "bars_held": 12,
+     "exit_reason": "time",
+     "signal_date": "2026-08-18",
+     "signal_close": 881.95,
+     "entry_date": "2026-08-19",
+     "entry_price": 900.0,
+     "exit_date": "2026-09-04",
+     "exit_price": 1010.8,
+     "stop_price": 810.0,
+     "target_price": 1080.0,
+     "bars_signal_to_exit": 13,
+     "qty_by_bucket": {
+      "main": 51
+     },
+     "net_rupees_by_bucket": {
+      "main": 5479.8
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.3244481153326326,
+      "deliv": 73.71,
+      "liq": 6134000.0,
+      "off_high": 1.16,
+      "near_high": -1.16,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-18",
+     "entry_bar_high": 949.7,
+     "entry_bar_low": 882.55,
+     "order_value_at_fill": 45900.0
+    },
+    {
+     "ticker": "WELENT",
+     "path_id": "WELENT-2026-08-26",
+     "pos_ids": [
+      9
+     ],
+     "buckets": [
+      "pooled"
+     ],
+     "cluster": "small",
+     "flags": [
+      "outage_window"
+     ],
+     "pnl_pct": 20.0,
+     "fill_premium_pct": 0.15,
+     "bars_held": 7,
+     "exit_reason": "target",
+     "signal_date": "2026-08-25",
+     "signal_close": 661.0,
+     "entry_date": "2026-08-26",
+     "entry_price": 662.0,
+     "exit_date": "2026-09-04",
+     "exit_price": 794.4,
+     "stop_price": 595.8,
+     "target_price": 794.4,
+     "bars_signal_to_exit": 8,
+     "qty_by_bucket": {
+      "pooled": 68
+     },
+     "net_rupees_by_bucket": {
+      "pooled": 8830.69
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.2979872361315661,
+      "deliv": 53.83,
+      "liq": 128456000.0,
+      "off_high": 1.3,
+      "near_high": -1.3,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-25",
+     "entry_bar_high": 700.0,
+     "entry_bar_low": 650.0,
+     "order_value_at_fill": 45016.0
+    },
+    {
+     "ticker": "WELENT",
+     "path_id": "WELENT-2026-08-27",
+     "pos_ids": [
+      10
+     ],
+     "buckets": [
+      "main"
+     ],
+     "cluster": "small",
+     "flags": [],
+     "pnl_pct": 15.66,
+     "fill_premium_pct": -0.43,
+     "bars_held": 10,
+     "exit_reason": "time",
+     "signal_date": "2026-08-26",
+     "signal_close": 692.85,
+     "entry_date": "2026-08-27",
+     "entry_price": 689.9,
+     "exit_date": "2026-09-10",
+     "exit_price": 797.95,
+     "stop_price": 620.91,
+     "target_price": 827.88,
+     "bars_signal_to_exit": 11,
+     "qty_by_bucket": {
+      "main": 63
+     },
+     "net_rupees_by_bucket": {
+      "main": 6640.37
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.3439045679371546,
+      "deliv": 53.78,
+      "liq": 128456000.0,
+      "off_high": 1.02,
+      "near_high": -1.02,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-26",
+     "entry_bar_high": 696.4,
+     "entry_bar_low": 675.0,
+     "order_value_at_fill": 43463.7
+    },
+    {
+     "ticker": "SOMANYCERA",
+     "path_id": "SOMANYCERA-2026-08-27",
+     "pos_ids": [
+      11
+     ],
+     "buckets": [
+      "pooled"
+     ],
+     "cluster": "small",
+     "flags": [],
+     "pnl_pct": -0.94,
+     "fill_premium_pct": 1.17,
+     "bars_held": 10,
+     "exit_reason": "time",
+     "signal_date": "2026-08-26",
+     "signal_close": 558.45,
+     "entry_date": "2026-08-27",
+     "entry_price": 565.0,
+     "exit_date": "2026-09-10",
+     "exit_price": 559.7,
+     "stop_price": 508.5,
+     "target_price": 678.0,
+     "bars_signal_to_exit": 11,
+     "qty_by_bucket": {
+      "pooled": 80
+     },
+     "net_rupees_by_bucket": {
+      "pooled": -587.15
+     },
+     "fill_source": "confirmed",
+     "feature_vector": {
+      "rs": 0.09553702795487995,
+      "deliv": 57.47,
+      "liq": 46623000.0,
+      "off_high": 1.15,
+      "near_high": -1.15,
+      "rsi": null
+     },
+     "feature_vector_captured_at": "2026-09-10T04:04:40 (reconcile backfill, L95)",
+     "feature_vector_as_of": "signal close 2026-08-26",
+     "entry_bar_high": 565.0,
+     "entry_bar_low": 552.15,
+     "order_value_at_fill": 45200.0
+    }
+   ],
+   "batch_summary": {
+    "n": 7,
+    "n_note": "n=7 is the MAIN-only path count, which is the record. 10 independent paths in total across main+pooled+capped; pooled's 4 are shown for comparison and never added to main's.",
+    "total_pnl_main_only": 5048.17,
+    "total_pnl_unit": "rupees, net of charges and modelled impact (positions.step)",
+    "winners_main": 4,
+    "losers_main": 3,
+    "flags_raised": {
+     "outage_window": 2,
+     "stop_at_nominal": 3,
+     "premium_outlier": 1,
+     "time_exit_mismatch": 1,
+     "duplicate_path": 1,
+     "feature_gap": 0,
+     "circuit_lock": 0,
+     "non_equity": 0,
+     "data_gap": 0
+    },
+    "feature_gap_count": 0,
+    "per_cluster": {
+     "micro": {
+      "n": 4,
+      "winners": 1,
+      "losers": 3,
+      "pnl": -8451.13,
+      "tickers": [
+       "SAHYADRI",
+       "ARCHIDPLY",
+       "NATCAPSUQ",
+       "YUKEN"
+      ]
+     },
+     "small": {
+      "n": 3,
+      "winners": 3,
+      "losers": 0,
+      "pnl": 13499.3,
+      "tickers": [
+       "HAPPYFORGE",
+       "GMMPFAUDLR",
+       "WELENT"
+      ]
+     }
+    },
+    "per_cluster_scope": "main only. A blended micro+small number is not reported.",
+    "rounding_note": "every rupee figure is the sum of per-trade nets rounded to 2dp, so the parts add up exactly: micro -8451.13 + small 13499.30 = 5048.17. The unrounded main total is 5048.176264.",
+    "comparison_not_counted": {
+     "note": "pooled and capped are shown for comparison ONLY. Their P&L is never added to main's: main and pooled hold the same stocks constantly (NATCAPSUQ and WELENT in this batch alone), so pooling them would put one price path in twice.",
+     "pooled": {
+      "n": 4,
+      "total_pnl": 12298.88,
+      "per_cluster": {
+       "micro": {
+        "n": 1,
+        "winners": 0,
+        "losers": 1,
+        "pnl": -4678.94,
+        "tickers": [
+         "NATCAPSUQ"
+        ]
+       },
+       "small": {
+        "n": 3,
+        "winners": 2,
+        "losers": 1,
+        "pnl": 16977.82,
+        "tickers": [
+         "KENNAMET",
+         "WELENT",
+         "SOMANYCERA"
+        ]
+       }
+      }
+     },
+     "capped": {
+      "n": 0,
+      "total_pnl": 0.0,
+      "per_cluster": {
+       "micro": {
+        "n": 0,
+        "winners": 0,
+        "losers": 0,
+        "pnl": 0.0,
+        "tickers": []
+       },
+       "small": {
+        "n": 0,
+        "winners": 0,
+        "losers": 0,
+        "pnl": 0.0,
+        "tickers": []
+       }
+      }
+     }
+    }
+   },
+   "definitions_used": {
+    "bars_held": "positions.bars_held(entry_day, exit_day) -- trading bars STRICTLY AFTER the entry day through the exit day. This is the clock the exit rule itself runs on (positions.step: `held >= HOLD_DAYS`), so time_exit_mismatch is measured against it. Measured signal-day-to-exit instead, every one of the five time exits would read 11 and the flag would fire on all of them and mean nothing. bars_signal_to_exit is carried on every trade so the other reading is available without recomputing.",
+    "fill_premium_pct": "(entry_price - signal_close) / signal_close * 100, signal_close = the corpus close on queued_on. Computable on all 10 paths; none marked not_computable.",
+    "pnl_pct": "(exit_price - entry_price) / entry_price * 100, gross of charges. The rupee figures (net_rupees_by_bucket, per_cluster.pnl) are NET of charges and modelled impact.",
+    "outage_window": "exit_date in 2026-09-02..2026-09-04 inclusive. Taken from audit.py _KNOWN_HOLD_DEVIATIONS ('the L91 WAL outage stopped step() for 2026-09-02..04') and L91/L92. Not narrowed, and not widened.",
+    "premium_outlier": "fill_premium_pct > +2.29, the count-based mid|top tercile bound frozen in src/research/premium_skip_test.py PREM_SKIP. Strictly above.",
+    "stop_at_nominal": "|pnl_pct - (-10.0)| <= 0.1, against selection.STOP_PCT."
+   },
+   "verifications": [
+    {
+     "item": "the Rs 45,000 per-stock question -- RESOLVED FROM THE SIZING CODE, NOT A DEVIATION",
+     "verdict": "expected next-open drift. No flag. No vocabulary entry covers it and none is needed.",
+     "evidence": "selection.build (strategies/breakout/selection.py) sets `ref = s.close[i]` -- the SIGNAL close -- and calls position_size(capital, ref). position_size caps at `cap_value = capital * DEPLOY_PCT / 100 / max_pos` and takes qty = int(cap_value/ref). positions.queue() stores that qty; positions.step(), fill_live() and mark_open() all set entry_px WITHOUT touching qty (mark_open changes qty only when a caller passes one, and no caller does). So quantity is fixed at the signal close and the fill lands at the next open. Reproduced: position_size(equity_at_queue, signal_close) returns the recorded qty on 11 of 11 rows, exactly. And ORDER VALUE AT THE SIGNAL CLOSE IS UNDER THE CAP ON 11 OF 11 -- the largest is NATCAPSUQ pooled at 44,973.60 of 45,000.00. Every overshoot at the fill equals that row's fill premium to two decimals: ARCHIDPLY 46,250.50 vs 44,269.47 = +4.47% = its fill_premium_pct 4.47; YUKEN 45,900.00 vs 44,979.45 = +2.05% = 2.05; SOMANYCERA +1.17 = 1.17; NATCAPSUQ pooled +0.50 = 0.50; WELENT pooled +0.15 = 0.15. Sizing never saw the fill price.",
+     "correction_to_the_orchestrator": "The ceiling is NOT a fixed Rs 45,000. daily.py:86 calls selection.build(corpus, day, capital=bs['equity']) and positions.summary() returns equity = CAPITAL + that bucket's REALISED P&L, so the cap is equity * 75% / 5 and moves with realised results. main's cap was 44,307.05 when ARCHIDPLY and WELENT/main were sized and 43,589.12 for NATCAPSUQ/main, because main was carrying realised losses. Measured against the cap that actually applied, ARCHIDPLY's overshoot is +4.4% rather than the +2.8% the orchestrator computed against a flat 45,000 -- and it is still not a breach, because the rule can only bind at the signal close.",
+     "checked_rows": 11
+    },
+    {
+     "item": "YUKEN main id 1, time exit at 12 bars -- both flags fire",
+     "verdict": "outage_window AND time_exit_mismatch. Real effect on the exit price.",
+     "evidence": "entry 2026-08-19. Bar 10 was 2026-09-02, whose close was 967.25 (+7.47% on a 900.00 fill). step() did not run on 09-02 or 09-03, so the exit fired on the catch-up run of 09-04 at that day's close, 1010.80, +12.31%. The difference is +4.84 points, about Rs 2,221 of realised P&L in the FAVOURABLE direction. audit.py carries it as a named exception in _KNOWN_HOLD_DEVIATIONS; the row is closed and is not rewritten.",
+     "checked_rows": 1
+    },
+    {
+     "item": "WELENT pooled id 9, target exit dated inside the outage window",
+     "verdict": "outage_window flagged on the date, but the exit price is DEMONSTRABLY UNAFFECTED.",
+     "evidence": "target 794.40. The two missed bars could not have produced it: 2026-09-02 high 745.00, 2026-09-03 high 768.00, both below target. 2026-09-04 high 825.00 with an open of 761.80, so step() filled at max(target, open) = 794.40 -- exactly what the rule specifies on the first bar that could produce it. Flagged because exit_date falls in the stated window and a window is not narrowed because a trade inside it looks clean. AGENT 2 SHOULD READ THIS BEFORE CATEGORISING: pipeline._check_auditor forces every outage_window trade to Process Deviation, which will move Rs 8,830.69 of correctly executed pooled P&L into unearned P&L. That is a property of the gate, not a finding about the trade.",
+     "checked_rows": 1
+    },
+    {
+     "item": "circuit_lock",
+     "verdict": "none. 0 of 10 paths.",
+     "evidence": "entry bar high != low on every path. Narrowest is SOMANYCERA 2026-08-27 (H 565.00 / L 552.15) and KENNAMET 2026-08-24 (H 4260.00 / L 4048.00). Trigger bars are clean too. The one locked bar in the record, VCL id 6 on 2026-08-19 (O=H=L=C 1.94), was voided by the guard in selection.build and never became a trade.",
+     "checked_rows": 10
+    },
+    {
+     "item": "non_equity",
+     "verdict": "none. 0 of 10 paths.",
+     "evidence": "all 8 distinct tickers checked against data/non_equity_history.json symbols; no match.",
+     "checked_rows": 10
+    },
+    {
+     "item": "data_gap",
+     "verdict": "none. 0 of 10 paths.",
+     "evidence": "symbol, cluster, queued_on, entry_day, entry_px, qty, stop, target, exit_day, exit_px, exit_reason, net, bucket and fill_source are all non-null on all 11 rows, and the signal-day and entry-day bars are on disk for all 11, so fill_premium_pct was computed rather than marked not_computable on every path.",
+     "checked_rows": 11
+    },
+    {
+     "item": "pos_log edits to the 11 closed rows",
+     "verdict": "no fill price was ever corrected on a row in this batch.",
+     "evidence": "pos_log holds no entry_px or exit_px revision for ids 1,3,4,5,7,8,9,10,11,12,13. The only price movement in the log is stop/target being recomputed from the actual fill at the moment of filling, which is what positions.step is specified to do. The one corrected fill in the record is WELENT id 23 (capped, L92, 761.80 -> 707.50) and it is still OPEN, so it is outside this batch entirely -- Agent 2 should not expect it here.",
+     "checked_rows": 11
+    }
+   ],
+   "feature_vector_check": {
+    "statement": "0 of 11 positions lack feature vectors. reconcile() backfills; an audit check counts the rows. Known from the fill_live() path (L95).",
+    "filled_positions_checked": 11,
+    "lacking_now": 0,
+    "backfilled_not_natively_captured": 10,
+    "provenance": "This is the part that is NOT equivalent, and it is not what the orchestrator handed down. pos_log seq 77-86 shows TEN of the eleven rows had `features` set from NULL in a single write at 2026-09-10 04:04:40 -- ids 1,4,5,7,8,9,10,11,12,13. NINE of those were already CLOSED when it happened, so at close time step()'s inline learning.record() saw an empty vector and recorded nothing. Only HAPPYFORGE id 3 carried a vector from insert (2026-08-19 05:37:29); what was backfilled on HAPPYFORGE was its fill_source (seq 56, 2026-09-04, to 'corpus:open (backfilled)'), not its features. The orchestrator's note has those two facts the wrong way round.",
+    "usable_as_evidence": "yes. positions.entry_snapshot indexes on queued_on and learning.entry_features reads only indices <= i (close[i-63], high[i-125:i+1], deliv_pct[i-60:i+1], turnover[i-60:i+1]), so a vector rebuilt on 2026-09-10 reproduces the signal close exactly and carries no post-trade information. The capture TIME moved; the as-of date did not.",
+    "learning_ledger": "all 11 forward trades are present in data/breakout/trade_features.jsonl with source 'portfolio'. Verified by reading the file, not by a status message.",
+    "rsi": "null on all 11, and that is by construction -- learning.entry_features hardcodes \"rsi\": None. Not a per-trade gap and not counted as feature_gap."
+   },
+   "harness_notes": [
+    "pipeline.gate() lines 729-733 is a check that looks like a check and does nothing: for performance_tracker and forward_manager it reads the validator's verdict into `v`, tests it, and the body of the `if` is `pass`. No reason is ever appended, so a FAIL or INCONCLUSIVE verdict from Agent 5 does not stop Agents 6 or 7. Reported, not patched. (The orchestrator found this independently in cycle 2; confirmed here by reading it.)",
+    "_check_steward validates bucket names, the flag vocabulary, independent_paths <= records_received, one trade object per path, and that batch_summary.per_cluster exists. It does NOT re-verify records_received against the order book the way _check_orchestrator verifies scope.closed_positions, so a steward that dropped a row would pass. Not a defect I should fix from here; stated so it is known."
+   ],
+   "cycle": 2,
+   "at": "2026-09-10T22:21:15"
+  },
+  "trade_auditor": {
+   "batch_id": "20260910",
+   "cycle": 2,
+   "n": 10,
+   "n_note": "10 independent price paths categorised, one category each. effective_independent_paths is 9 (the WELENT pair is two correlated observations of one stock, per Agent 1). The RECORD is main: 7 of the 10 paths. error_profile, unearned_pnl, adjusted_pnl and per_cluster are MAIN ONLY. pooled's paths are categorised and shown, never added in.",
+   "effective_independent_paths": 9,
+   "n_main": 7,
+   "n_pooled_shown_not_counted": 4,
+   "n_capped": 0,
+   "trades": [
+    {
+     "ticker": "YUKEN",
+     "path_id": "YUKEN-2026-08-19",
+     "cluster": "micro",
+     "category": "Process Deviation",
+     "flags": [
+      "outage_window",
+      "time_exit_mismatch"
+     ],
+     "pnl_pct": 12.31,
+     "net_rupees": 5479.8,
+     "exit_reason": "time",
+     "bars_held": 12,
+     "why": "Held 12 bars where the rule names 10. Bar 10 was 2026-09-02, close 967.25 = +7.47% on the 900.00 fill; step() did not run 2026-09-02..09-04 (L91 WAL outage) and the exit fired on the 09-04 catch-up at 1010.80 = +12.31%. Corpus-verified: 09-02 H 990.00 / 09-03 H 1028.50 never reached the 1080.00 target and lows 951.05 / 971.50 never reached the 810.00 stop, so the time exit is the only exit the outage moved. Rs 2,221 gross of the P&L is outage-attributable and favourable.",
+     "standing_check_hit": null,
+     "pooled_comparison": null,
+     "lesson": "The favourable sign is the dangerous one: an outage that pays reads as skill unless the window is checked independently of P&L.",
+     "buckets": [
+      "main"
+     ]
+    },
+    {
+     "ticker": "WELENT",
+     "path_id": "WELENT-2026-08-26",
+     "cluster": "small",
+     "category": "Process Deviation",
+     "flags": [
+      "outage_window"
+     ],
+     "pnl_pct": 20.0,
+     "net_rupees": 8830.69,
+     "exit_reason": "target",
+     "bars_held": 7,
+     "why": "GATE-FORCED, and the evidence says the execution was correct. Target 794.40. Corpus-verified: the two missed bars could not have produced it (09-02 H 745.00, 09-03 H 768.00, both below target); 09-04 opened 761.80 with H 825.00, so the fill at max(target, open) = 794.40 is exactly what the rule specifies on the FIRST bar that could produce it. The flag is an exit_date inside 2026-09-02..09-04, not a behavioural deviation. pipeline._check_auditor refuses any other category, so this classification is a property of the rule, not of the trade.",
+     "standing_check_hit": null,
+     "pooled_comparison": "different P&L from the main WELENT path: +20.00% target here vs +15.66% time exit in main, from a fill one session earlier and 4.05% lower.",
+     "lesson": "none -- the process worked; the category is the date window, and a window is not narrowed because a trade inside it looks clean.",
+     "buckets": [
+      "pooled"
+     ]
+    },
+    {
+     "ticker": "ARCHIDPLY",
+     "path_id": "ARCHIDPLY-2026-08-25",
+     "cluster": "micro",
+     "category": "Execution Error",
+     "flags": [
+      "premium_outlier",
+      "stop_at_nominal"
+     ],
+     "pnl_pct": -10.0,
+     "net_rupees": -4786.18,
+     "exit_reason": "stop",
+     "bars_held": 2,
+     "why": "Fill premium +4.47% (116.50 open against the 111.51 signal close) against the +2.29% top-tercile bound, where the fill-premium harvest measured -3.71% +/- 1.17 per trade top vs bottom tercile (t=-3.18, n=1,060). The stop then hit at exactly the nominal -10.0% (corpus: 08-27 opened 114.95 above the 104.85 stop and traded to L 102.26, so it filled AT the stop, no gap-through), which makes the entry price the defensible complaint and not the exit. Classification rule: premium outlier with the stop at nominal is Execution Error.",
+     "standing_check_hit": null,
+     "pooled_comparison": null,
+     "lesson": "The single largest gap in this batch between the trade the plan specified (the 111.51 signal close) and the trade the bucket got (116.50) is an entry, not an exit.",
+     "buckets": [
+      "main"
+     ]
+    },
+    {
+     "ticker": "SAHYADRI",
+     "path_id": "SAHYADRI-2026-08-18",
+     "cluster": "micro",
+     "category": "Thesis Error",
+     "flags": [
+      "stop_at_nominal"
+     ],
+     "pnl_pct": -10.0,
+     "net_rupees": -4619.67,
+     "exit_reason": "stop",
+     "bars_held": 4,
+     "why": "NOT classified on the loss. pos.origin='rank-cohort' and data/pbook.db row 3 names its book: cohort3, the retired deeper bucket labelled 'fourth'. Cohort k takes micro ranks 3k..3k+2, so this was bought three cohort steps below the score's own picks, on a slope measured at -1.12% per cohort step (std err 0.28%, t=-3.95, n=1,062) with every one of the five deeper cohorts CAGR-negative. The 200-DMA gate and the breakout trigger both held -- the deeper buckets ran identical rules -- so the flaw is the ranking that selected it, which is the named legitimate ground for this category. Execution was clean: fill premium -0.04%, next-open fill, stop at exactly nominal.",
+     "standing_check_hit": null,
+     "pooled_comparison": null,
+     "lesson": "A position inherited from a retired experiment still lands in main's total; origin is recorded and nothing reads it.",
+     "buckets": [
+      "main"
+     ],
+     "auditor_observation": "pos.origin='rank-cohort' (pbook.db book cohort3, retired bucket 'fourth'). Not an Agent 1 flag -- the flag vocabulary is closed on purpose and this is not in it. Recorded here as the evidence for the category."
+    },
+    {
+     "ticker": "GMMPFAUDLR",
+     "path_id": "GMMPFAUDLR-2026-08-18",
+     "cluster": "small",
+     "category": "Thesis Error",
+     "flags": [],
+     "pnl_pct": 2.92,
+     "net_rupees": 1130.84,
+     "exit_reason": "time",
+     "bars_held": 10,
+     "why": "Same ground as SAHYADRI and it is a WINNER, which is the point: pos.origin='rank-cohort', pbook.db row 2 names book cohort2 (the retired bucket labelled 'third'), so it was bought two cohort steps deep on the -1.12%/step slope (t=-3.95, n=1,062). The category is about the selection logic, not the outcome, so a +2.92% result does not make a deep-cohort pick a valid setup. Execution was clean: fill premium -0.34%, next-open fill, time exit on bar 10 exactly (2026-09-01 close 1083.80).",
+     "standing_check_hit": null,
+     "pooled_comparison": null,
+     "lesson": "Classifying only the losers as Thesis Error would have hidden half of this population.",
+     "buckets": [
+      "main"
+     ],
+     "auditor_observation": "pos.origin='rank-cohort' (pbook.db book cohort2, retired bucket 'third'). Not an Agent 1 flag; recorded here as the evidence for the category."
+    },
+    {
+     "ticker": "HAPPYFORGE",
+     "path_id": "HAPPYFORGE-2026-08-17",
+     "cluster": "small",
+     "category": "Variance",
+     "flags": [],
+     "pnl_pct": 13.18,
+     "net_rupees": 5728.09,
+     "exit_reason": "time",
+     "bars_held": 10,
+     "why": "fill_source reads 'corpus:open (backfilled)', which is not literally one of confirmed / corpus:open / live:<feed> -- but the substance passes: entry_px 2131.20 EQUALS the 2026-08-17 corpus open to the paisa, pos_log (seq 2, 46, 56) shows entry_px never revised, and the 2026-09-04 write set the LABEL only. Fill premium +1.99% sits above the +1.20% median and below the +2.29% bound. Time exit on bar 10 exactly. Nothing moved P&L, so this is not an Execution Error; the string itself is carried as a new anomaly.",
+     "standing_check_hit": null,
+     "pooled_comparison": null,
+     "lesson": "none -- the process worked.",
+     "buckets": [
+      "main"
+     ],
+     "auditor_observation": "fill_source 'corpus:open (backfilled)' is outside the vocabulary any module writes. Not an Agent 1 flag; carried in new_anomaly."
+    },
+    {
+     "ticker": "WELENT",
+     "path_id": "WELENT-2026-08-27",
+     "cluster": "small",
+     "category": "Variance",
+     "flags": [],
+     "pnl_pct": 15.66,
+     "net_rupees": 6640.37,
+     "exit_reason": "time",
+     "bars_held": 10,
+     "why": "Clean on every checkable axis: fill premium -0.43%, fill at the next open after the 2026-08-26 signal, time exit on bar 10 exactly (2026-09-10 close 797.95). Held straight through the outage and needed nothing from it -- corpus-verified, 09-02..09-04 highs 745.00 / 768.00 / 825.00 all below the 827.88 target and lows 698.15 / 732.90 / 757.40 all above the 620.91 stop -- so no exit was missed and the outage_window flag correctly did not fire.",
+     "standing_check_hit": null,
+     "pooled_comparison": "different P&L from the pooled WELENT path: +15.66% time vs +20.00% target. Correlated, not independent -- windows overlap 2026-08-27..09-04. The stock's high in main's window was 825.00 against main's 827.88 target, so a 4.05% higher fill moved the target 33.48 out of reach on the same bars. n=1 observation, not a pattern.",
+     "lesson": "none -- the process worked.",
+     "buckets": [
+      "main"
+     ]
+    },
+    {
+     "ticker": "NATCAPSUQ",
+     "path_id": "NATCAPSUQ-2026-08-28",
+     "cluster": "micro",
+     "category": "Variance",
+     "flags": [
+      "duplicate_path",
+      "stop_at_nominal"
+     ],
+     "pnl_pct": -10.0,
+     "net_rupees": -4525.08,
+     "exit_reason": "stop",
+     "bars_held": 2,
+     "why": "A valid signal that hit its stop is the system working. Fill premium +0.50%, next-open fill, and the stop filled at exactly the nominal -10.0%: corpus 2026-09-01 opened 211.36 above the 193.72 stop and traded to L 192.00, so the fill is AT the stop with no gap-through. The 66-74% of return variance attributable to which exit fired (batch 20260910-h19-attrib) is the whole content of this trade.",
+     "standing_check_hit": null,
+     "pooled_comparison": "same price path and the same -10.00%; rupees differ only through per-bucket sizing (main 203 shares / -4,525.08 vs pooled 210 shares / -4,678.94). ONE path, counted once, in main.",
+     "lesson": "none -- the process worked.",
+     "buckets": [
+      "main",
+      "pooled"
+     ]
+    },
+    {
+     "ticker": "KENNAMET",
+     "path_id": "KENNAMET-2026-08-24",
+     "cluster": "small",
+     "category": "Variance",
+     "flags": [],
+     "pnl_pct": 20.0,
+     "net_rupees": 8734.28,
+     "exit_reason": "target",
+     "bars_held": 4,
+     "why": "Clean on every axis: fill premium +0.08%, fill at the next open after the 2026-08-21 Friday signal, and the target filled at exactly 4857.60 on 2026-08-28 (corpus: open 4505.00 below target, H 4860.00 above it). The favourable draw of the same exit grid that produced three -10.0% stops in this batch.",
+     "standing_check_hit": null,
+     "pooled_comparison": "pooled only -- main never held it. Shown, not counted.",
+     "lesson": "none -- the process worked.",
+     "buckets": [
+      "pooled"
+     ]
+    },
+    {
+     "ticker": "SOMANYCERA",
+     "path_id": "SOMANYCERA-2026-08-27",
+     "cluster": "small",
+     "category": "Variance",
+     "flags": [],
+     "pnl_pct": -0.94,
+     "net_rupees": -587.15,
+     "exit_reason": "time",
+     "bars_held": 10,
+     "why": "Fill premium +1.17%, essentially the +1.20% published median. Next-open fill, time exit on bar 10 exactly (2026-09-10 close 559.70). Held through the outage and unaffected -- corpus-verified, 09-02..09-04 highs 576.80 / 574.05 / 573.60 never approached the 678.00 target and lows 560.25 / 556.60 / 552.55 never approached the 508.50 stop.",
+     "standing_check_hit": null,
+     "pooled_comparison": "pooled only -- main never held it. Shown, not counted.",
+     "lesson": "none -- the process worked.",
+     "buckets": [
+      "pooled"
+     ]
+    }
+   ],
+   "error_profile": {
+    "thesis": 2,
+    "execution": 1,
+    "variance": 3,
+    "process_deviation": 1
+   },
+   "error_profile_scope": "MAIN ONLY, n=7. thesis = GMMPFAUDLR + SAHYADRI, execution = ARCHIDPLY, variance = HAPPYFORGE + WELENT/main + NATCAPSUQ, process_deviation = YUKEN.",
+   "error_profile_all_paths": {
+    "thesis": 2,
+    "execution": 1,
+    "variance": 5,
+    "process_deviation": 2,
+    "n": 10
+   },
+   "variance_majority_check": "Variance is a PLURALITY in main (3 of 7), not the majority the process predicts, and a bare majority across all 10 paths (5 of 10). At n=7 the shortfall is one outage plus two positions inherited from a retired ranking -- both closed populations. Not a pattern and not evidence that the process is degrading.",
+   "unearned_pnl": 5479.8,
+   "unearned_pnl_note": "MAIN ONLY, and that is a decision, not an oversight. Two paths are Process Deviation: YUKEN (main, +Rs 5,479.80) and WELENT (pooled, +Rs 8,830.69). Only YUKEN is in unearned_pnl. Reason: adjusted_pnl is defined as the main total minus unearned and is the figure comparable to data/breakout/baseline.json, which keys off main. Subtracting a pooled rupee figure from a main total would remove money main never held and produce a number that is not the P&L of anything. The repo's rule that pooled is shown and never counted has to hold symmetrically -- adding a pooled result to main double-counts a price path, and subtracting one does the same error with the sign flipped. Labelled explicitly: unearned; not attributable to the strategy.",
+   "unearned_pnl_pooled_not_counted": 8830.69,
+   "unearned_pnl_pooled_note": "WELENT/pooled's Process Deviation P&L. Unearned WITHIN pooled, reported for comparison and not added to unearned_pnl or subtracted from adjusted_pnl. Its execution was verifiably correct (target unreachable on both missed bars), so the gate would have removed Rs 8,830.69 of correctly executed P&L had this row sat in main -- a property of the outage rule, not of the trade.",
+   "unearned_pnl_decomposition": "Of YUKEN's Rs 5,479.80, about Rs 2,221 gross is outage-attributable (exit 1010.80 on 09-04 against the rule's own bar, 09-02 close 967.25, on 51 shares); roughly Rs 3,259 would have been earned by an on-time exit. The whole trade is removed anyway, which is the correct reading of 'not attributable': once the exit fired on the wrong bar, the exit price is not the strategy's. The split is recorded so Agent 3 has it.",
+   "adjusted_pnl": -431.63,
+   "adjusted_pnl_note": "main total Rs 5,048.17 (n=7) minus unearned Rs 5,479.80 = -Rs 431.63. The batch's entire recorded gain is smaller than the single trade the outage rule makes unattributable, so main's adjusted result for this batch is a small loss, not a gain. n=7 -- no error bar around this survives contact with the +/-16% per-trade sd.",
+   "per_cluster": {
+    "micro": {
+     "n": 4,
+     "winners": 1,
+     "losers": 3,
+     "pnl": -8451.13,
+     "per_trade": -2112.78,
+     "note": "main only. YUKEN, SAHYADRI, ARCHIDPLY, NATCAPSUQ. The single winner is YUKEN, whose P&L is unearned."
+    },
+    "small": {
+     "n": 3,
+     "winners": 3,
+     "losers": 0,
+     "pnl": 13499.3,
+     "per_trade": 4499.77,
+     "note": "main only. HAPPYFORGE, GMMPFAUDLR, WELENT/main. 3 of 3 winners at n=3 -- inside the noise; recorded for continuity, not actionable."
+    }
+   },
+   "per_cluster_adjusted": {
+    "micro": {
+     "n": 3,
+     "winners": 0,
+     "losers": 3,
+     "pnl": -13930.93,
+     "per_trade": -4643.64,
+     "note": "main, unearned removed. Every micro path the strategy can claim in this batch is a loser. n=3 -- inside the noise; recorded for continuity, not actionable."
+    },
+    "small": {
+     "n": 3,
+     "winners": 3,
+     "losers": 0,
+     "pnl": 13499.3,
+     "per_trade": 4499.77,
+     "note": "unchanged -- no small path is Process Deviation in main."
+    }
+   },
+   "per_cluster_pooled_shown_not_counted": {
+    "micro": {
+     "n": 1,
+     "winners": 0,
+     "losers": 1,
+     "pnl": -4678.94,
+     "per_trade": -4678.94,
+     "note": "NATCAPSUQ, the same price path as main's. Never added."
+    },
+    "small": {
+     "n": 3,
+     "winners": 2,
+     "losers": 1,
+     "pnl": 16977.82,
+     "per_trade": 5659.27,
+     "note": "KENNAMET, WELENT/pooled, SOMANYCERA."
+    }
+   },
+   "per_trade_pct_main": {
+    "n": 7,
+    "mean": 2.01,
+    "std_err": 4.5,
+    "note": "main paths, gross of charges. Against the live reference +1.07% +/- 1.12% (n=193) this is indistinguishable from it and from zero. Removing the unearned YUKEN: +0.29% +/- 4.92% (n=6)."
+   },
+   "standing_check_hits": [],
+   "standing_check_note": "The orchestrator published standing_checks_active = [] and that is correct -- cycle 1 aborted before Agent 2 ran, so no check has been earned. Every trade was checked against an empty list, which is why standing_check_hit is null on all 10. An empty list is not a gap and was not filled speculatively.",
+   "checks_applied_in_place_of_standing_checks": [
+    "fill premium vs the +2.29% top-tercile bound: 1 of 10 above (ARCHIDPLY +4.47%). Median of the 10 is +0.53% against the published +1.20% median. n=10 -- inside the noise.",
+    "signal_date -> entry_date: 10 of 10 filled at the NEXT session's open, weekends included (HAPPYFORGE Fri 08-14 -> Mon 08-17, KENNAMET Fri 08-21 -> Mon 08-24). No late entries.",
+    "fill_source: 9 of 10 'confirmed', 1 non-canonical (HAPPYFORGE) with the price verified against the corpus open. No 'reconciled' row and no reconciliation that moved a price -- pos_log carries no entry_px or exit_px revision on any of the 11 rows.",
+    "stop gap-through: 0 of 3 stops. All three opened above the stop and traded through it intraday, so all three filled AT the nominal -10.0%.",
+    "circuit_lock: 0 of 10, entry-bar high != low on every path (confirmed independently from the corpus).",
+    "non_equity: 0 of 10.",
+    "outage sweep beyond the date flag: every position open on 2026-09-02..09-04 was checked bar by bar for an exit that should have fired and did not. Only YUKEN's time exit was actually missed. WELENT/main, WELENT/pooled and SOMANYCERA all needed nothing from the missed bars."
+   ],
+   "new_anomaly": [
+    {
+     "anomaly": "fill_source value outside the vocabulary any code writes",
+     "where": "HAPPYFORGE main id 3, 'corpus:open (backfilled)', written by an out-of-band UPDATE at 2026-09-04 13:47:53 (pos_log seq 56)",
+     "evidence": "positions.py:798 writes the literal 'corpus:open'; the other literals in the module are 'confirmed' and 'reconciled'. Nothing under src/ writes '(backfilled)' into fill_source -- grepped across src/, scripts/ and tests/. entry_px was NOT touched by that write and equals the 2026-08-17 corpus open, 2131.20, exactly.",
+     "why_it_matters": "any downstream check testing fill_source for equality against the three canonical values silently fails to match this row. It is a provenance-label defect, not a trade defect. No active check covers it.",
+     "n": 1
+    },
+    {
+     "anomaly": "pos.origin='rank-cohort' is recorded and nothing reads it",
+     "where": "GMMPFAUDLR main id 4 and SAHYADRI main id 5",
+     "evidence": "docs/STATE.md states plainly 'Nothing filters on it yet.' Both rows are closed, both are inside main's headline Rs 5,048.17, and both came from the retired deeper buckets (pbook.db books cohort2 and cohort3) that were removed precisely because they buy ranks the score marks as worse (-1.12%/step, t=-3.95, n=1,062).",
+     "why_it_matters": "the first forward evidence this project has now contains two closed trades that the live selection rule did not make, and the only marker separating them is a column no report reads. Net effect on main this batch: -Rs 3,488.83 across the two. Stated, not proposed -- rule changes are Agent 4's.",
+     "n": 2
+    }
+   ],
+   "temporal_concentration": {
+    "process_deviation": "Both Process Deviation paths exit inside 2026-09-02..09-04, which is concentration by construction -- the flag IS that window (the L91 WAL outage; data/known_gaps.json also records 2026-09-03 as a full-session capture gap). n=2 of 10. A closed 3-day event, not a trend.",
+    "thesis_error": "Both Thesis Error paths were queued on the SAME day, 2026-08-17, the earliest signal day in the batch, and both are inherited from the pre-rename order book. The population is closed: exactly two rank-cohort positions ever existed and both are now closed, so this category cannot recur from this source. n=2.",
+    "execution_error": "n=1 (ARCHIDPLY, 2026-08-25). No concentration statement is possible at n=1.",
+    "exit_mix": "main drew 3 stops and 4 time exits and ZERO targets in 7 paths, while pooled drew 2 targets in 4. Both sit far inside the noise at these counts and the two are not independent samples (they share NATCAPSUQ and WELENT). Recorded for Agent 3, explicitly not a finding."
+   },
+   "statistical_notes": [
+    "n is stated beside every figure above. The largest slice in this batch is n=7 (main); per-trade sd is ~16% and ~859 trades are needed to resolve the live edge, so nothing here is resolvable and no pattern is named.",
+    "All three stops filled at exactly -10.0%, against a post-guard backtest mean stop fill of -12.10% over n=81 stops. That is luck, not an improvement, and it will regress.",
+    "The WELENT pair is ONE stock over overlapping windows (2026-08-27..09-04). Both are categorised because both are real entries with real exits, but they are two CORRELATED observations and must not be counted as two independent draws in any win rate or average.",
+    "NATCAPSUQ is one price path across two buckets. Counted once, in main.",
+    "The per-stock order-value overshoot raised by the orchestrator is closed, not re-derived here: Agent 1 showed sizing is computed at the signal close and filled at the next open, and each overshoot equals that row's fill premium exactly. Not a deviation and not a flag on any trade.",
+    "main's Rs 13,499.30 small-cluster total is 3 winners out of 3 at n=3. It is not reported as a finding and the blended main total is not reported as one either -- the small cluster supplies all of it."
+   ],
+   "gate_disagreements": [
+    "WELENT/pooled id 9 is Process Deviation because pipeline._check_auditor refuses any other category for an outage_window flag. The evidence says its execution was exactly correct: the target was unreachable on both missed bars (09-02 H 745.00, 09-03 H 768.00 vs target 794.40) and it filled at max(target, open) on the first bar that could produce it. I complied with the gate and record here that the classification is a property of the rule -- an exit_date falling in a 3-day window -- rather than a property of the trade. Nothing was patched or worked around."
+   ],
+   "harness_notes_carried_forward": [
+    "pipeline.gate() lines 729-733: the branch for performance_tracker and forward_manager reads the validator's verdict into `v`, tests it, and the body is `pass`. A FAIL or INCONCLUSIVE from Agent 5 does not stop Agents 6 or 7. Independently confirmed by reading it. Reported, not patched.",
+    "_check_steward does not re-verify records_received against the order book the way _check_orchestrator verifies scope.closed_positions. I verified the 11 closed rows directly against a read-only connection to data/positions.db and they match. Reported so the gap is known."
+   ],
+   "at": "2026-09-10T22:30:38",
+   "flag_vocabulary_note": "Every `flags` list is Agent 1's verbatim. The auditor found two things the closed flag vocabulary has no word for (rank-cohort origin, a non-canonical fill_source); they are carried in auditor_observation and new_anomaly rather than invented as flags, because a flag name that matches no standing check is worse than no flag."
+  },
+  "pattern_miner": {
+   "batch_id": "20260910",
+   "cycle": 2,
+   "baseline_read_from": {
+    "file": "data/breakout/baseline.json",
+    "cagr": 2.18,
+    "n": 194,
+    "maxdd": 32.5,
+    "config": "10/20/10d",
+    "note": "Read from disk at 2026-09-10, never quoted from a document. This file said +7.59% for three days after it stopped being true, so every comparison below names where its number came from."
+   },
+   "supporting_baselines_read_from_disk": [
+    {
+     "what": "per-cluster backtest per-trade means",
+     "file": "data/breakout/findings.jsonl",
+     "row": "baseline adopted: hold 10d (2026-08-17)",
+     "n": 231,
+     "micro_avg": 3.375,
+     "micro_n": 137,
+     "small_avg": 2.359,
+     "small_n": 94,
+     "all_mean": 2.962,
+     "all_se": 0.982,
+     "caveat": "PRE-guard and PRE-non-equity corpus (n=231 against today's 194). Its LEVEL is the phantom-fill, ETF-contaminated one and is used here only because baseline.json carries no per-cluster or per-trade figure at all. Every per-cluster t below is therefore an upper bound on confidence, not a measurement."
+    },
+    {
+     "what": "exit-mix distribution",
+     "file": "docs/lessons.md H19b table (batch 20260910-h19-attrib)",
+     "n": 1078,
+     "harvest_stop_share_pct": 43,
+     "harvest_time_share_pct": 40,
+     "harvest_target_share_pct": 17,
+     "live_book_sim_n": 195,
+     "live_book_stop_mean": -12.1,
+     "live_book_time_mean": 3.03,
+     "live_book_target_mean": 24.0
+    },
+    {
+     "what": "fill-premium tercile bound and harvest",
+     "file": "src/research/premium_skip_test.py",
+     "n": 1060,
+     "bound_pct": 2.29,
+     "top_vs_bottom_tercile": -3.71,
+     "std_err": 1.17,
+     "t": -3.18
+    },
+    {
+     "what": "this batch's forward record",
+     "file": "data/breakout/findings.jsonl",
+     "row": "bucket through 2026-09-10",
+     "n": 7,
+     "mean": 2.01,
+     "se": 4.167,
+     "t": 0.483,
+     "significant": false,
+     "note": "computed by overview.py independently of this pipeline and it agrees with Agent 1 and Agent 2 exactly: micro n=4 avg -4.422, small n=3 avg +10.587, realised Rs 5,048.18."
+    }
+   ],
+   "lookback": {
+    "batches_in_window": 1,
+    "n_records": 11,
+    "n_independent_paths": 10,
+    "n_effective_independent_paths": 9,
+    "n_main_the_record": 7,
+    "note": "batch_history is EMPTY. This is the first cycle that will write an entry, so consecutive_batches is 1 for EVERYTHING by construction, rolling 3-batch and 6-batch frequencies do not exist, and there is no previous batch to compare against. The lookback window is this batch alone. Confidence is correspondingly low and is stated as such against every figure rather than once at the end.",
+    "why_no_finding_is_possible_on_recurrence": "The gate's second door -- the same mechanism in 3+ consecutive batches -- is arithmetically unreachable in cycle 2. Only the |t| > 2 door is open, and it needs n >= 5 as well. The largest sample available anywhere in this batch is 10 paths."
+   },
+   "actionable_findings": [],
+   "no_actionable_pattern": true,
+   "no_actionable_pattern_statement": "No actionable pattern at current n. Nothing in this batch reaches n >= 5 with |t| > 2, and consecutive_batches is 1 for everything because batch_history is empty. Two observations are directionally real and carried as Shapes; four are Noise; three are dial-only and archived. No Finding is passed to Agent 4 this cycle.",
+   "shapes_monitored": [
+    {
+     "id": "P1",
+     "pattern": "micro loses while small wins, in main",
+     "tag": "Shape",
+     "n": 6,
+     "t": -1.58,
+     "consecutive_batches": 1,
+     "mechanism": "Every micro path main can claim exited at its stop and every small path exited on time and positive; the split is by cluster, not by any execution or data defect.",
+     "frequency": "3 of 3 adjusted micro paths are losers and 3 of 3 small paths are winners, n=6 of main's 7 (YUKEN removed as unearned). Against the pre-correction backtest per-cluster means read from findings.jsonl (micro +3.375% on n=137, small +2.359% on n=94), which had micro AHEAD of small -- so this batch inverts the historical ordering.",
+     "magnitude_pct_per_trade": {
+      "n": 6,
+      "micro_n": 3,
+      "micro_mean": -10.0,
+      "small_n": 3,
+      "small_mean": 10.587,
+      "gap": -20.59,
+      "std_err": 13.06
+     },
+     "affected_cluster": "both",
+     "standing_check_covered": "no -- standing_checks_active is empty and that is correct, not a gap (cycle 1 aborted before Agent 2 ran)",
+     "rank_slope_risk": "none. A cluster-level P&L split says nothing about depth within a cluster; every live pick in this batch is a top-of-list pick and there is no cohort spread to fit a slope to.",
+     "why_not_a_finding": "|t| = 1.58 at n=6 (se from the documented ~16% per-trade sd, not from the in-sample sd, which is 0 for micro because all three stops filled at exactly nominal). Strip the two rank-cohort trades as well and it is n=4 at t = -1.53. The direction is consistent within each cluster, which is what makes it a Shape rather than Noise, and the whole gap is one cluster drawing three stops in a 3.5-week window.",
+     "candidate_improvement_type_if_it_matures": "not classified -- classification is required for Findings and asserting one here would imply an actionability this does not have",
+     "monitor": "does micro's stop rate stay above small's across the next 3-4 batches, or does this revert to the historical ordering where micro led"
+    },
+    {
+     "id": "P2",
+     "pattern": "a scheduler outage moves the exit to a bar the rule did not name",
+     "tag": "Shape",
+     "n": 2,
+     "t": 1.08,
+     "consecutive_batches": 1,
+     "mechanism": "step() did not run 2026-09-02..09-04 (L91 WAL outage, plus a full-session capture gap on 09-03 in data/known_gaps.json), so YUKEN's 10-bar time exit could not fire on its own bar and executed on the 09-04 catch-up at a different price.",
+     "frequency": "1 of 7 main paths carries a behavioural deviation (t = +1.08 on the observed rate, Wald se). 2 of 10 paths carry the outage_window flag (t = +1.58). The backtest baseline for this is exactly zero -- a backtest cannot miss a scheduler run -- which is itself the point: this is a forward-only failure mode with no historical rate to compare against, so no backtest can ever resolve it.",
+     "magnitude_pct_per_trade": {
+      "n": 1,
+      "displacement_pct_points": 4.84,
+      "rule_bar_return_pct": 7.47,
+      "actual_return_pct": 12.31,
+      "outage_attributable_rupees": 2221,
+      "unearned_rupees_total": 5479.8
+     },
+     "magnitude_note": "The unearned Rs 5,479.80 EXCEEDS main's entire recorded gain of Rs 5,048.18, so the batch's adjusted result is -Rs 431.63 rather than a gain (n=7). That is the largest single-line effect in the batch and it points the wrong way: the outage PAID, and a favourable process failure reads as skill unless the window is checked independently of P&L. WELENT/pooled's Rs 8,830.69 is unearned within pooled and is correctly not subtracted from main.",
+     "affected_cluster": "micro",
+     "standing_check_covered": "no -- standing_checks_active is empty. audit.py carries the specific dates in _KNOWN_HOLD_DEVIATIONS, which documents this instance but does not detect the next one.",
+     "rank_slope_risk": "none directly. Indirect and worth stating: displaced exits add variance to forward per-trade returns without adding information, so a book with frequent outages needs MORE trades to resolve the slope forward, not fewer.",
+     "why_not_a_finding": "n = 2 across the lookback against a floor of 5, and consecutive_batches = 1 against a floor of 3. Both gate doors are shut. Note that a naive binomial test against a baseline rate of exactly 0 returns t = +37.8, which is meaningless -- any single occurrence is infinitely many standard errors from zero. The Wald form on the observed rate (t = 1.08) is the honest number and it is a Shape.",
+     "candidate_improvement_type_if_it_matures": "not classified -- see P1. Recorded only that a backtest cannot resolve it, because the mechanism does not exist in backtest.",
+     "monitor": "count outage-displaced exits per batch and the signed displacement of each; the sign is what matters, since one favourable instance is what makes this easy to ignore"
+    }
+   ],
+   "noise_discarded": [
+    {
+     "id": "P3",
+     "pattern": "positions inherited from the retired rank-cohort buckets sit inside main's total",
+     "tag": "Noise",
+     "n": 2,
+     "t": -0.31,
+     "consecutive_batches": 1,
+     "mechanism": "GMMPFAUDLR (pbook.db cohort2) and SAHYADRI (cohort3) were bought two and three cohort steps below the score's own picks by a retired experiment, and pos.origin='rank-cohort' marks them while nothing reads the column.",
+     "why_noise": "Direction is INCONSISTENT (+2.92% and -10.00%), which is a discard criterion on its own, and t = -0.31 against zero (t = -0.57 against the backtest mean of +2.962% on n=231). Decisively: the population is CLOSED -- exactly two rank-cohort positions ever existed and both are now closed -- so no rule could prevent a recurrence, because there cannot be one from this source.",
+     "the_rider": "Discarding it as a PATTERN is not the same as discarding the fact. These two rows are a real contamination of main's first forward record, worth -Rs 3,488.83 this batch, and stripping them and the unearned YUKEN leaves n=4 live-rule-attributable paths at +2.21% (se 8.0, t = +0.28 against zero). That is the cleanest read of what the live rule actually produced this batch and it is indistinguishable from anything. Agent 2 recorded the same fact in new_anomaly; it belongs to the reporting path, not to Agent 4.",
+     "improvement_type_mapping": "None of the four fits. It is not a new input, not a rule shape, not a forward-trade question and not a removal of an unevidenced rule -- it is a provenance column that no report reads. The four-way classification has no slot for a measurement-hygiene defect, which is why this belongs in a standing check rather than in a rule proposal."
+    },
+    {
+     "id": "P4",
+     "pattern": "fill-premium outlier at entry",
+     "tag": "Noise",
+     "n": 1,
+     "t": 0.0,
+     "consecutive_batches": 1,
+     "mechanism": "ARCHIDPLY filled at 116.50 against a 111.51 signal close, +4.47%, above the +2.29% top-tercile bound frozen in src/research/premium_skip_test.py; it then stopped out at exactly nominal -10.0%.",
+     "why_noise": "n = 1, so no t is computable and 0.0 is recorded rather than a fabricated one. The batch as a whole points the OTHER way: median fill premium is +0.325% across the 10 paths, well BELOW the published +1.20% median, and 1 of 10 above the bound (rate t = +1.05). The single observation is consistent in sign with the harvest measurement (-3.71% +/- 1.17 top vs bottom tercile, t = -3.18, n = 1,060) and adds nothing to it.",
+     "the_rider": "Even a real pattern here has no route to Agent 4: rule registry entry R-P02 -- refuse entries whose fill open exceeds +2.29% over the signal close -- is already status 'rejected' and pipeline.py refuses the rule text. Not re-raised."
+    },
+    {
+     "id": "P5",
+     "pattern": "fill_source carries a value outside the vocabulary any module writes",
+     "tag": "Noise",
+     "n": 1,
+     "t": 0.0,
+     "consecutive_batches": 1,
+     "mechanism": "HAPPYFORGE main id 3 reads 'corpus:open (backfilled)' from an out-of-band UPDATE at 2026-09-04 13:47:53 (pos_log seq 56); positions.py writes only 'corpus:open', 'confirmed' and 'reconciled'. entry_px was not touched and equals the 2026-08-17 corpus open exactly.",
+     "why_noise": "n = 1 and zero P&L effect, so there is no pattern and no magnitude. It is a provenance-label defect, not a trade defect.",
+     "the_rider": "It is real and no active check covers it -- standing_checks_active is empty, so nothing covers anything this cycle. Any downstream test that compares fill_source for equality against the three canonical values silently fails to match this row, which is the class of defect that hides rather than fails. Like P3, none of the four improvement types fits: this is a standing-check candidate, not a rule."
+    },
+    {
+     "id": "P6",
+     "pattern": "main's win rate this batch",
+     "tag": "Noise",
+     "n": 7,
+     "t": 0.39,
+     "consecutive_batches": 1,
+     "mechanism": "4 winners of 7 main paths, 57.1%, against 115 of 231 = 49.8% in the hold-10d backtest row read from findings.jsonl.",
+     "why_noise": "t = +0.39. Removing the unearned YUKEN gives 3 of 6 = 50.0% at t = +0.01, i.e. the batch's win rate is the baseline's to within a rounding error and the apparent outperformance was one outage-displaced exit."
+    }
+   ],
+   "dial_only_archived": [
+    {
+     "id": "P7",
+     "pattern": "main drew zero target exits in 7 paths",
+     "why": "only fix is a dial change",
+     "detail": "0 of 7 main paths exited on target against 17% in the harvest (n=1,078) and 20% in the live-book sim (n=195), both read from the H19b table in docs/lessons.md: t = -1.20 and -1.32. Across all 10 paths it is 2 of 10 = 20.0%, exactly the baseline (t = 0.00) -- pooled simply drew both targets. P(0 targets in 7) at a 20% rate is 0.21, so this is an ordinary draw.",
+     "improvement_type": "none",
+     "dial_named": "TARGET_PCT (+20%) or HOLD_DAYS (10), both existing parameters. CLAUDE.md records hold 10d vs 15d at t = -0.02 on the corrected corpus (n = 193 vs 184).",
+     "log": "Pattern P7: only fix is a dial change. Archived."
+    },
+    {
+     "id": "P8",
+     "pattern": "all three stops filled at exactly nominal -10.0%",
+     "why": "only fix is a dial change",
+     "detail": "3 of 3 stops filled AT the stop with no gap-through, against a stop-class mean of -12.10% in the live-book sim (n=195, 42% stops) read from docs/lessons.md. That is +2.10 points of FAVOURABLE luck; at a plausible stop-class sd of 3-5% it is t = +0.73 to +1.21 on n=3, and it will regress. Agent 2 said the same and was right to.",
+     "improvement_type": "none",
+     "dial_named": "selection.STOP_PCT (-10%).",
+     "log": "Pattern P8: only fix is a dial change. Archived."
+    },
+    {
+     "id": "P9",
+     "pattern": "the outage's natural experiment says holding longer paid",
+     "why": "only fix is a dial change",
+     "detail": "YUKEN held 12 bars and returned +12.31% where the rule's own bar 10 close was +7.47%. This is the most seductive misread available in this batch and it is exactly the dial the project has measured to exhaustion: hold 10d vs 15d reads t = -0.02 on the corrected corpus (n = 193 vs 184, batch 20260820-nonequity3). One favourable accident is not evidence for a longer hold; it is one path through one price history at n=1.",
+     "improvement_type": "none",
+     "dial_named": "selection.HOLD_DAYS (10).",
+     "log": "Pattern P9: only fix is a dial change. Archived.",
+     "not_to_be_confused_with": "P2. P2 is about an exit firing on a bar the rule did not name, which is a process question. P9 is about changing the bar the rule names, which is a dial. They are the same trade and different questions."
+    }
+   ],
+   "delta_vs_previous": "NO PREVIOUS BATCH. batch_history is empty and this cycle writes the first entry, so every count below is an opening value with nothing to compare it to and consecutive_batches is 1 for every observation by construction, not by evidence. Opening values, main only (n=7): Execution errors -- / 1. Process deviations -- / 1 (2 of 10 across all paths). Premium outliers -- / 1. Thesis errors -- / 2. Variance -- / 3 (5 of 10 across all paths). Applied rule R-001: insufficient_data -- no rule has ever been applied and there is no R-001; the registry holds 2 entries, R-P01 (participation cap) and R-P02 (refuse fill premium above +2.29%), both status 'rejected' from before the pipeline existed, so no follow-up is owed. Rank-depth slope: NOT MEASURABLE this batch -- all live picks are top-of-list, there is no cohort spread in the forward book, and n=7. The only within-batch datum is the two inherited cohort trades, cohort2 +2.92% and cohort3 -10.00%, one step apart: a -12.92 point gap on n=1 per cohort, se 22.63, t = -0.57. Directionally consistent with the -1.12%/step baseline and statistically empty. The baseline itself stands unchanged at -1.12% per cohort step (std err 0.28%, t = -3.95, n = 1,062) and NOTHING IN THIS BATCH TESTS IT OR PUTS IT AT RISK.",
+   "delta_counts_opening": {
+    "scope": "main only, n=7, the record",
+    "execution_error": {
+     "previous": null,
+     "current": 1
+    },
+    "process_deviation": {
+     "previous": null,
+     "current": 1
+    },
+    "thesis_error": {
+     "previous": null,
+     "current": 2
+    },
+    "variance": {
+     "previous": null,
+     "current": 3
+    },
+    "premium_outlier": {
+     "previous": null,
+     "current": 1
+    },
+    "all_paths_scope": "n=10: execution 1, process_deviation 2, thesis 2, variance 5",
+    "applied_rule_R_001": "insufficient_data",
+    "rank_depth_slope_this_batch": "not measurable (n=7, no cohort spread)",
+    "rank_depth_slope_baseline": "-1.12% per cohort step, std err 0.28%, t=-3.95, n=1,062"
+   },
+   "rank_slope_note": "A gap worth raising on its own: the -1.12%/step slope is the one claim in this project that survived both the circuit-lock guard and the non-equity correction, and it is NOT recorded anywhere on disk in machine-readable form. I searched data/breakout/simulations.jsonl (32 rows) and data/breakout/findings.jsonl (13 rows) and neither carries a rank-slope record; the figure lives in CLAUDE.md prose and is re-derivable only by re-running src/research/rank_test.py. That is precisely the failure mode baseline.json had for three days. Stated, not fixed -- I do not propose changes.",
+   "temporal_concentration_flags": [
+    {
+     "category": "process_deviation",
+     "flag": "temporally concentrated -- may reflect a regime, not a rule",
+     "share_in_last_25pct_of_lookback": 0.0,
+     "share_in_the_3_day_outage_window": 1.0,
+     "n": 2,
+     "reading": "By the LETTER of the rule -- share of occurrences in the last 25% of the exit-date lookback (2026-09-06..09-10) -- this is 0 of 2 and would NOT flag. By substance it is 2 of 2 inside a single 3-day window that is 3 of the 18 calendar days the batch spans. I flag it on substance. The non-equity case is why: 36.4% of fund trades sitting in one recent window made a precious-metals rally look like the strategy working, and suppressing a 100% concentration on a definitional technicality is the same error with better paperwork.",
+     "but": "It is concentrated BY CONSTRUCTION -- the outage_window flag IS the date range -- and the driver is an infrastructure event (L91 WAL outage, reverted; data/known_gaps.json records 2026-09-03 as a full-session capture gap), not a market regime and not a rule. A closed 3-day event. The flag is raised so that a SECOND cluster in a different window is visible as new rather than as more of the same."
+    },
+    {
+     "category": "thesis_error",
+     "flag": "concentrated at the OPPOSITE end -- 2 of 2 queued on 2026-08-17, the earliest signal day in the batch",
+     "share_in_last_25pct_of_lookback": 0.0,
+     "share_on_the_first_signal_day": 1.0,
+     "n": 2,
+     "reading": "Not a last-25% flag and reported anyway, because a category that is 100% concentrated at either end is not a rate. Both rows are inherited from the pre-rename order book and the population is closed, so this category cannot recur from this source. It should read 0 next batch; if it does not, the population was not closed and that is a genuinely new finding."
+    },
+    {
+     "category": "execution_error",
+     "flag": "none -- no concentration statement is possible at n=1",
+     "n": 1
+    },
+    {
+     "category": "variance",
+     "flag": "none",
+     "share_in_last_25pct_of_lookback": 0.4,
+     "n": 5,
+     "reading": "2 of 5 in 2026-09-06..09-10, under the 50% threshold."
+    },
+    {
+     "category": "whole batch",
+     "flag": "confidence caveat, not a category flag",
+     "n": 10,
+     "reading": "All 10 paths were entered between 2026-08-17 and 2026-08-28 and exited between 2026-08-24 and 2026-09-10. Every number in this report describes one 3.5-week market. That is not temporal concentration within a lookback -- it IS the lookback -- and it is the reason no observation here could clear its error bar even if the mechanism were real."
+    }
+   ],
+   "recurrence": {
+    "method": "For each category: appearance in the previous batch, rolling 3-batch and 6-batch frequency, deviation from the backtest baseline against its own error bar.",
+    "result": "Not computable. batch_history is empty, so 'appeared in the previous batch' has no answer for any category and the rolling frequencies do not exist. Every category's consecutive_batches is 1 by construction. The only door left open by the gate is |t| > 2 at n >= 5, and nothing in this batch reaches it -- the strongest observation anywhere is P1 at |t| = 1.58 on n=6.",
+    "explicitly_lowered_confidence": "With one batch of history, no observation in this report should be treated as more than a hypothesis to count again next cycle."
+   },
+   "ranking": "No Findings, so nothing is ranked and nothing is passed to Agent 4. Had the two Shapes been Findings, (magnitude x frequency) / affected_exposure would order them P2 then P1: P2 is Rs 5,479.80 of unattributable P&L on 1 of 7 main paths against P1's -Rs 20.59 points spread over 6. Recorded for the queue only.",
+   "discrepancies_found_upstream": [
+    {
+     "what": "Agent 2's fill-premium median",
+     "claim": "'Median of the 10 is +0.53%'",
+     "recomputed": "+0.325% on the 10 paths (sorted: -0.43, -0.34, -0.04, 0.08, 0.15, 0.50, 1.17, 1.99, 2.05, 4.47; 5th and 6th are 0.15 and 0.50). Over the 11 records, counting NATCAPSUQ twice, it is +0.50%. Neither reproduces +0.53%.",
+     "material": false,
+     "why_reported": "The conclusion drawn from it is unaffected -- both readings are BELOW the published +1.20% median, so the batch is benign on fill premium either way -- but a figure that cannot be reproduced from the handed-off data should not sit in the record unremarked."
+    }
+   ],
+   "harness_notes_carried_forward": [
+    {
+     "what": "a check that looks like a check and does nothing",
+     "where": "src/ops/pipeline.py gate(), lines 730-733",
+     "verified_how": "read the lines myself rather than trusting the two upstream reports of it",
+     "detail": "for stage in ('performance_tracker', 'forward_manager') it reads the validator's verdict into v, tests 'if v and ...cycle == state[cycle]', and the body of the if is 'pass'. No reason is ever appended. A FAIL or INCONCLUSIVE from Agent 5 therefore does not stop Agents 6 or 7.",
+     "action": "reported, NOT patched. Third independent confirmation (orchestrator, trade auditor, pattern miner)."
+    },
+    {
+     "what": "_check_steward takes records_received on trust",
+     "where": "src/ops/pipeline.py _check_steward()",
+     "verified_how": "read the function; it validates bucket names, the flag vocabulary, independent_paths <= records_received, one trade object per path and the presence of batch_summary.per_cluster, and never opens the order book -- unlike _check_orchestrator, which verifies scope.closed_positions against it",
+     "detail": "a steward that silently dropped a closed row would pass the gate. It did not happen this cycle: 11 closed rows reconcile across the orchestrator, the steward and data/breakout/findings.jsonl independently.",
+     "action": "reported, NOT patched."
+    }
+   ],
+   "gate_disagreements_reviewed": "Agent 2 recorded one: WELENT/pooled is forced to Process Deviation by _check_auditor because it carries outage_window, though its execution was demonstrably correct (target 794.40 unreachable on both missed bars, filled at max(target, open) on the first bar that could produce it). I agree with Agent 2's handling -- it complied and recorded the disagreement -- and I add the pattern-level consequence: the outage rule attributes Rs 8,830.69 of correctly executed pooled P&L to a process failure, which is a conservative error in the safe direction and inflates the process_deviation count from 1 real behavioural deviation to 2 flagged paths. My P2 statistics report both counts separately for that reason. Nothing was patched or worked around.",
+   "handoff_to_agent_4": "Nothing. actionable_findings is empty and no_actionable_pattern is true. That is the result, not a failure of the cycle.",
+   "at": "2026-09-10T22:53:49"
+  }
+ },
+ "log": []
+}

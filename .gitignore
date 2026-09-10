@@ -34,6 +34,12 @@ data/agent_heartbeat.json
 # one-line diff in every unrelated commit. /health reads the file on disk.
 data/listener_heartbeat.json
 data/agent.lock
+
+# The review cycle's status board: overwritten at every transition, meaningful
+# only while a cycle is running. Same category as the heartbeats above. The
+# append-only trail (pipeline_runs.jsonl) and the state (pipeline_state.json)
+# ARE tracked -- those are the record.
+data/breakout/pipeline_current.json
 data/tg_offset.json
 
 # --- XBRL filings: 40,775 files, 84% of the repo, and no measured signal ---

@@ -89,6 +89,22 @@ def main(n=N):
     d, dse, dt = remeasure.gap(res[0]["_r"], res[-1]["_r"])
     print(f"  top cohort - deepest: {d:+.2f}% +/- {dse:.2f}%  t={dt:+.2f}")
 
+    # Record it. Agent 5 has to check every proposed rule against this slope and
+    # had nothing on disk to read -- only CLAUDE.md prose.
+    import analysis
+    import datetime as _dt
+    # This module had no BATCH constant -- its only tag was the literal
+    # "cohorts" handed to simulate.keep(), which is a track name, not a batch.
+    # A figure without a batch tag cannot be compared to anything, so the slope
+    # record carries a dated one. simulate.keep's label is left alone: it is
+    # already in an append-only ledger and re-labelling it would break
+    # comparability with every row above it.
+    _batch = f"{_dt.date.today():%Y%m%d}-rankslope"
+    p = analysis.save_rank_slope(b, se, t, len(ys), _batch,
+                                 gap={"value": round(d, 4), "std_err": round(dse, 4),
+                                      "t": round(dt, 3)})
+    print(f"  recorded to {p.relative_to(paths.ROOT)}")
+
     kept = sum(1 for x in res if simulate.keep(
         f"cohort {x['offset']}", x["_r"], {**BASE, "offset": x["offset"]},
         batch="cohorts", track="cluster", note="rank-cohort portfolio test"))

@@ -164,6 +164,15 @@ def load_findings(limit=None):
 
 
 OCC_BASELINE = paths.SDATA / "occupancy_baseline.json"
+# The rank-depth slope: the ONE claim that survived both the circuit-lock guard
+# and the non-equity correction. Agent 5 must check every proposed rule against
+# it, and it lived only in CLAUDE.md prose -- re-derivable solely by re-running
+# rank_test.py (~4 min) or by trusting a document. That is exactly how
+# baseline.json read +7.59% for three days after it stopped being true.
+# Its own file rather than a key in baseline.json, because `audit.py
+# --rebaseline` OVERWRITES baseline.json with a freshly computed dict and would
+# silently drop it. Same reasoning, same shape, as occupancy_baseline.json.
+SLOPE_BASELINE = paths.SDATA / "rank_slope_baseline.json"
 
 
 def save_occupancy(dist, mean, config):
@@ -179,6 +188,28 @@ def save_occupancy(dist, mean, config):
         {"dist": {str(k): v for k, v in dist.items()}, "mean": round(mean, 2),
          "config": config}, indent=1))
     return OCC_BASELINE
+
+
+def save_rank_slope(b, se, t, n, batch, gap=None):
+    """Store the measured per-trade return per cohort step, with its error bar.
+
+    Written by whatever MEASURED it, never transcribed from prose. The batch tag
+    is mandatory: a figure without one cannot be compared to anything.
+    """
+    import json
+    SLOPE_BASELINE.parent.mkdir(parents=True, exist_ok=True)
+    SLOPE_BASELINE.write_text(json.dumps(
+        {"slope_pct_per_step": round(b, 4), "std_err": round(se, 4),
+         "t": round(t, 3), "n": n, "batch": batch,
+         "top_minus_deepest": gap, "measured_by": "src/research/rank_test.py"},
+        indent=1) + "\n")
+    return SLOPE_BASELINE
+
+
+def load_rank_slope():
+    import json
+    return (json.loads(SLOPE_BASELINE.read_text())
+            if SLOPE_BASELINE.exists() else None)
 
 
 def load_occupancy():

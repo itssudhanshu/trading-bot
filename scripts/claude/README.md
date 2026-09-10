@@ -6,7 +6,7 @@ denies writes to `.claude/settings.json`, `.claude/skills/`, `.claude/hooks/`,
 the file lives in the repo, reviewable in a diff, and one command installs it.
 
 ```bash
-cp -R scripts/claude/settings.json scripts/claude/skills .claude/
+cp -R scripts/claude/settings.json scripts/claude/skills scripts/claude/agents .claude/
 ```
 
 ## settings.json
@@ -32,6 +32,32 @@ no-delete rule the operator asked for is enforced by `pos_no_delete` and
 `pos_log_no_delete` *inside* the database, which binds every connection,
 including a shell one-liner that ignores permissions entirely. The permission
 protected nothing and broke the one command that checks the ledger.
+
+## agents/ and skills/pipeline
+
+The eight-agent review cycle: data steward, trade auditor, pattern miner, rule
+proposer, sealed backtest validator, performance tracker, forward paper trade
+manager, and the orchestrator that gates every handoff. `skills/pipeline` is the
+runner that dispatches them in order.
+
+The prompts hold the judgement. The invariants are NOT in them -- they are in
+`src/ops/pipeline.py`, which refuses a payload quoting a return with no trial
+count, a stage whose predecessor did not run this cycle, a second rule in one
+cycle, a dial, a minimum-score rule, a participation cap, and an
+`etf_trend` row inside the equity pipeline. An agent can be argued out of a
+standard; that is what produced a weight table where two of five variants "beat"
+the live bucket at t < 0.5. Same reasoning that keeps `engine.py`'s risk
+invariants out of every search.
+
+`pipeline._selftest()` asserts every stage has a definition in BOTH this
+directory and `.claude/agents/`, and that the two are byte-identical. That check
+exists because of the failure this README opens with: the repo once held a
+`settings.json` contradicting the one actually in force. A payload staged here
+and never installed, or installed and then edited in place, is the same bug.
+
+Cycle 2 (batch 20260910) was the first end-to-end run. It returned
+`no_actionable_pattern` on n=7 in main, which is the correct answer at that
+sample, and found three defects in the harness itself -- see L96.
 
 ## skills/experiment
 
