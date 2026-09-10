@@ -3951,3 +3951,130 @@ surveillance and news gaps ARE unrecoverable -- checked the same day, NSE's
 reportASM/reportGSM have no date parameter and no archive, and the news feeds
 serve recent items only -- but that is now a tested claim rather than an
 inherited one.
+
+## L95 — H19: it was never the market and never the fundamentals; three trades in four are decided by the exit grid, and the forward book was recording almost none of it
+
+The operator asked what actually moved the closed trades — the breakout rules,
+fundamentals, sentiment, or chart pattern. Four of those were already answered
+separately (`rank_test` / CLAUDE.md fundamentals / L66-L68 / L74-L77) and
+re-running any of them is forbidden. What had never been asked is the
+DECOMPOSITION: of the dispersion in the trades this book actually closed, how
+much was the stock, how much was the market carrying it, and how much was the
+−10/+20/10d grid deciding where the trade stopped. A predictor test cannot
+answer that — it conditions on entry and says nothing about where the realised
+number came from.
+
+`src/research/attribution_test.py`, batch `20260910-h19-attrib`. Two
+hypotheses, signs and bars fixed before the run, on the L78 power harvest
+(offsets 0..5, six disjoint rank cohorts, 1,078 joined trades, returns demeaned
+within cohort so the −1.12%/step rank slope cannot masquerade as an effect).
+
+**H19a, "it was mostly the market": REFUSED at its own bar.** The pre-registered
+honest sample is TIME EXITS ONLY — stop and target returns are pinned to
+−10%/+20% by construction, so including them measures the grid, not co-movement.
+Concurrent equal-weight corpus return over each trade's own holding window:
+
+| sample | n | beta | t | R² | bar was 25% |
+|---|---|---|---|---|---|
+| live book, time exits | 75 | −0.206 ± 0.169 | −1.22 | 2.0% | far below |
+| harvest, time exits | 430 | +0.147 ± 0.056 | +2.62 | **1.6%** | far below |
+| block 2019-2021 | 78 | +0.177 ± 0.130 | +1.36 | 2.4% | far below |
+| block 2022-2023 | 152 | +0.133 ± 0.122 | +1.09 | 0.8% | far below |
+| block 2024-2026 | 200 | +0.108 ± 0.073 | +1.47 | 1.1% | far below |
+
+The harvest slope clears |t| > 2 with the predicted sign and is still worth
+**nothing**: a beta of +0.147 with an R² of 1.6% means a 1% market move shifts
+the average trade by 15 basis points. This is the cleanest demonstration in the
+repo that statistical significance and material size are different questions —
+at n=430 a 1.6% R² resolves, and resolving it changes no belief.
+
+The trap this test was built to avoid is the ALL row, which reads beta +1.188 /
+R² 16.4% on the live book and looks like a market book. It is an artefact of
+conditioning on the outcome: a target exit REQUIRES a +20% run, so market-up
+windows produce more of them, and the correlation is the exit selecting the
+market rather than the market driving the trade. Target exits alone read R²
+43.1%. Had the ALL row been reported on its own — the obvious way to run this —
+the conclusion would have been exactly backwards. The docstring named time-exits
+as the decider before the run, which is the only reason that is visible now.
+
+The forward book says the same thing with no statistics at all. Across the nine
+closed trades the concurrent market moved **−0.76% to +1.48%**, mean +0.22%,
+while the trades ranged −10% to +20%. Mean excess +2.94% on a mean market of
++0.22%. Whatever moved them, it was not the index.
+
+**H19b, "the exit grid decides": CONFIRMED, everywhere.** One-way variance
+decomposition of realised return on exit reason:
+
+| sample | n | stop | time | target | between-class share |
+|---|---|---|---|---|---|
+| live book | 195 | −12.10% (42%) | +3.03% (38%) | +24.00% (20%) | **73.9%** |
+| harvest | 1,078 | −14.21% (43%) | +1.32% (40%) | +21.33% (17%) | **66.4%** |
+| micro | 683 | −14.24% | +1.26% | +21.64% | 69.1% |
+| small | 395 | −14.13% | +1.37% | +20.47% | 59.5% |
+
+**Two thirds to three quarters of everything is which of three doors the trade
+left by.** Not which stock — which door. Selection cannot set the magnitude of a
+stopped or targeted trade; it can only shift the PROBABILITY of reaching each
+boundary, and 60% of trades leave through a hard one. Three consequences worth
+carrying:
+
+- A per-trade mean is a statement about the exit MIX at least as much as about
+  stock picking. The forward book's exit mix (44/33/22) matching the backtest's
+  (42/38/20) is therefore a much stronger validation than it looked, and its
+  +Rs 24,273 a much weaker one.
+- It explains why every knob measured here reads |t| < 1.3. A rule change that
+  does not move the exit mix is competing for the ~30% of variance the grid
+  leaves behind, and 195 trades cannot see into that.
+- Rank depth still works and this is why it is the exception: it moves the mix
+  (deep cohorts are CAGR-negative at −5.7% to −21.1% across offsets 1..5) rather
+  than nudging returns within it.
+
+**Friction, descriptive: the live book earns +1.830% gross per trade and keeps
++0.942%. Costs 0.345%, modelled impact 0.542% — 49% of gross.** The impact half
+is `IMPACT_C = 1.0` and uncalibrated (H12 is the open test), so read it as a
+sensitivity; the costs half is arithmetic. Half the edge is spent reaching the
+market, which is the largest single line in the decomposition after the grid.
+
+### The defect the study found, which matters more than the study
+
+The same question asked of the FORWARD book could not be answered at all, and
+finding out why took one query: **22 of 26 filled positions carried no entry
+feature vector.** `step()` writes one; `fill_live()` — the morning path that
+fills nearly every real order from a live quote, with no corpus in hand — does
+not. At close, `step()` guards on `if f:` inside `try/except Exception: pass`,
+so every one of those trades skipped `learning.record()` silently. **In a month
+of forward trading the book contributed ONE row to `trade_features.jsonl`.** The
+self-learning loop had been running on 2,756 backtest rows and nothing else, and
+every health check said ok, because nothing in the system treats "recorded
+nothing" as different from "had nothing to record".
+
+A second, quieter fault sat in the half that DID work: `step()` snapshotted at
+the FILL day's index, and `entry_features` reads `s.close[i]` — the close of the
+session the order was bought at the open of. Every stored vector carried a price
+the buyer did not have. It never touched P&L, so nothing failed; it corrupts
+precisely the attribution these vectors exist to support.
+
+Both are one fix: `positions.entry_snapshot()` takes the vector at the SIGNAL
+close — what the ranking actually scored, strictly before the fill, and on disk
+by the time either path runs. `step()` uses it, and `reconcile()` backfills it
+for live fills, which is the first moment the signal-day bar and a confirmed
+fill exist together. The bare `except` now names the trade on stderr.
+`_entry_snapshot_selftest` guards both halves, and asserts the two candidate
+bars are actually distinguishable first — the first draft used `off_high`, which
+reads 0.0 on both days of a flat series, so it would have passed while proving
+nothing.
+
+Backfilled from `queued_on`: 17 rows given their signal-close vector, and the 8
+closed trades that never reached the ledger replayed into it (HAPPYFORGE was
+already there — it was the one evening fill). Five etf_trend rows stay empty and
+correctly so: they are funds, denylisted from the equity corpus by L69, and do
+not belong in the equity strategy's ledger. Audit 39/39 after regenerating
+`positions_record.sql`.
+
+**The lesson is L91's, in a new place.** That was a job failing loudly into a log
+nobody read; this is a job succeeding into a file nobody counted. The forward
+trades are the only thing that shrinks the error bars — CLAUDE.md's improvement
+#3, "the improvement with the best expected value by a wide margin" — and the
+mechanism that turns them into evidence had been broken since before the first
+fill. Nothing measured this because every check asked whether the pipeline RAN,
+and none asked whether it produced rows.

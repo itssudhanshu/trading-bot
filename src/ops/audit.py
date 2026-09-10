@@ -581,6 +581,40 @@ def main():
     check("the shadow stop sits below every real entry", not bad,
           f"{len(sh)} positions checked, {len(bad)} malformed")
 
+    # Forward trades are the ONLY thing that shrinks the error bars, and they
+    # become evidence exactly when they land in trade_features.jsonl. For a
+    # month they did not: fill_live() wrote no entry features, so step() found
+    # an empty vector at close, skipped learning.record() inside a bare except,
+    # and 8 of 9 closed trades vanished (L95). Every check passed throughout,
+    # because each asked whether a job RAN, and none asked whether it produced
+    # a row. This one counts rows.
+    #
+    # Equities only. etf_trend holds funds, which L69 denylists from the equity
+    # corpus on purpose, so they have no signal-day bar and no place in this
+    # strategy's ledger -- excluded by name so the exclusion is defended rather
+    # than happening silently.
+    import learning as _ln, json as _j0, sqlite3 as _sq0
+    _recorded = set()
+    if _ln.LEDGER.exists():
+        for _l in _ln.LEDGER.open():
+            try:
+                _r = _j0.loads(_l)
+            except ValueError:
+                continue
+            if _r.get("source") == "portfolio":
+                _recorded.add((_r["symbol"], str(_r["date"]), _r.get("portfolio")))
+    conn.row_factory = _sq0.Row
+    _closed = [dict(r) for r in conn.execute(
+        "SELECT symbol, exit_day, bucket FROM pos WHERE status='closed'"
+        " AND exit_px IS NOT NULL AND bucket != 'etf_trend'")]
+    conn.row_factory = None
+    _lost = [c for c in _closed
+             if (c["symbol"], str(c["exit_day"]), c["bucket"]) not in _recorded]
+    check("every closed forward trade reached the learning ledger", not _lost,
+          f"{len(_closed)} closed equity trades, all recorded" if not _lost else
+          " | ".join(f"{c['symbol']}/{c['bucket']} closed {c['exit_day']}"
+                     for c in _lost[:6]) + f"  ({len(_lost)} missing)")
+
     # -------------------------------------------------------- REPRODUCES
     section("HEADLINE NUMBER")
     # A hardcoded number cannot tell a REGRESSION from ordinary drift: every new

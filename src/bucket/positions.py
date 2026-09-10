@@ -719,8 +719,48 @@ def reconcile(corpus, day, conn=None):
             out.append((p["symbol"], p["entry_px"], official))
         else:
             c.execute("UPDATE pos SET fill_source='confirmed' WHERE id=?", (p["id"],))
+        # The morning fill has no corpus, so this is the first moment the
+        # signal-day bar is on disk AND the row is known to be filled. Without
+        # it a live-filled position carries no features for life and never
+        # reaches the learning ledger.
+        if not (p["features"] or "").strip(" {}"):
+            snap = entry_snapshot(corpus, p)
+            if snap:
+                c.execute("UPDATE pos SET features=? WHERE id=?",
+                          (json.dumps(snap), p["id"]))
     c.commit()
     return out
+
+
+def entry_snapshot(corpus, p):
+    """The feature vector selection actually SAW, taken at the signal close.
+
+    Two things were wrong with taking it at the fill instead, and only the
+    second one shows up in a database dump:
+
+    1. `step()` read `entry_features(s, i)` at the FILL day's index, and that
+       function reads `s.close[i]` -- the close of the session the order was
+       bought at the OPEN of. Every stored vector therefore carried a price the
+       buyer did not have when the decision was made. It never touched P&L, so
+       nothing failed; it quietly corrupts exactly the attribution study these
+       vectors exist to support (batch 20260910-h19-attrib).
+    2. `fill_live()` -- the path that fills almost every real order, in the
+       morning, from a live quote -- has no corpus and wrote NO vector at all.
+       22 of 26 filled positions had none, so `learning.record()` skipped them
+       at close and the forward book put ONE row into trade_features.jsonl in a
+       month of trading.
+
+    The signal close fixes both: it is what the ranking scored, it is strictly
+    before the fill, and it is on disk by the time either path runs.
+    -> {} when the bar is unavailable (a fund, or under 200 sessions of history).
+    """
+    import learning
+    s = corpus.get(p["symbol"])
+    if s is None or not p["queued_on"]:
+        return {}
+    q = p["queued_on"]
+    i = s.index_of(date.fromisoformat(q) if isinstance(q, str) else q)
+    return learning.entry_features(s, i) if i is not None else {}
 
 
 def step(corpus, day, conn=None):
@@ -755,7 +795,7 @@ def step(corpus, day, conn=None):
         c.execute("UPDATE pos SET status='open', entry_day=?, entry_px=?, stop=?,"
                   " target=?, features=?, fill_source=? WHERE id=?",
                   (str(day), px, px * (1 - sp / 100), px * (1 + TARGET_PCT / 100),
-                   json.dumps(learning.entry_features(s, i)), "corpus:open", p["id"]))
+                   json.dumps(entry_snapshot(corpus, p)), "corpus:open", p["id"]))
         filled.append((p["symbol"], px))
 
     for p in c.execute("SELECT * FROM pos WHERE status='open'").fetchall():
@@ -787,8 +827,13 @@ def step(corpus, day, conn=None):
                                   "cluster": p["cluster"], "date": str(day),
                                   "portfolio": p["bucket"],
                                   "origin": p["origin"], "source": "portfolio"}])
-        except Exception:
-            pass
+        except Exception as e:
+            # NOT a bare pass. This block is the only route a forward trade has
+            # into the learning ledger, and it swallowed every failure for a
+            # month while /health kept saying ok. A closed trade that cannot be
+            # recorded is evidence lost for good -- say so on the way past.
+            print(f"WARNING: {p['symbol']} closed but did not reach the "
+                  f"learning ledger: {e!r}", file=sys.stderr)
     c.commit()
     c.row_factory = None
     return filled, closed
@@ -1208,7 +1253,87 @@ def _append_only_selftest():
     print("  append-only ok (no delete, edits logged, one live row/symbol, 3 views)")
 
 
+def _entry_snapshot_selftest():
+    """The stored vector is the SIGNAL close, and a live fill still gets one.
+
+    Two separate failures, one guard, because each hides the other. Taking the
+    snapshot at the fill day reads a price the buyer did not have; taking it
+    nowhere (the live morning path) leaves the trade out of the learning ledger
+    entirely. Both were live simultaneously and neither failed anything.
+    """
+    import tempfile, live_source
+    from datetime import timedelta
+    d0 = date(2024, 1, 1)
+    days = [d0 + timedelta(days=k) for k in range(240)]
+    s = features.Series("S", list(days))
+    for k in range(240):
+        px = 100.0
+        s.close.append(px); s.high.append(px); s.low.append(px); s.open.append(px)
+        s.volume.append(1000); s.turnover.append(1e9)
+        s.deliv_pct.append(50.0); s.surveillance_known.append(True)
+    # The fill day closes 40% higher than the signal day. A snapshot taken at
+    # the fill reads that jump; one taken at the signal cannot see it. `rs`
+    # (close vs close 63 bars back) is the field that separates them -- on a
+    # flat series off_high reads 0.0 on BOTH days, because the day's own high
+    # sets the 125-day maximum, so it cannot tell them apart.
+    sig, fill = 230, 231
+    s.close[fill] = 140.0; s.high[fill] = 140.0
+    corpus = {"S": s}
+    want = __import__("learning").entry_features(s, sig)
+    assert want and want["rs"] is not None, want
+    fill_only = __import__("learning").entry_features(s, fill)
+    assert abs(fill_only["rs"] - want["rs"]) > 0.1, \
+        "the two days are indistinguishable; this selftest proves nothing"
+
+    global DB
+    _odb = DB
+    with tempfile.TemporaryDirectory() as td:
+        DB = Path(td) / "snap.db"
+        try:
+            c = db()
+            # (a) the evening path fills from the corpus.
+            c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,bucket)"
+                      " VALUES('S','small','pending',?,10,?)",
+                      (str(days[sig]), MAIN))
+            c.commit()
+            step(corpus, days[fill], c)
+            got = json.loads(c.execute(
+                "SELECT features FROM pos WHERE id=1").fetchone()[0] or "{}")
+            assert got.get("rs") == want["rs"], (
+                f"step() stored rs={got.get('rs')}, signal day says "
+                f"{want['rs']} and fill day says {fill_only['rs']} "
+                f"-- the snapshot is being taken at the wrong bar")
+
+            # (b) the morning path cannot capture, so reconcile must backfill.
+            c.execute("INSERT INTO pos(symbol,cluster,status,queued_on,qty,bucket)"
+                      " VALUES('S','small','pending',?,10,?)",
+                      (str(days[sig]), POOLED))
+            c.commit()
+            live_source.set_provider(
+                lambda syms: {x: {"ltp": 100.0, "open": 100.0} for x in syms})
+            try:
+                filled, why = fill_live(days[fill], c)
+            finally:
+                live_source.set_provider(None)
+            assert filled, (filled, why)
+            blank = c.execute("SELECT features FROM pos WHERE id=2").fetchone()[0]
+            assert not (blank or "").strip(" {}"), \
+                f"fill_live captured {blank!r}; this guard assumes it cannot"
+            reconcile(corpus, days[fill], c)
+            got2 = json.loads(c.execute(
+                "SELECT features FROM pos WHERE id=2").fetchone()[0] or "{}")
+            assert got2.get("rs") == want["rs"], (
+                f"a live fill still has no signal-day features after reconcile: "
+                f"{got2!r} -- it will never reach the learning ledger")
+            c.close()
+        finally:
+            DB = _odb
+            live_source.set_provider(None)
+    print("  entry snapshot is the signal close, on both fill paths ok")
+
+
 def _selftest():
+    _entry_snapshot_selftest()
     _bars_held_selftest()
     _append_only_selftest()
     _reopen_is_read_only_selftest()
