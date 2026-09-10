@@ -3,12 +3,14 @@
 Plain-language record of the corrections made on 2026-08-19 and 2026-08-20. If
 you only read one page about this project's honesty, read this one.
 
-**There have now been TWO of these, and the second is bigger than the first.**
-Part one below is the circuit-lock fix (halved the result). Part two is the ETF
-fix (took two thirds of what was left). Read both.
+**There have now been THREE of these, and they get smaller.** Part one is the
+circuit-lock fix (halved the result). Part two is the ETF fix (took two thirds
+of what was left). Part three is the fill-hole fix, three trades wide, and its
+importance is that it is small: the first two teach you to expect a bloodbath
+every time someone reads a fill assumption, and that expectation is wrong.
 
 Terms used here are defined in `docs/glossary.md`. Evidence and workings are in
-`docs/lessons.md` (L58, L59, L61).
+`docs/lessons.md` (L58, L59, L61, L98).
 
 ---
 
@@ -259,6 +261,101 @@ rather than in ten years.
 +7.59%, and the audit fails on the difference every time it runs. That is
 deliberate: overwriting it is a decision for the operator, taken knowingly, not
 a side effect of a bug fix.
+
+*Added later: it was re-recorded three days afterwards, on 2026-08-23, as its own
+deliberate step — +2.18% / 32.5% / 194 trades. It has since moved again; see part
+three. This paragraph describes 20 August and is left as written.*
+
+
+---
+
+# Part three — buying at a price printed months later (2026-09-11)
+
+---
+
+## The one-line version
+
+**Three trades in seven years were bought at a price that had not been printed
+yet on the morning they claim to have been bought. Removing them costs 0.40
+percentage points, and the useful part of this story is how SMALL that is.**
+
+---
+
+## What was broken
+
+A stock does not necessarily trade every day the market is open. It can be
+suspended, it can be too thinly traded to print at all, it can be delisted and
+come back years later.
+
+The simulator bought at "the next available bar" for that stock, but wrote down
+"bought tomorrow morning" in the trade record. While the stock trades every day,
+those are the same thing. When there is a hole, they are not.
+
+The worst case in the ledger is **MBAPL**. The signal fired on 27 May 2022. The
+trade is recorded as bought on 30 May 2022. The price it was actually bought at
+was the opening price of **6 February 2023** — eight months later — and that
+price was 7.7% BELOW the closing price the signal was built on. Nobody could
+have bought at that price on 30 May 2022, because it did not exist yet.
+
+A third case is the same fault at its limit: **VENUSREM** signalled on 12 June
+2026 and never printed another bar. The old code skipped it and quietly bought
+the next name down the ranked list instead — a name the ranking itself says is
+worse.
+
+---
+
+## The headline
+
+| | CAGR | worst fall | trades |
+|---|---|---|---|
+| before: the stock's next available price | +1.91% | 32.5% | 195 |
+| **after: tomorrow's price, or no purchase** | **+1.51%** | **35.3%** | **196** |
+
+The trade count goes UP, which sounds backwards for a rule that only refuses
+purchases. It is not: refusing one purchase frees the money for a later one.
+
+---
+
+## How rare this actually is
+
+Two numbers, and confusing them would badly overstate this:
+
+- **0.17%** of all the day-to-day price steps in the database skip at least one
+  market day. Some skip years — one stock skips 1,452 market days.
+- **Three** of them were ever reached by an actual purchase, and **two** of those
+  became completed trades — 1% of 195.
+
+The bucket only ever buys the top five of a ranked list, and a stock liquid
+enough to be on that list rarely stops trading. So the flaw is everywhere in the
+data and almost nowhere in the results.
+
+---
+
+## Why this one is reassuring rather than alarming
+
+Parts one and two each removed a large slice of the recorded profit, and it
+would be reasonable to read those and conclude that every fill assumption in
+this project is hiding a disaster. This is the third one checked the same way,
+and it is worth 0.40 points.
+
+**The method is what carried over, not the size.** All three were found by
+reading what the code assumes about how a purchase happens — never by a
+statistical test. No statistical test could have found any of them: the
+difference between the right answer and the wrong one here is smaller than the
+noise in 195 trades, and it would be smaller than the noise even if it were
+completely wrong.
+
+---
+
+## What was done about the recorded number
+
+Unlike part two, the recorded number **was** updated, deliberately and as its own
+step: `data/breakout/baseline.json` now reads **+1.51% / 35.3% / 196 trades**.
+
+Worth noting: the audit would NOT have forced this. Fourteen new trading days had
+been added since the last recording, and the audit allows the number to drift
+when the data grows. The stale figure would have passed every day, indefinitely.
+Re-recording was a decision, not something a failing check demanded.
 
 ---
 

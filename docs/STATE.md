@@ -3,7 +3,38 @@
 Handoff document. If you are a person or an assistant picking this up with no
 chat history, this file plus `lessons.md` and `CLAUDE.md` is the context.
 
-Last updated: 2026-08-28 — **the dashboard track was removed and two gates
+Last updated: 2026-09-11 — **the third fill-assumption correction, and the
+smallest.** L98: `simulate.run` bought at the symbol's next PRINTED bar while
+stamping the position with the calendar's next SESSION, so a signal on the last
+bar before a hole in a stock's series was filled at a price printed as much as
+1,452 sessions later. MBAPL, signal 2022-05-27, booked as entered 2022-05-30,
+filled at the open of 2023-02-06 and 7.7% below the close its score was built on.
+Adopted on correctness (an L58-family data correction; error bars do not get a
+vote), pre-registered with **no directional prediction** and the reason for
+refusing one written down.
+
+**The baseline was re-recorded the same day, as its own deliberate step:
++1.91% → +1.51% CAGR / 35.3% DD / 196 trades at 1,714 sessions.** The audit did
+not force it — 14 new sessions put the move inside its drift tolerance, so the
+stale figure would have kept passing. Three fills in seven years were affected,
+two of which reached the ledger (1.0% of 195), against 0.17% of the corpus's
+bar-pairs that could express the defect: the flaw is everywhere in the data and
+almost nowhere in the results. **The precedent from L58 and L69 is the shape, not
+the size.**
+
+**The rank-depth slope was re-measured on the corrected path and survived:**
+-1.08% +/- 0.28% per cohort step, t = -3.87, n = 1,089 (batch
+`20260911-rankslope`), against -1.13% +/- 0.28% before. Three corrections now,
+and every one of them moved the LEVEL and left the SIGNAL.
+`data/breakout/rank_slope_baseline.json` carries the post-fix tag, which is what
+Agent 5 reads every cycle. Residue named in L98: the two remaining fill-bar guards still reach
+down the ranking instead of holding cash, and `suspension_probe.py`'s EXIT-side
+result (batch `20260824-suspensionprobe1`) has no lessons entry and no adoption.
+
+*This file jumps from L86 to L98; L87–L97 are recorded in `lessons.md` and were
+never summarised here. L96 and L97 are the review pipeline's, not this work's.*
+
+Previous: 2026-08-28 — **the dashboard track was removed and two gates
 closed.** The two days of React/FastAPI/DuckDB work built a viewer for numbers
 the bot already prints; nothing in selection, the engine, the audit or any
 research module imported one line of it, so it is gone (specs archived in
@@ -13,9 +44,10 @@ pool took KENNAMET at target (+Rs 8,734, shown and not counted). etf_trend
 holds 5, none closed.
 
 **The baseline WAS re-recorded on 2026-08-23** (commit `af100ed2`): +7.59% →
-**+2.18% CAGR / 32.5% DD / 194 trades**, and `audit.py` now passes 38/38.
+**+2.18% CAGR / 32.5% DD / 194 trades**, and `audit.py` then passed 38/38.
 Anything below that still says the recorded baseline is +7.59% and "known to be
-wrong" is describing the state before that commit.
+wrong" is describing the state before that commit. *That figure has since been
+superseded twice — see the 2026-09-11 block at the top.*
 
 Two findings the same day, both from checking before running rather than after:
 **L85** — `data/sectors.json` cannot be used historically. It covers 99.8% of

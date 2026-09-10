@@ -11,7 +11,9 @@ fourth is behaviour and is the one that actually matters:
      as are its learned weights and its recorded headline
   2  no strategy or research module can reach the live order book
   3  a non-breakout strategy cannot resolve its data directory inside data/breakout
-  4  breakout's recorded baseline still reproduces: +7.59% CAGR, n=195
+  4  breakout's recorded baseline still reproduces (read the figure from
+     `data/breakout/baseline.json`, never from this docstring -- it said
+     +7.59% / n=195 for weeks after two deliberate rebaselines had moved it)
 
 Check 4 is NOT repeated here. `audit.py` already re-runs the backtest and
 compares it against `data/breakout/baseline.json`, and the selftest sweep runs

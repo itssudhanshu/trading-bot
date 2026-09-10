@@ -96,6 +96,7 @@ three words for one thing has already caused a wrong build.
 | **participation** | Your order as a share of a stock's normal daily volume. 2% is polite; 20% is shouting. |
 | **circuit lock** / **upper lock** | India's exchange caps how far a stock may move in one day. When it slams into the ceiling, buyers queue and **nobody is selling** — you cannot buy at any price. On a chart it shows as a day where the high equals the low. |
 | **pre-guard** / **post-guard** | Before and after the fix that stopped the backtest pretending it bought those unbuyable days. **Every "pre-guard" number in this project's history was too good.** |
+| **fill hole** | A stock does not print a price every day the market is open — it can be suspended, too thinly traded, or delisted and later relisted. A fill hole is a trade recorded as bought on a morning its stock did not trade, so the price it was "bought" at was printed days, months or years later. Fixed 2026-09-11; three of them in seven years. |
 | **STT / STCG / DP charges** | Indian trading taxes and fees. All are modelled; none are optional. |
 
 ## 7. Data and plumbing

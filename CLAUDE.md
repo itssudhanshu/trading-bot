@@ -191,6 +191,14 @@ rows are re-run under `20260820-nonequity3` and restated inline; the
 `trigger_test`, `rank_test`, `weight_test` and `impact_test` tables are NOT
 re-run and their levels should not be quoted.
 
+**And the reference has moved TWICE MORE since**, so no level on this page is
+current: ordinary session drift took it to +1.91%, and the fill-hole guard (L98,
+below) to **+1.51% / 35.3% DD / 196 trades at 1,714 sessions**, which is what
+`data/breakout/baseline.json` now records. Three corrections in three weeks, each
+one larger than most of the gaps in the tables underneath -- which is the whole
+argument for not re-deciding a knob on a fresh backtest. The SHAPES below still
+stand; the numbers are historical and carry their batch tags for that reason.
+
 A CAGR gap between two backtests is not evidence unless the per-trade edge
 behind it clears its own noise. Checked at current settings:
 
@@ -272,8 +280,8 @@ and new figures are not directly comparable (different hold as well as the
 guard), but the SIGN of the CAGR gap flipped, so the setting no longer rests on
 the tail argument. Nothing about the live bucket changes; its reason improves.
 
-**The one claim that DOES survive is the important one, and neither correction
-touched it.** Rank depth predicts return. Re-run on the corrected universe
+**The one claim that DOES survive is the important one, and none of the THREE
+corrections touched it.** Rank depth predicts return. Re-run on the corrected universe
 (`rank_test`, batch 20260820-nonequity3, 1,062 trades across six disjoint
 cohorts): **-1.12% per cohort step (std err 0.28%, t = -3.95)**, top cohort
 beating the deepest by **+5.64% +/- 1.52%** per trade (t = +3.72). Post-guard
@@ -285,6 +293,16 @@ the SIGNAL. Every one of the five deeper cohorts is CAGR-negative
 and none matches the top. So the SCORE works;
 the knobs around it are noise. That is the right way round -- it means the edge
 lives in stock selection, not in parameter choices that a search would overfit.
+
+**Re-measured a FOURTH time after the fill-hole guard** (batch
+`20260911-rankslope`, 1,089 trades): **-1.08% +/- 0.28%, t = -3.87**, top minus
+deepest +5.28% +/- 1.51% (t = +3.51), all five deeper cohorts still CAGR-negative
+(-5.68% to -22.07%) and 0 of 5 matching the top. It moved 0.05 against a standard
+error of 0.28 -- a fifth of one standard error. **Three corrections now, and all
+three moved the LEVEL and left the SIGNAL.**
+`data/breakout/rank_slope_baseline.json` carries the measured figure with its
+batch tag and is what Agent 5 reads every cycle; quote that file, never this
+paragraph.
 
 This does not mean the rules are worthless -- CAGR also moves with trade count
 and sequencing, which a per-trade mean cannot see. It means the RANKING of
@@ -418,10 +436,60 @@ reads as an instrument. Verified, not assumed -- that check is what found the
 Bharat Bond ETFs.
 
 **The baseline WAS re-recorded on 2026-08-23** (commit `af100ed2`), as its own
-deliberate step: `data/breakout/baseline.json` now reads **+2.18% CAGR / 32.5%
-DD / 194 trades** and `audit.py` passes 38/38 again. It said +7.59% and was
-known to be wrong for three days before that; any text on this page still
-quoting +7.59% as the RECORDED figure predates the rebaseline.
+deliberate step: `data/breakout/baseline.json` then read **+2.18% CAGR / 32.5%
+DD / 194 trades** at 1,700 sessions and `audit.py` passed 38/38 again. It said
++7.59% and was known to be wrong for three days before that; any text on this
+page still quoting +7.59% as the RECORDED figure predates that rebaseline.
+
+**And re-recorded again on 2026-09-11**, its own deliberate step in the same way,
+for L98: **+1.51% CAGR / 35.3% DD / 196 trades at 1,714 sessions**. Note that the
+audit did NOT force this one -- 14 new sessions put the move inside its drift
+tolerance, so the stale figure would have kept passing. `--rebaseline` is the
+deliberate act, not a branch the audit blesses.
+
+## The fill hole (L98), and why it is small
+
+`simulate.run` bought at `s.open[i + 1]` -- the symbol's next printed bar -- and
+stamped the position `days[di + 1]` -- the calendar's next session. Those are one
+date only while the symbol trades on both. A signal on the last bar before a hole
+in a symbol's series was therefore filled at a price printed as much as 1,452
+sessions later and booked as entered the next morning.
+
+    MBAPL   signal 2022-05-27 -> booked 2022-05-30 -> FILLED at the open of
+            2023-02-06, 634.90 against a 688.15 signal close: an entry 7.7%
+            below the price the score was built on, eight months after the fact.
+
+| arm | CAGR | maxDD | n | per trade |
+|---|---|---|---|---|
+| control: the symbol's next print | +1.91% | 32.5% | 195 | +0.94% +/- 1.12% |
+| **the next session, or no fill (live)** | **+1.51%** | **35.3%** | **196** | **+0.85% +/- 1.11%** |
+
+**Three fills in 1,714 sessions, two of which reached the ledger** -- 1.0% of 195
+trades, against 0.17% of the corpus's 2,815,629 bar-pairs that could express the
+defect. Those two numbers are three orders of magnitude apart and must not be
+quoted as one: the bucket buys the top five of a ranked list, and a name liquid
+enough to sit in a tradeable cluster rarely stops printing. **The precedent from
+L58 and L69 is the SHAPE -- a fill the market could not have given, found by
+reading the fill assumption and not by any statistic -- never the size.**
+
+A refused fill CONSUMES the seat rather than passing it down the ranking: at the
+signal close the book queues one order per free seat and cannot know which will
+fail to fill tomorrow, so reaching deeper would be choosing today's substitute
+with tomorrow's news. Both arms were run and they are identical to every digit,
+because `allocate()` returns at most five rows and there was never a sixth to
+fall through to -- so that choice rests on the argument, not on a number.
+
+The rank-depth slope was re-measured on the corrected path and survives:
+**-1.08% +/- 0.28% per cohort step, t = -3.87, n = 1,089** (batch
+`20260911-rankslope`), against -1.13% +/- 0.28% before it. A corrected fill path
+with a slope measured on the old one would have left the review pipeline judging
+every future rule against a stale number.
+
+`simulate.FILL_GAP` names the live policy and `fill_gap="legacy"` still
+reproduces the old behaviour, which is the only way the control arm stays
+runnable. It is a research parameter: the forward book never had this defect --
+`positions.step` fills a pending order at the open of whatever session the symbol
+next trades and stamps `entry_day` with THAT date.
 
 ## Market impact
 

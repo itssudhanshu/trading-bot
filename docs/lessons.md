@@ -4239,3 +4239,179 @@ expected output of a bucket closing 7 to 11 trades a cycle against a bar built f
 n ~ 195. `overview.py` already encodes the general form of this: no number of
 positive simulations can produce a YES. The same holds in reverse -- no number of
 empty cycles can license a lower bar.
+## L98 — The entry fill came from the symbol's next PRINT, not the next SESSION (decisive, and small)
+
+`src/research/simulate.py` bought at `s.open[i + 1]` — the symbol's next printed
+bar — and stamped the position `days[di + 1]` — the calendar's next session.
+Those are one date only while the symbol trades on both. When a symbol has a bar
+on `d` and none on `d + 1` (suspension, illiquidity, a delisting followed by a
+relisting) the price came from the far side of the hole while the trade was
+booked as filled the next morning. Call it a **fill hole**: the recorded entry
+day is a session the symbol did not trade.
+
+Same family as L58 (fills on circuit-locked bars) and L69 (delisted funds inside
+the equity clusters), and it is the ENTRY side of the residue L71 wrote down and
+left — *"the engine would also mis-fill a stop THROUGH a suspension gap …  same
+family, not yet measured"*. That sentence was about exits. This is the other half.
+
+Pre-registered as `src/research/fill_hole_test.py`, batch `20260911-fillhole1`,
+with **no directional prediction** and the reason for refusing one written down:
+L58 and L69 both removed fills that flattered the record, and this defect pulls
+both ways — the seat and its capital are locked from the recorded entry day
+until the symbol trades again (a cost today's code already pays), while the fill
+price is chosen with information the signal day could not have had.
+
+### How much of the data can express it, and how much of it the bucket bought
+
+Those are not the same number and treating them as one is how this would have
+been written up as another L69.
+
+| | count | of | share |
+|---|---|---|---|
+| corpus bar-pairs that skip at least one session | 4,819 | 2,815,629 | 0.17% |
+| fill holes the live bucket reached at the fill step | 3 | 1,714 sessions | — |
+| of those, trades that reached the closed ledger | 2 | 195 | 1.0% |
+
+The corpus tail is severe — UNITECH 2019-11-20 → 2025-10-07 (1,452 sessions
+skipped), SICAGEN 1,167, AHLWEST 1,097, ARIHANT 1,033 — and the bucket touched
+none of it, because it only ever buys the top five of a ranked list and those
+names are liquid enough to sit in a tradeable cluster in the first place. **Three
+orders of magnitude separate "the defect exists in the data" from "the defect
+bought something."**
+
+### The three fills, verified against the raw bars rather than the ledger
+
+| name | signal | booked as entered | actually filled | fill vs signal close | outcome |
+|---|---|---|---|---|---|
+| MBAPL | 2022-05-27 | 2022-05-30 | **2023-02-06**, 172 sessions later | 634.90 vs 688.15, **−7.7%** | stop, −10.52% |
+| SIMPLEXINF | 2025-03-21 | 2025-03-24 | 2025-04-01, 5 sessions later | 311.00 vs 292.50, **+6.3%** | time, +0.13% |
+| VENUSREM | 2026-06-12 | 2026-06-15 | **never** — 2026-06-12 is its last print | — | not filled |
+
+MBAPL is the shape of the thing: an eight-month hole, and the book was handed an
+entry 7.7% BELOW the close its signal was built on. It still lost 10.52%.
+
+VENUSREM is the same defect at its limit, and today's code already had a line
+for it — `if i is None or i + 1 >= len(s): continue` — which skipped the name and
+then **reached one place further down the ranking and bought a worse one**, at a
+measured −1.12% per rank step. That is now the same rule as the other two.
+
+### What it was worth
+
+Live config (3 micro / 2 small, breakout trigger, 10-day hold, `IMPACT_C = 1.0`),
+1,714 sessions, 2019-10-01 .. 2026-09-10:
+
+| arm | CAGR | maxDD | n | win | per trade |
+|---|---|---|---|---|---|
+| LEGACY (the control; every figure before this batch) | +1.91% | 32.5% | 195 | 45% | +0.94% ± 1.12% |
+| **NEXT_SESSION (adopted)** | **+1.51%** | **35.3%** | **196** | 45% | **+0.85% ± 1.11%** |
+| NEXT_SESSION_FALLTHROUGH (sensitivity) | +1.51% | 35.3% | 196 | 45% | +0.85% ± 1.11% |
+| TRUE_DAY (diagnostic) | +2.05% | 32.5% | 195 | 45% | +0.96% ± 1.12% |
+| edge, adopted − control | | | | | **−0.09% ± 1.58%, t = −0.06** |
+
+**0.40 CAGR points, which is 21% of the level and nothing at all per trade.**
+Drawdown gets 2.8 points worse, the same direction as L69: the fills removed
+were, on this one path, better than the ones that replaced them. Per cluster the
+move is micro +0.92 → +0.88 (n 120 → 119) and small +0.97 → +0.82 (n 75 → 77);
+by regime block the first block is untouched (28 trades, no holes in it) and the
+whole of the move sits in 2021-06..2023-03 (−1.50 → −1.79 on 73 → 76 trades),
+which is MBAPL's block. Every one of those gaps is well under one standard error.
+
+**Error bars do not get a vote, and that was registered before the run.** A trade
+recorded as entered on a day its symbol did not trade is wrong at t = 0 exactly
+as it is wrong at t = 3. The number is the consequence, not the criterion.
+
+### The rank-depth slope was re-measured, and it survived a third correction
+
+The slope is the one claim in this project that clears its error bar, and since
+the review pipeline landed it is also a FILE — `data/breakout/rank_slope_baseline.json`,
+which Agent 5 reads as authoritative on every cycle and is told never to quote
+from prose. Correcting the fill path without re-running it would have left main
+with a corrected book and a slope measured on the old one. Re-run
+(`rank_test.py`, batch `20260911-rankslope`, 6 disjoint cohorts):
+
+| batch | what had been corrected | slope %/step | std err | t | n |
+|---|---|---|---|---|---|
+| pre-guard | nothing | −0.90 | 0.35 | −2.56 | 1,068 |
+| `20260819-postlock` | circuit locks (L58) | −1.18 | 0.29 | −4.10 | 1,015 |
+| `20260820-nonequity3` | + delisted funds (L69) | −1.12 | 0.28 | −3.95 | 1,062 |
+| `20260910-rankslope` | (same rules, more sessions) | −1.13 | 0.28 | −4.04 | 1,078 |
+| **`20260911-rankslope`** | **+ fill holes (this entry)** | **−1.08** | **0.28** | **−3.87** | **1,089** |
+
+**It moved 0.05 against a standard error of 0.28** — a fifth of one standard
+error — and stays RESOLVED. Top cohort minus deepest is +5.28% ± 1.51%
+(t = +3.51), all five deeper cohorts are still CAGR-negative (−5.68% to −22.07%),
+and **0 of 5 match or beat the top**. The shallow half reads −4.10% against the
+deep half's −17.08%.
+
+**That is three corrections in a row that moved the LEVEL and left the SIGNAL**,
+which L61 first noticed and which is now the strongest single argument this
+project has: the edge lives in stock selection, not in the parameters around it,
+and every large correction so far has landed on the part that was not the edge.
+
+Worth keeping as a cross-check: cohort 0 reproduces the adopted arm to every
+digit (+1.51% / 35.3% DD / 196 trades), so the slope was measured on the same
+book that was re-baselined and not on a neighbouring configuration.
+
+### Three things the run said that the design did not expect
+
+**The mislabelling was almost free; the refusal was the whole cost.** TRUE_DAY —
+keep the fill, stamp it with the bar the price came from — reads +2.05%, i.e.
+0.14 points ABOVE the control. The only thing that flag changes is the hold
+clock (`held` counts the symbol's bars strictly after `entry_day`, so a
+mislabelled position counted its own fill bar as day one), and the two ledgers
+were diffed rather than reasoned about: **it moves exactly one exit.** MBAPL
+stopped out on the same bar for the same −10.52% and only its `held` field
+changed, 10 → 9; SIMPLEXINF timed out one session later, 2025-04-16 → 2025-04-17,
+**+0.13% → +4.60%**. Every other trade in the ledger keeps its exit day and its
+return to six decimals, differing only through the equity path that sizes later
+positions. So of the 0.40-point move, none of it is the wrong date as such: it
+is the fills the corrected rule refuses and the seats it leaves empty. One
+mislabelled trade in seven years was also being exited a session early.
+
+**Consuming the seat versus reaching deeper is UNRESOLVED by this corpus.** The
+two arms are identical to every digit, which can only mean no substitute was ever
+available: `allocate()` returns at most `sum(TAKE_PER_CLUSTER)` = 5 rows, so once
+those are exhausted there is nothing below the list to fall through to. The live
+choice — consume the seat — therefore rests on the argument and not on a number:
+at the signal close the book queues one order per free seat and cannot know which
+of them will fail to fill tomorrow, so choosing the substitute today would be
+lookahead. The fixture proves the mechanism works (holes in half the names, and
+the two policies then buy different sets); the corpus never gave it the chance.
+
+**A prediction written in prose and checked in code caught a wrong mental
+model.** R3 said the corrected arm "takes FEWER OR EQUAL trades, since the rule
+only ever refuses fills"; the code compared HOLE counts, which held. The prose
+version FAILED: 196 trades against 195. A refused fill releases the seat for a
+later signal, so refusing fills can RAISE the trade count. Both readings are
+scored separately in the module rather than the sentence being quietly rewritten
+to match the code.
+
+### What is different about this one, against its precedents
+
+L58 took away half the recorded CAGR and L69 took away two thirds of what was
+left. Reading "same class as L58" as "expect the same magnitude" would have been
+wrong: this is three fills in seven years. **The precedent is the SHAPE — a fill
+the market could not have given, found by reading the fill assumption rather than
+by any statistic — not the size.** L58 said as much in its own last paragraph: a
+per-trade test could not have found it, and only reading the fill assumption
+could. That is still true, and it is still the only method that has worked on
+this class of defect.
+
+### The residue, named so it is not rediscovered
+
+- The two remaining fill-bar conditions — a zero/absent open, and the `tradable`
+  hook — still `continue` down the ranking rather than consuming the seat. Same
+  argument applies to them; neither is measured.
+- `suspension_probe.py` (batch `20260824-suspensionprobe1`) measured the EXIT
+  half of L71's residue at +0.20% / 39.1% / 201 against the same control and its
+  result is in `data/research/suspension_probe.jsonl` with **no lessons entry and
+  no adoption**. The `tradable` hook it added is live only as a research
+  parameter. That decision was never written down and should be.
+- `pipeline.py:197` carries `RANK_SLOPE_BASELINE = -1.12  # (se 0.28, t=-3.95)`
+  as a literal, under a header reading *"Agent 5's sealed evaluation, in code so
+  no upstream agent can move it"*. It is read only by that module's own selftest
+  fixtures, so nothing is currently judged against it — but it was already stale
+  before this entry (the recorded file said −1.13) and it is stale again now.
+  `analysis.load_rank_slope()` exists and returns the measured figure. A number
+  that looks sealed and is actually a copy is the exact defect
+  `rank_test.py`'s own docstring records about `hold=15`.

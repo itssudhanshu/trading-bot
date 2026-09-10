@@ -52,6 +52,19 @@ def _liq(s, i, win=60):
     if not t or len(rets) < 5:
         return None, None
     return statistics.median(t), statistics.pstdev(rets) * 100
+
+
+# ADOPTED 2026-09-11, batch 20260911-fillhole1 (L98). A fill is taken only if
+# the symbol has a bar on the session the trade is recorded as entering. Before
+# this, `s.open[i + 1]` read the symbol's next PRINT while `entry_day` was
+# stamped with the calendar's next SESSION, so a signal on the last bar before a
+# hole was filled at a price printed up to 1,452 sessions later -- MBAPL, signal
+# 2022-05-27, booked as entered 2022-05-30, filled at the open of 2023-02-06 and
+# 7.7% below the close the signal was built on. Named here rather than left as a
+# literal default so the control arm is one word away and nothing has to
+# reproduce the old behaviour from memory.
+FILL_GAP = "next_session"
+
 STCG = 0.20         # short-term capital gains on STT-paid equity; 15-day hold
                     # is always short term. Applied per financial year on NET
                     # realised gains, so losses offset -- taxing each winning
@@ -64,7 +77,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
         start_idx=300, trigger="none", offset=0, max_corr=None,
         decorr_open=False, sector_cap=None, sector_map=None, sector_cash=False,
         impact_c=engine.IMPACT_C, sizing="equal", targets=None, stop_to=None,
-        atr_stop=None, time_exit=None, tradable=None):
+        atr_stop=None, time_exit=None, tradable=None, fill_gap=FILL_GAP):
     """`targets` = [(pct, fraction), ...]: a ladder of PARTIAL exits, each
     selling `fraction` of the original quantity at entry*(1 + pct/100).
     `stop_to` = (trigger_pct, new_stop_pct): once price touches
@@ -94,6 +107,31 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
     None is byte-for-byte today's path; suspension_probe.py uses it to refuse
     fills that no counterparty existed for.
 
+    `fill_gap` = what to do when the symbol has no bar on the session the fill
+    is recorded against. The entry price is `s.open[i + 1]`, the SYMBOL's next
+    print; the position is stamped `days[di + 1]`, the CALENDAR's next session.
+    Those are the same date only while the symbol trades on both, and 0.17% of
+    the corpus's bar-pairs skip at least one session (L98).
+
+      "legacy"                   fill anyway, keep the calendar stamp. What
+                                 every result before batch 20260911-fillhole1
+                                 was measured on; kept so the control arm stays
+                                 reproducible, never run forward.
+      "next_session"             no bar on days[di + 1] -> no fill, and the seat
+                                 is CONSUMED. THE LIVE RULE, and the default --
+                                 see FILL_GAP above.
+      "next_session_fallthrough" the same test, but the seat is passed down the
+                                 ranking. A sensitivity arm only: the book
+                                 cannot know at the signal close which of its
+                                 queued orders will fail to fill tomorrow, so
+                                 choosing the substitute today is lookahead.
+      "true_day"                 fill anyway, stamp the bar the price came from.
+                                 A diagnostic that separates the mislabelling
+                                 from the fill.
+
+    Holes are COUNTED under every policy, into the returned `fill_gaps`, so the
+    legacy arm can say how many of its own fills were phantom-dated.
+
     `atr_stop` = k places the stop k x ATR(14) below the fill instead of a flat
     `stop_pct`. A fixed percentage asks a 6%-daily-vol microcap and a 2%-vol
     name to survive the same distance; ATR asks each to survive the same amount
@@ -102,10 +140,20 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
     # Default to the real pocket rather than a hardcoded figure: a simulation
     # run at a different capital from the live bucket is not a test of the live
     # bucket, because position size drives the cost percentage.
+    if fill_gap not in ("legacy", "next_session", "next_session_fallthrough",
+                        "true_day"):
+        # Loud, not silent. A misspelt policy that quietly means "legacy" is the
+        # --no-fundamentals flag all over again: it parsed cleanly and did
+        # nothing for a full 25-minute search.
+        raise ValueError(f"unknown fill_gap policy {fill_gap!r}")
     capital = selection.CAPITAL if capital is None else capital
     equity = peak = capital
     maxdd = 0.0
     open_pos, closed = [], []
+    # (signal day, symbol, the bar the fill price would come from). Recorded
+    # under every policy including "legacy", so the control arm can say how many
+    # of its own fills were dated to a session the symbol did not trade.
+    fill_gaps = []
     next_pid = 0                 # both legs of a scaled exit share one id
     fy_net, taxed = {}, set()
     occupancy = []
@@ -297,7 +345,36 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                         continue
                 s = corpus[r["symbol"]]
                 i = s.index_of(day)
-                if i is None or i + 1 >= len(s):
+                if i is None:
+                    continue
+                # THE FILL BAR MUST BE THE CALENDAR'S NEXT SESSION, not merely
+                # the symbol's next print. `s.open[i + 1]` reads the far side of
+                # any hole in this symbol's series -- suspension, illiquidity, a
+                # delisting followed by a relisting -- while `entry_day` below
+                # is stamped `days[di + 1]` regardless. The corpus tail runs to
+                # 1,452 skipped sessions and the worst the bucket actually
+                # reached was 172 -- MBAPL, bought at a price printed eight
+                # months after the morning its trade claims (L98).
+                #
+                # `i + 1 >= len(s)` -- the signal landed on this symbol's last
+                # print ever -- is the same defect at its limit, and is folded in
+                # here rather than left as its own `continue`, which reached
+                # deeper down the ranking and bought a worse name.
+                hole = i + 1 >= len(s) or s.days[i + 1] != days[di + 1]
+                if hole:
+                    fill_gaps.append((day, r["symbol"],
+                                      s.days[i + 1] if i + 1 < len(s) else None))
+                    if fill_gap in ("next_session", "next_session_fallthrough"):
+                        # THE SEAT IS CONSUMED. At the signal close the book
+                        # queues one order per free seat and cannot know which of
+                        # them will fail to fill tomorrow; reaching deeper would
+                        # be choosing today's substitute with tomorrow's news.
+                        # The fallthrough policy is the sensitivity arm and is
+                        # never run forward.
+                        if fill_gap == "next_session":
+                            room -= 1
+                        continue
+                if i + 1 >= len(s):
                     continue
                 e = s.open[i + 1]
                 if not e:
@@ -351,7 +428,10 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                                  "trig": (e_eff * (1 + stop_to[0] / 100)
                                           if stop_to else None),
                                  "stop_dist": (e_eff - _stop_px) / e_eff * 100,
-                                 "entry_day": days[di + 1], "imp_in": imp})
+                                 "entry_day": (s.days[i + 1]
+                                               if fill_gap == "true_day"
+                                               else days[di + 1]),
+                                 "imp_in": imp})
                 held_clusters[r["cluster"]] += 1
                 if sector_map:
                     _s = sector_map.get(r["symbol"])
@@ -370,6 +450,7 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                          / max(len(occupancy), 1) * 100),
             "occ_empty": (sum(1 for x in occupancy if x == 0)
                           / max(len(occupancy), 1) * 100),
+            "fill_gaps": fill_gaps,
             "equity": equity, "capital": capital, "years": yrs,
             "total_pct": (equity / capital - 1) * 100,
             "cagr": ((equity / capital) ** (1 / yrs) - 1) * 100 if yrs > 0.5 else float("nan"),
@@ -588,6 +669,27 @@ def _selftest():
     # and 8.7% +/- 1.5% of real picks had exactly that fill bar.
     assert not run(_corpus("L", locked=True), days, **kw)["trades"], \
         "bought a stock that was band-locked every session"
+    # `fill_gap`: default-inert, loud on a typo, and silent on a gapless corpus.
+    # What the policies DO with a hole is fixture work of its own and lives in
+    # research/fill_hole_test.py -- this fixture has a bar on every session for
+    # every name, so it cannot express one.
+    assert base["fill_gaps"] == [], \
+        f"a corpus with a bar on every session reported holes: {base['fill_gaps']}"
+    # Re-derived when the default moved from "legacy" to "next_session" (L98).
+    # The assertion is the PROPERTY -- a corpus that cannot express a fill hole
+    # cannot tell the policies apart -- not "legacy equals the default", which
+    # was true only while legacy WAS the default.
+    assert all(run(corpus, days, fill_gap=p, **kw)["equity"] == base["equity"]
+               for p in ("legacy", "next_session",
+                         "next_session_fallthrough", "true_day")), \
+        "the policies differ on a corpus with a bar on every session"
+    assert FILL_GAP == "next_session", \
+        f"the live fill policy is {FILL_GAP!r}; L98 adopted 'next_session'"
+    try:
+        run(corpus, days, fill_gap="next-session", **kw)
+        raise AssertionError("a misspelt fill_gap policy was accepted")
+    except ValueError:
+        pass
     assert all(t["why"] == "stop" for t in base["trades"]), \
         [t["why"] for t in base["trades"]]
     parts = [t for t in sc["trades"] if t["why"] == "partial"]
