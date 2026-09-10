@@ -610,6 +610,54 @@ def main():
     conn.row_factory = None
     _lost = [c for c in _closed
              if (c["symbol"], str(c["exit_day"]), c["bucket"]) not in _recorded]
+    # A time exit is the ONLY exit whose date the rule fixes in advance: stop
+    # and target fire when price says so, but "sell at the close of bar 10"
+    # names the bar. Nothing checked that it did. YUKEN was held 12 bars and
+    # sold on 2026-09-04, the day the book came back from the L91 outage --
+    # +12.31% against the +7.47% the rule specified, so Rs 2,221 of realised
+    # P&L was bought with exposure the plan never authorised. It read as the
+    # best micro-cap trade of the month.
+    #
+    # Favourable deviations are the dangerous ones: an unauthorised loss gets
+    # investigated, an unauthorised gain gets counted as skill.
+    # Acknowledged BY EXACT TRADE, with a reason, the way run_selftests.py
+    # excludes its four modules by name -- so the exception has to be defended
+    # rather than happening silently, and any NEW deviation still fires. The
+    # book is append-only: this trade closed and cannot be undone, so a check
+    # that keeps failing on it is the L93 shape (an audit that can never
+    # recover) and would be muted within a week.
+    _KNOWN_HOLD_DEVIATIONS = {
+        ("YUKEN", "main", "2026-09-04"):
+            "held 12 of 10 bars: the L91 WAL outage stopped step() for "
+            "2026-09-02..04, so the time exit could not fire on its bar. "
+            "Sold at +12.31% where the rule specified +7.47% -- about "
+            "Rs 2,221 of realised P&L the plan did not authorise. Recorded, "
+            "not corrected: the row is closed and the book never rewrites "
+            "history.",
+    }
+    _late = []
+    import sqlite3 as _sq1
+    conn.row_factory = _sq1.Row
+    for _p in [dict(r) for r in conn.execute(
+            "SELECT symbol, entry_day, exit_day, bucket FROM pos"
+            " WHERE status='closed' AND exit_reason='time'"
+            " AND bucket != 'etf_trend'")]:
+        _s = corpus.get(_p["symbol"])
+        if _s is None:
+            continue
+        _h = positions.bars_held(_s, _p["entry_day"], _p["exit_day"])
+        if _h != selection.HOLD_DAYS and (
+                _p["symbol"], _p["bucket"],
+                str(_p["exit_day"])) not in _KNOWN_HOLD_DEVIATIONS:
+            _late.append(f"{_p['symbol']}/{_p['bucket']} held {_h} of "
+                         f"{selection.HOLD_DAYS} (sold {_p['exit_day']})")
+    conn.row_factory = None
+    check("every time exit fired on the bar the rule names", not _late,
+          f"{selection.HOLD_DAYS}-day rule honoured on every time exit"
+          + (f" ({len(_KNOWN_HOLD_DEVIATIONS)} acknowledged deviation(s))"
+             if _KNOWN_HOLD_DEVIATIONS else "")
+          if not _late else " | ".join(_late))
+
     check("every closed forward trade reached the learning ledger", not _lost,
           f"{len(_closed)} closed equity trades, all recorded" if not _lost else
           " | ".join(f"{c['symbol']}/{c['bucket']} closed {c['exit_day']}"
