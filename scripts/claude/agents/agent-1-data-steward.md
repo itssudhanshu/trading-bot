@@ -66,6 +66,28 @@ Prices and percentages to 2 decimal places. Compute if missing:
 If `signal_close` is unavailable, mark `fill_premium_pct` as `"not_computable"`
 and flag `feature_gap`. Never infer a signal close from a nearby bar.
 
+## 3a. Origin
+
+Every trade carries `origin`, read from `pos.origin`. **A NULL maps to
+`"breakout"`** — the live strategy. Anything else names the experiment that
+chose it.
+
+Two closed rows carry `rank-cohort`: positions from the retired deeper buckets,
+real forward trades that the current strategy did not select. They stay in the
+order book because they happened. They are kept out of the error profile because
+the rule that made them no longer exists — otherwise every cycle re-classifies
+them as Thesis Errors and the profile becomes unreadable.
+
+When any trade has a non-`breakout` origin, the batch summary must state the
+split rather than imply it:
+
+```json
+"trades_main_origin_breakout": 0, "trades_main_other_origin": 0, "other_origin_pnl": 0
+```
+
+The pipeline refuses a trade with no `origin` at all — an unlabelled trade is
+assumed to be the live strategy's and cannot be separated afterwards.
+
 ## 4. Anomaly flags
 
 Every trade gets a `flags` array. The vocabulary is closed — the pipeline
@@ -106,11 +128,13 @@ End with one fenced JSON object.
  "records_received": 0, "etf_trend_excluded": 0, "independent_paths": 0,
  "dedup_notes": ["3 records (main+pooled+capped) collapsed to 1 path: NATCAPSUQ"],
  "trades": [{"ticker": "...", "buckets": ["main"], "cluster": "micro",
-             "flags": [], "pnl_pct": 0.0, "fill_premium_pct": 0.0,
-             "bars_held": 0, "exit_reason": "stop"}],
+             "origin": "breakout", "flags": [], "pnl_pct": 0.0,
+             "fill_premium_pct": 0.0, "bars_held": 0, "exit_reason": "stop"}],
  "batch_summary": {"n": 0, "total_pnl_main_only": 0,
                    "winners_main": 0, "losers_main": 0,
                    "flags_raised": {}, "feature_gap_count": 0,
+                   "trades_main_origin_breakout": 0,
+                   "trades_main_other_origin": 0, "other_origin_pnl": 0,
                    "per_cluster": {"micro": {"n": 0, "winners": 0, "losers": 0, "pnl": 0},
                                    "small": {"n": 0, "winners": 0, "losers": 0, "pnl": 0}}}}
 ```

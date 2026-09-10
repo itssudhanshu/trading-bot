@@ -60,9 +60,17 @@ import paths
 # (agent.py:33, last_snapshot / last_runner / last_research). Two files with one
 # basename meaning two things is rules.md R1's related failure -- the one where
 # `rank2` printed beside a stock at rank 5 and both were called rank.
-STATE = paths.SDATA / "pipeline_state.json"      # cycle state, registry, checks
-CURRENT = paths.SDATA / "pipeline_current.json"  # status board, overwritten
-RUNS = paths.SDATA / "pipeline_runs.jsonl"       # audit trail, append-only
+# PIPELINE_DIR redirects all three files, for a REHEARSAL -- proving the
+# plumbing with a synthetic rule that must never reach the live registry or the
+# live batch history. It is loud (main() prints a banner) and off by default,
+# because a quiet way to write somewhere else is how fixture rows got into the
+# live order book.
+_DIR = Path(os.environ["PIPELINE_DIR"]) if os.environ.get("PIPELINE_DIR") \
+    else paths.SDATA
+REHEARSAL = _DIR != paths.SDATA
+STATE = _DIR / "pipeline_state.json"      # cycle state, registry, checks
+CURRENT = _DIR / "pipeline_current.json"  # status board, overwritten
+RUNS = _DIR / "pipeline_runs.jsonl"       # audit trail, append-only
 VERSION = 1
 STALE_MIN = 5          # a status board older than this with an agent named is hung
 # ...except where the work legitimately takes longer. Agent 5 runs both arms of
@@ -102,7 +110,8 @@ STAGES = {
         "agent": "agent-2-trade-auditor",
         "after": ("data_steward",),
         "requires": ("batch_id", "trades", "error_profile", "unearned_pnl",
-                     "adjusted_pnl", "per_cluster", "standing_check_hits"),
+                     "adjusted_pnl", "per_cluster", "standing_check_hits",
+                     "non_strategy_positions"),
     },
     "pattern_miner": {
         "agent": "agent-3-pattern-miner",
@@ -121,6 +130,7 @@ STAGES = {
         "agent": "agent-5-backtest-validator",
         "after": ("rule_proposer",),
         "requires": ("batch_id", "rule_id", "batch_tag", "verdict",
+                     "research_file",
                      "baseline_read_from", "baseline_value", "with_rule",
                      "effect", "adoption_bar_met", "impact_sensitivity",
                      "rank_slope", "affected_trades", "output_inspection",
@@ -155,6 +165,14 @@ ORDER = tuple(STAGES)
 AGENT_NO = {s: str(i) for i, s in enumerate(ORDER)}      # stage -> "0".."7"
 
 EQUITY_BUCKETS = ("main", "pooled", "capped")
+# pos.origin is NULL for a live pick and names the experiment otherwise. Two
+# closed rows carry 'rank-cohort' -- positions from the retired deeper buckets,
+# real forward trades that the CURRENT strategy did not choose. They stay in the
+# order book because they happened; they are kept out of the error profile
+# because the rule that made them no longer exists. Without this, every future
+# Agent 2 re-classifies them as Thesis Errors and the profile is permanently
+# unreadable.
+LIVE_ORIGIN = "breakout"
 EXCLUDED_BUCKET = "etf_trend"          # its own strategy, its own directory
 
 CATEGORIES = ("Thesis Error", "Execution Error", "Process Deviation", "Variance")
@@ -476,6 +494,11 @@ def _check_steward(p):
             if b not in EQUITY_BUCKETS:
                 out.append(f"trades[{i}] unknown bucket {b!r}; "
                            f"expected one of {EQUITY_BUCKETS}")
+        if "origin" not in t:
+            out.append(f"trades[{i}] {t.get('ticker', '?')} has no origin; "
+                       f"map a NULL pos.origin to {LIVE_ORIGIN!r} and name the "
+                       "experiment otherwise -- an unlabelled trade is assumed "
+                       "to be the live strategy's and cannot be separated later")
         for f in (t.get("flags") or []):
             if f not in FLAGS:
                 out.append(f"trades[{i}] unknown flag {f!r} -- a misspelled flag "
@@ -492,13 +515,34 @@ def _check_steward(p):
         if not isinstance(bs.get("per_cluster"), dict):
             out.append("batch_summary.per_cluster missing -- a blended number is "
                        "not a finding")
+        if any((t.get("origin") or LIVE_ORIGIN) != LIVE_ORIGIN for t in trades):
+            for k in ("trades_main_origin_breakout", "trades_main_other_origin",
+                      "other_origin_pnl"):
+                if k not in bs:
+                    out.append(f"a trade carries a non-{LIVE_ORIGIN} origin but "
+                               f"batch_summary.{k} is missing; the split has to "
+                               "be stated, not implied")
     return out
 
 
 def _check_auditor(p):
     out = []
+    named = {n.get("ticker") for n in (p.get("non_strategy_positions") or [])}
     for i, t in enumerate(p.get("trades") or []):
         cat, flags = t.get("category"), (t.get("flags") or [])
+        origin = t.get("origin") or LIVE_ORIGIN
+        if origin != LIVE_ORIGIN:
+            # SC-004: reported separately, excluded from the error profile.
+            if cat is not None:
+                out.append(f"trades[{i}] {t.get('ticker', '?')} has origin="
+                           f"{origin!r} but was categorised {cat!r}; a position "
+                           "the current strategy did not choose is reported "
+                           "separately, not counted in the error profile")
+            if t.get("ticker") not in named:
+                out.append(f"trades[{i}] {t.get('ticker', '?')} has origin="
+                           f"{origin!r} and is missing from "
+                           "non_strategy_positions")
+            continue
         if cat is None and "non_equity" in flags:
             continue          # correctly reported as a data bug, not a trade
         if cat not in CATEGORIES:
@@ -710,6 +754,27 @@ def _check_validator(p):
                     out.append(f"verdict=PASS but per_trade={pt} at "
                                f"c={C_PROFITABLE_AT}; the rule must stay "
                                "profitable across the sensitivity")
+    # Pre-registration, checked rather than requested. `--new-research` writes
+    # the file at proposal time from the registry, so this verifies the file the
+    # run actually used still carries the hypothesis and the same batch tag.
+    rf = p.get("research_file")
+    if rf:
+        rp = paths.ROOT / rf if not str(rf).startswith("/") else Path(rf)
+        if not rp.exists():
+            out.append(f"research_file {rf} does not exist: "
+                       "pre_registration_missing")
+        else:
+            src = rp.read_text()
+            if "hypothesis:" not in src:
+                out.append(f"{rf} states no hypothesis: pre_registration_missing")
+            if re.search(PLACEHOLDER, src):
+                out.append(f"{rf} still holds template placeholders "
+                           f"{sorted(set(re.findall(PLACEHOLDER, src)))}; it was "
+                           "generated and never filled in")
+            tag = p.get("batch_tag")
+            if tag and f'BATCH = "{tag}"' not in src:
+                out.append(f"{rf} does not carry BATCH = {tag!r}; a figure and "
+                           "the file that produced it must share a batch tag")
     if not p.get("output_inspection"):
         out.append("output_inspection is empty: a classifier is finished when "
                    "the OUTPUT is clean, not when the validation passes")
@@ -989,6 +1054,74 @@ def cmd_status(state):
               f"{b.get('independent_paths')} paths, {b.get('rule_status')}")
 
 
+PLACEHOLDER = r"@@[A-Z_]+@@"
+TEMPLATE = paths.ROOT / "src" / "research" / "_agent_rule_template.py"
+RESEARCH_DIR = paths.ROOT / "src" / "research"
+
+
+def _shown(p):
+    """-> repo-relative when it is under the repo, absolute otherwise. The
+    selftest redirects RESEARCH_DIR outside the repo so it never writes into
+    src/research/, and relative_to() raises on that."""
+    try:
+        return p.relative_to(paths.ROOT)
+    except ValueError:
+        return p
+
+
+def research_path(rule_id):
+    """-> src/research/agent_RNNN.py. Greppable, and distinguishable from
+    human-authored research at a glance."""
+    return RESEARCH_DIR / f"agent_{rule_id.replace('-', '')}.py"
+
+
+def cmd_new_research(state, rule_id, batch=None):
+    """Create the pre-registered research file for a rule, FROM THE REGISTRY.
+
+    Filled from the registry rather than from arguments so the file's hypothesis
+    and bar cannot drift from what Agent 4 actually registered. A bar that can be
+    restated on the way into the test is not pre-registered.
+    """
+    hit = [r for r in state["rule_registry"] if r.get("rule_id") == rule_id]
+    if not hit:
+        raise SystemExit(f"no such rule {rule_id}; Agent 4 registers it first")
+    r = hit[0]
+    dest = research_path(rule_id)
+    if dest.exists():
+        raise SystemExit(f"{_shown(dest)} already exists. A "
+                         "pre-registration is written once; edit it deliberately "
+                         "or use a new rule id")
+    bar = r.get("adoption_bar") or {}
+    missing = [k for k in ADOPTION_BAR_KEYS if not bar.get(k)]
+    if missing:
+        raise SystemExit(f"{rule_id}'s adoption bar is incomplete: {missing}")
+    tag = batch or f"{dt.date.today():%Y%m%d}-agent5-{rule_id.replace('-', '')}"
+    text = TEMPLATE.read_text()
+    for token, value in (
+            ("@@RULE_ID@@", rule_id),
+            ("@@ONE_LINE@@", str(r.get("rule_text", ""))),
+            ("@@HYPOTHESIS@@", str(r.get("hypothesis", ""))),
+            ("@@CONTROL@@", str(r.get("control") or "the live rules, unchanged")),
+            ("@@FAILURE_MODE@@", str(r.get("failure_mode", ""))),
+            ("@@BATCH@@", tag),
+            *((f"@@{k.upper()}@@", str(bar[k])) for k in ADOPTION_BAR_KEYS)):
+        text = text.replace(token, value)
+    # Match the PLACEHOLDER shape, not a bare "@@": the generated file carries
+    # "@@" legitimately inside its own selftest, which asserts the placeholders
+    # are gone. Checking for the literal flagged a correctly-filled file.
+    left = sorted(set(re.findall(PLACEHOLDER, text)))
+    if left:
+        raise SystemExit(f"template placeholders left unfilled: {left}")
+    dest.write_text(text)
+    # relative_to() raises when RESEARCH_DIR is redirected (the selftest does
+    # exactly that, so it does not write into src/research/).
+    shown = _shown(dest)
+    print(f"  {shown} written, batch {tag}")
+    print(f"  it is now in the selftest sweep -- run it before the backtest:\n"
+          f"    env -u PYTHONPATH python3 {shown} --selftest")
+    return dest
+
+
 def cmd_rule(state, rule_id, status, note=None):
     hit = [r for r in state["rule_registry"] if r.get("rule_id") == rule_id]
     if not hit:
@@ -1123,9 +1256,10 @@ def cmd_vocab(files, check_legacy=False):
 
 def _selftest():
     """Every assertion is a rule the pipeline exists to enforce."""
-    global STATE, CURRENT, RUNS
+    global STATE, CURRENT, RUNS, RESEARCH_DIR
     td = Path(tempfile.gettempdir())
-    saved = (STATE, CURRENT, RUNS)
+    saved = (STATE, CURRENT, RUNS, RESEARCH_DIR)
+    RESEARCH_DIR = td
     STATE = td / "pipeline_selftest_state.json"
     CURRENT = td / "pipeline_selftest_current.json"
     RUNS = td / "pipeline_selftest_runs.jsonl"
@@ -1184,7 +1318,8 @@ def _selftest():
                 "independent_paths": 1, "dedup_notes": ["3 -> 1: NATCAPSUQ"],
                 "trades": [{"ticker": "NATCAPSUQ", "buckets": ["main", "pooled",
                             "capped"], "flags": ["duplicate_path"],
-                            "cluster": "micro", "pnl_pct": -10.0}],
+                            "cluster": "micro", "pnl_pct": -10.0,
+                            "origin": LIVE_ORIGIN}],
                 "batch_summary": {"n": 1, "total_pnl_main_only": -4500,
                                   "per_cluster": {"micro": {"n": 1, "pnl": -4500}}}}
         # etf_trend must never reach the equity pipeline.
@@ -1210,6 +1345,22 @@ def _selftest():
             raise AssertionError("accepted a nested figure with no count")
         except SystemExit as e:
             assert "no trial count" in str(e), e
+        # An unlabelled trade is assumed to be the live strategy's, and cannot
+        # be separated out afterwards.
+        try:
+            cmd_handoff(st, "data_steward", json.loads(json.dumps(base)) |
+                        {"trades": [{k: v for k, v in base["trades"][0].items()
+                                     if k != "origin"}]})
+            raise AssertionError("accepted a trade with no origin")
+        except SystemExit as e:
+            assert "has no origin" in str(e), e
+        # A non-live origin must be split out in the summary, not implied.
+        try:
+            cmd_handoff(st, "data_steward", json.loads(json.dumps(base)) |
+                        {"trades": [dict(base["trades"][0], origin="rank-cohort")]})
+            raise AssertionError("accepted a non-breakout origin with no split")
+        except SystemExit as e:
+            assert "has to be stated, not implied" in str(e), e
         try:
             cmd_handoff(st, "data_steward", dict(base, records_received=-1))
             raise AssertionError("accepted a records_received the book disagrees with")
@@ -1219,7 +1370,9 @@ def _selftest():
 
         aud = {"batch_id": "20260910",
                "trades": [{"ticker": "NATCAPSUQ", "category": "Variance",
-                           "flags": ["duplicate_path"], "pnl_pct": -10.0}],
+                           "flags": ["duplicate_path"], "pnl_pct": -10.0,
+                           "origin": LIVE_ORIGIN}],
+               "non_strategy_positions": [],
                "error_profile": {"thesis": 0, "execution": 0, "variance": 1,
                                  "process_deviation": 0},
                "unearned_pnl": 0, "adjusted_pnl": -4500, "n": 1,
@@ -1232,6 +1385,20 @@ def _selftest():
             raise AssertionError("accepted an outage trade as Variance")
         except SystemExit as e:
             assert "Process Deviation" in str(e), e
+        # SC-004: a position the current strategy did not choose is reported,
+        # never categorised. Both halves are checked.
+        cohort = dict(aud["trades"][0], ticker="SAHYADRI", origin="rank-cohort")
+        try:
+            cmd_handoff(st, "trade_auditor", dict(aud, trades=[cohort]))
+            raise AssertionError("categorised a non-strategy position")
+        except SystemExit as e:
+            assert "reported separately, not counted" in str(e), e
+        try:
+            cmd_handoff(st, "trade_auditor",
+                        dict(aud, trades=[dict(cohort, category=None)]))
+            raise AssertionError("accepted a non-strategy position nobody listed")
+        except SystemExit as e:
+            assert "missing from non_strategy_positions" in str(e), e
         cmd_handoff(st, "trade_auditor", aud)
 
         miner = {"batch_id": "20260910", "actionable_findings": [],
@@ -1322,7 +1489,25 @@ def _selftest():
 
         # the validator must prove it read the baseline file, and must report a
         # sensitivity rather than one impact number
+        # The pre-registration is WRITTEN from the registry, so the hypothesis
+        # and the bar in the file cannot differ from the ones Agent 4 registered.
+        rp = cmd_new_research(st, "R-001", "20260910-agent5-R001")
+        src_text = rp.read_text()
+        # The PLACEHOLDER shape, not a bare "@@" -- the generated file carries
+        # "@@" inside its own selftest, which is what asserts they are gone.
+        assert not re.search(PLACEHOLDER, src_text), \
+            f"placeholders survived: {sorted(set(re.findall(PLACEHOLDER, src_text)))}"
+        assert rule["hypothesis"] in src_text and \
+            rule["adoption_bar"]["minimum_effect"] in src_text, \
+            "the file does not carry the registered hypothesis and bar"
+        try:
+            cmd_new_research(st, "R-001", "20260910-agent5-R001")
+            raise AssertionError("overwrote an existing pre-registration")
+        except SystemExit as e:
+            assert "already exists" in str(e), e
+
         val = {"batch_id": "20260910", "rule_id": "R-001",
+               "research_file": str(rp),
                "batch_tag": "20260910-agent5-R001", "verdict": "INCONCLUSIVE",
                "baseline_read_from": "data/breakout/baseline.json",
                "baseline_value": {"cagr": 2.18, "maxdd": 32.5, "n": 194,
@@ -1345,6 +1530,10 @@ def _selftest():
                 (dict(val, forward_paper_trade_required=False),
                  "only thing that shrinks the error bar"),
                 (dict(val, output_inspection=""), "OUTPUT is clean"),
+                (dict(val, research_file="src/research/agent_NOPE.py"),
+                 "pre_registration_missing"),
+                (dict(val, batch_tag="20260910-something-else"),
+                 "must share a batch tag"),
                 (dict(val, verdict="FAIL", rank_slope=dict(val["rank_slope"],
                       **{"pass": False}), forward_paper_trade_required=False,
                       adoption_bar_met=False) | {"verdict": "PASS"},
@@ -1546,6 +1735,8 @@ def _selftest():
             "the status board never got written"
         # Agent 5's own required work exceeds the default budget, so a single
         # threshold would flag normal operation as a hang.
+        assert not REHEARSAL or os.environ.get("PIPELINE_DIR"), \
+            "REHEARSAL is set without the env var that should be the only cause"
         assert set(AGENT_BUDGETS) == set(ORDER), (
             "every stage needs its own staleness budget, or it inherits one "
             f"nobody chose: missing {sorted(set(ORDER) - set(AGENT_BUDGETS))}")
@@ -1576,9 +1767,9 @@ def _selftest():
               f"{len(IMPROVEMENT_KINDS) - 1} legal improvements, "
               f"{len(FLAGS)} flags)")
     finally:
-        for f in (STATE, CURRENT, RUNS):
+        for f in (STATE, CURRENT, RUNS, research_path("R-001")):
             f.unlink(missing_ok=True)
-        STATE, CURRENT, RUNS = saved
+        STATE, CURRENT, RUNS, RESEARCH_DIR = saved
 
 
 def main():
@@ -1610,9 +1801,15 @@ def main():
     p.add_argument("--retire-check", metavar="ID")
     p.add_argument("--why", default="", help="reason for --retire-check")
     p.add_argument("--rule", metavar="ID")
+    p.add_argument("--new-research", metavar="RULE_ID",
+                   help="write the pre-registered research file for a rule")
     p.add_argument("--set-status", metavar="STATUS")
     a = p.parse_args()
 
+    if REHEARSAL and not a.selftest:
+        print(f"  REHEARSAL: reading and writing {_DIR}, not "
+              f"{paths.SDATA}. Nothing here reaches the live record.",
+              file=sys.stderr)
     if a.selftest:
         return _selftest() or 0
     if a.vocab:
@@ -1653,6 +1850,8 @@ def main():
         cmd_add_check(st, a.add_check, a.batch or st.get("batch_id"))
     elif a.retire_check:
         cmd_retire_check(st, a.retire_check, a.why)
+    elif a.new_research:
+        cmd_new_research(st, a.new_research, a.batch)
     elif a.rule and a.set_status:
         cmd_rule(st, a.rule, a.set_status, a.note)
     else:

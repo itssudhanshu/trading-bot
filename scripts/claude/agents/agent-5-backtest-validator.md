@@ -68,17 +68,38 @@ sizing path before treating one as a finding; Agent 1 reproduced
 
 ## 1. Pre-registration check
 
-Agent 4's hypothesis and all five adoption-bar sub-keys must be stated, and the
-research file's **docstring must carry the hypothesis and the endpoint before
-the run**. Copy the shape of `src/research/weight_test.py`: what is being
-questioned, why the previous number is suspect, what the CONTROL is, and what
-result would change the decision.
+You do not write the pre-registration by hand. Generate it from the registry,
+so the hypothesis and the bar in the file cannot differ from the ones Agent 4
+actually registered:
 
-A docstring written after the run is a rationalisation. If it is missing or
-empty, reject with `pre_registration_missing`.
+```bash
+python3 src/ops/pipeline.py --new-research R-001
+```
 
-Name the control explicitly. It is whatever the live setting was a decision
-*against*, not "the live setting".
+That writes `src/research/agent_R001.py` from `_agent_rule_template.py`, filled
+with the rule text, hypothesis, control, all five bar sub-keys, the failure mode
+and a dated `BATCH`. It refuses to overwrite an existing file — **a
+pre-registration is written once**. It refuses a rule whose bar is incomplete.
+
+Then fill in `variant()` and `main()` — and only those. Do not touch the
+docstring: a docstring edited after the run is a rationalisation, and the gate
+compares the file against the registry.
+
+```bash
+env -u PYTHONPATH python3 src/research/agent_R001.py --selftest
+```
+
+The file **persists** in `src/research/`. It is a research artifact with the
+same standing as `weight_test.py` — the record of what was tested and against
+what bar. The `agent_RNNN.py` name makes it greppable and distinguishes it from
+human-authored research. It is discovered by the selftest sweep from the moment
+it exists, which is why its `--selftest` asserts the pre-registration and never
+runs the backtest.
+
+Report the path as `research_file` in your payload. The gate checks the file
+exists, still states a hypothesis, has no unfilled placeholders, and carries the
+same `BATCH` as your `batch_tag` — a figure and the file that produced it must
+share a tag. If any of that fails the reason is `pre_registration_missing`.
 
 ## 2. Run
 
@@ -149,7 +170,7 @@ route to Agent 7; how many more trades are needed.
 
 ```json
 {"batch_id": "YYYYMMDD", "rule_id": "R-NNN", "batch_tag": "20260910-agent5-R001",
- "verdict": "INCONCLUSIVE",
+ "research_file": "src/research/agent_R001.py", "verdict": "INCONCLUSIVE",
  "baseline_read_from": "data/breakout/baseline.json",
  "baseline_value": {"cagr": 2.18, "maxdd": 32.5, "n": 194, "per_trade": 1.07},
  "with_rule": {"cagr": 0.0, "maxdd": 0.0, "n": 0, "per_trade": 0.0, "t": 0.0},

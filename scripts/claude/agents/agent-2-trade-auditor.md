@@ -71,6 +71,23 @@ this to be the majority verdict, and say so.** The attribution decomposition
 three exits fired, not which stock was picked. A valid signal that hit its stop
 is the system working.
 
+**Only `origin == "breakout"` trades are categorised.** A position the current
+strategy did not choose gets no category and no place in the error profile. List
+it separately instead:
+
+```
+NON-STRATEGY POSITIONS (origin != breakout):
+  GMMPFAUDLR (cohort2) — +2.92%, +Rs 1,130.84
+  SAHYADRI (cohort3)   — -10.00%, -Rs 4,619.67
+  Net: -Rs 3,488.83
+  Positions from retired deeper buckets. Not attributable to the current
+  strategy. Excluded from the error profile.
+```
+
+The P&L is real and the trades happened — they are simply not evidence about a
+rule that no longer exists. The pipeline refuses a non-`breakout` trade that
+carries a category, and refuses one missing from `non_strategy_positions`.
+
 ### Classification rules
 
 - Execution issue AND process deviation → **Process Deviation** (more severe).
@@ -138,6 +155,8 @@ End with one fenced JSON object, then hand off.
  "unearned_pnl": 0, "adjusted_pnl": 0,
  "per_cluster": {"micro": {"n": 0, "winners": 0, "losers": 0, "pnl": 0, "per_trade": 0.0},
                  "small": {"n": 0, "winners": 0, "losers": 0, "pnl": 0, "per_trade": 0.0}},
+ "non_strategy_positions": [{"ticker": "...", "origin": "rank-cohort",
+                             "pnl_pct": 0.0, "pnl": 0, "note": "..."}],
  "standing_check_hits": [], "new_anomaly": null, "temporal_concentration": null}
 ```
 

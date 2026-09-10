@@ -35,6 +35,16 @@
    "retirement_reason": null,
    "hits": 0,
    "last_hit_batch": null
+  },
+  {
+   "id": "SC-004",
+   "description": "Any trade with origin != breakout is reported in non_strategy_positions and excluded from the error profile. Checkable on one row: does it carry an origin field, and if it is not breakout, is it in the separate section with no category?",
+   "source_batch": "20260910",
+   "added": "2026-09-10",
+   "status": "active",
+   "retirement_reason": null,
+   "hits": 0,
+   "last_hit_batch": null
   }
  ],
  "rule_registry": [

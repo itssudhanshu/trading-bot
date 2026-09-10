@@ -55,6 +55,30 @@ pipeline:
 
 Update `paper_pnl` and `paper_per_trade`.
 
+### Rules evaluated AFTER the fill pay for it
+
+Some rules can only be judged once the fill price exists — anything keyed on
+`fill_premium_pct`, on the opening gap, on the fill bar itself. In the backtest
+Agent 5 sees both prices at once and can simply not take the trade. **Forward,
+the sequence is different and it costs money:**
+
+1. Signal fires at the close of day T.
+2. Fill at the open of day T+1 — only now is the premium known.
+3. The rule says no. The position is voided **the same day**.
+
+That is not "never entered". The entry happened. Model it as entry impact paid
+and exit impact paid on the fill day:
+
+```
+P&L = -2 * c * daily_vol% * sqrt(order_value / ADV)      (c = 1.0)
+```
+
+**A paper trade modelled as "never entered" overstates the rule's benefit by a
+full round trip of impact on every trade it triggers on** — and at c=1.0 the
+median trade pays 0.31% while the worst pays 8.73%. Record which arm each queued
+rule is: evaluated at the signal close (a genuine skip, no cost) or after the
+fill (a void, two-sided impact). State it in the queue entry.
+
 **A paper trade is a simulation on live signals. It never touches the live
 bucket's P&L or its positions.** If a ticker is on the non-equity denylist, void
 it and do not count it — that is the L69 failure, where delisted funds sat
