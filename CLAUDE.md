@@ -186,7 +186,7 @@ and those gaps are under one standard error too.
 
 **READ THE NON-EQUITY SECTION BELOW FIRST.** Everything in this section tagged
 `20260819-postlock` was measured on a corpus holding 87 delisted ETFs, and the
-live reference has since moved from +7.59% to +2.42% (L61). The `remeasure.py`
+live reference has since moved from +7.59% to +2.42% (L69). The `remeasure.py`
 rows are re-run under `20260820-nonequity3` and restated inline; the
 `trigger_test`, `rank_test`, `weight_test` and `impact_test` tables are NOT
 re-run and their levels should not be quoted.
@@ -362,7 +362,7 @@ held: the rankings and shapes survived, the levels did not, and the one thing
 that moved was the trigger's justification. Any figure quoted without a
 post-guard batch tag is the old, phantom-filled one.
 
-## The non-equity gap (L61), and what it cost
+## The non-equity gap (L69), and what it cost
 
 `universe.non_equity_symbols()` built its denylist as `traded - master` with
 BOTH sides read off the same newest snapshot. A fund therefore had to be
@@ -651,6 +651,9 @@ agent/tg/audit -- and is the fastest way to see how a day's bars become a
 position. This file assumes it.
 
 See `docs/glossary.md` for what every term here means in plain English, and
-`docs/performance-change.md` for what the circuit-lock guard did to the numbers.
+`docs/performance-change.md` for what the four fill-path corrections did to the
+numbers -- its closing table is the only place L58, L69, L98 and L99 sit side by
+side, which is the only way the pattern is visible: **12.63 points of level
+removed, 0.18 of slope moved, against a standard error of 0.28.**
 See `docs/STATE.md` for current status and `docs/lessons.md` for the evidence behind each
 rule above. Retired work (the spec-search track) is archived in `data/retired/`.

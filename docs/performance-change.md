@@ -3,14 +3,15 @@
 Plain-language record of the corrections made on 2026-08-19 and 2026-08-20. If
 you only read one page about this project's honesty, read this one.
 
-**There have now been THREE of these, and they get smaller.** Part one is the
+**There have now been FOUR of these, and they get smaller.** Part one is the
 circuit-lock fix (halved the result). Part two is the ETF fix (took two thirds
-of what was left). Part three is the fill-hole fix, three trades wide, and its
-importance is that it is small: the first two teach you to expect a bloodbath
-every time someone reads a fill assumption, and that expectation is wrong.
+of what was left). Part three is the fill-hole fix, three trades wide. Part four
+found nothing at all, and that is the point: the first two teach you to expect a
+bloodbath every time someone reads a fill assumption, and by part four that
+expectation is simply wrong.
 
 Terms used here are defined in `docs/glossary.md`. Evidence and workings are in
-`docs/lessons.md` (L58, L59, L61, L98).
+`docs/lessons.md` (L58, L59, L69, L98, L99).
 
 ---
 
@@ -367,3 +368,130 @@ not obviously broken on history that has already happened.
 Only real forward picks can prove it, and that count is still **zero**. The
 status report is built so that no number of good simulations can ever print a
 YES — because no number of good simulations should.
+
+---
+
+# Part four — the two guards that cannot fire (2026-09-11)
+
+---
+
+## The one-line version
+
+**Two more places in the fill path had the same flaw as part three, both were
+fixed, and neither changed a single number — because on this data neither can
+ever happen.** The fix is worth having anyway; it is the one that catches the
+next corpus.
+
+---
+
+## What was broken
+
+Part three fixed one of three ways the simulator could refuse to buy a share.
+The other two still did the wrong thing with the seat: instead of leaving the
+money in cash, they reached further down the ranked list and bought the next
+name instead.
+
+That is the same mistake part three fixed. At the moment the decision is made,
+the bot cannot know that tomorrow's purchase will fail — so picking a
+substitute *today* uses information it will not have until *tomorrow*. And the
+substitute is a name the ranking already says is worse, by about 1.08% per step
+down the list.
+
+---
+
+## The headline
+
+**Nothing moved. At all.**
+
+| | CAGR | worst drop | trades |
+|---|---|---|---|
+| before | +1.51% | 35.3% | 196 |
+| after | **+1.51%** | **35.3%** | **196** |
+
+That was **written down as the prediction before the test was run**, for two
+reasons that could each be checked independently: one of the two conditions has
+never once occurred in 2,818,047 daily price bars, and the other is switched off
+in every live path. A prediction of exactly zero is the strongest kind available
+— a single changed digit would have refuted it.
+
+No re-recording was needed.
+
+---
+
+## The thing that was actually learned
+
+The bucket picks five shares, and the ranked shortlist it picks from is also
+five names long. **So when the bucket is empty there is no sixth name to fall
+back to, and the flaw could not express itself even in principle.** It can only
+bite when the bucket is partly full — fewer free seats than leftover candidates.
+
+That explains something part three could only observe: its own "what if we let
+it substitute" test came out identical, and this is the reason it had to.
+
+---
+
+## What going looking for it turned up
+
+Re-running a neighbouring test to check this one exposed three numbers that part
+three had left wrong. The one that matters:
+
+**The project had been overstating how long it must wait before its results mean
+anything.** The average gain per trade is used to work out how many trades are
+needed before the number can be trusted. That figure had not been updated after
+part three, and the relationship is not proportional — a 26% overstatement in
+the gain becomes a 58% overstatement in the wait.
+
+| | gain per trade | trades needed | at ~29 trades a year |
+|---|---|---|---|
+| what it said | 1.07% | 859 | ~30 years |
+| **what is true** | **0.85%** | **1,362** | **~47 years** |
+
+The code's own comment says overstating this "flatters the project twice — once
+on the return, and once on how soon anyone could know." It had been doing
+exactly that.
+
+---
+
+# All four, side by side
+
+Four defects in the fill path, found across three weeks. Each one recorded a
+purchase the market could not actually have supplied.
+
+| | defect | CAGR before | CAGR after | cost | slope before | slope after |
+|---|---|---|---|---|---|---|
+| **L58** | circuit-locked bars filled (`high == low`) | +14.14% | +7.59% | **−6.55** | −0.90 (n=1,068) | −1.18 (n=1,015) |
+| **L69** | delisted funds inside the equity universe | +7.59% | +2.42% | **−5.17** | −1.18 (n=1,015) | −1.12 (n=1,062) |
+| **L98** | bought at the symbol's next PRINT, not the next SESSION | +1.91% | +1.51% | **−0.40** | −1.13 (n=1,078) | −1.08 (n=1,089) |
+| **L99** | two refusals reached down the list instead of holding cash | +1.51% | +1.51% | **0.00** | −1.08 | −1.08 |
+
+**The recorded level fell 12.63 points in total, from +14.14% to +1.51%** — of
+which **12.12 is the four corrections** and 0.51 is ordinary movement that was
+nobody's mistake: 0.24 when the baseline was re-recorded on 2026-08-23, and 0.27
+of drift from fourteen new trading sessions. L98's row is quoted against its own
+control (+1.91%) for that reason; measured against the *recorded* baseline of
+the day it reads −0.67, and that version double-counts the drift.
+
+**The slope moved 0.18 points across all four, against a standard error of
+0.28.** Less than one standard error, over corrections that removed seven eighths
+of the recorded return.
+
+L99's slope is unchanged **by construction rather than by re-measurement**:
+neither of its two conditions can occur in any cohort, so no cohort's trades can
+differ. Every other row was measured.
+
+## What that shape means
+
+The rank-depth slope is the one claim that survived all four. Each time, the
+*level* moved by far more than the *signal* did — which is what a real edge with
+inflated measurement on top of it looks like. A phantom signal degrades when you
+remove the phantom fills; this one did not.
+
+That is the useful summary, and it is the reason to keep the individual lessons
+rather than only the total: each one tells its own story, and the pattern only
+appears when they are read side by side.
+
+The current slope lives in `data/breakout/rank_slope_baseline.json` with a batch
+tag, and `pipeline.py` reads it through `analysis.load_rank_slope()` rather than
+carrying a copy. The selftest fixtures deliberately use a frozen literal and say
+so — a test wired to a live measurement fails whenever the measurement moves,
+for reasons that have nothing to do with what it protects.
