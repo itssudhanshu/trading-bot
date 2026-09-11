@@ -97,7 +97,12 @@ LIVE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
             trigger=selection.TRIGGER)
 
 # The recorded reference the LIVE arm must roughly reproduce (L61).
-REF_CAGR, REF_N = 2.42, 193
+# READ, not transcribed -- same reason as suspension_probe.py. This said
+# `2.42, 193` and survived L98 only because its tolerance is +/-1.0 CAGR and the
+# move was 0.91: a gate that passes by 0.09 is not a gate that noticed.
+import analysis as _an
+_REF = _an.load_baseline() or {}
+REF_CAGR, REF_N = _REF.get("cagr"), _REF.get("n")
 
 
 def find_actions(s):

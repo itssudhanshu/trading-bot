@@ -16,6 +16,16 @@ signal bar). Two exposures were never measured:
             tomorrow. Lower-locked fill bars are fine -- a buy order fills
             instantly into a sell-only market -- so they must NOT count.
 
+AMENDMENT 2 (batch 20260911-suspensionprobe2). The GUARDED arm's MEANING
+changed underneath this module and its recorded row stopped being reproducible.
+L99 put the `tradable` entry refusal under the same policy as L98's hole guard:
+a refused fill now CONSUMES the seat instead of letting the loop reach further
+down the ranking. That is a different book from the one batch
+20260824-suspensionprobe1 measured, so it is re-run under a new tag rather than
+appended to the old one. The 20260824 row stays (append-only) and describes the
+fallthrough behaviour it was measured under. The registered policy, the arms and
+the decision framing are otherwise untouched, and the guard remains UNADOPTED.
+
 AMENDMENT (same batch, second run). First run's sanity gate compared the
 arm's FULL-PRECISION CAGR against the two-decimal reference constant with a
 1e-6 tolerance and cried DRIFT while printing values identical to the
@@ -68,7 +78,7 @@ import features
 import selection
 import simulate
 
-BATCH = "20260824-suspensionprobe1"
+BATCH = "20260911-suspensionprobe2"
 
 MAX_GAP_DAYS = 7          # same hole width the split audit calls a gap
 
@@ -77,7 +87,13 @@ LIVE = dict(stop_pct=selection.STOP_PCT, target_pct=selection.TARGET_PCT,
             take_per_cluster=dict(selection.TAKE_PER_CLUSTER),
             trigger=selection.TRIGGER)
 
-REF_CAGR, REF_N = 2.18, 194   # split_audit LIVE arm, batch 20260824-splitaudit1
+# READ, not transcribed. This was `2.18, 194` and L98 moved the baseline to
+# 1.51/196, so the gate reported DRIFT while nothing had drifted -- and by this
+# module's own rule a drifted gate voids every delta it prints. The recorded
+# headline is the reference, and it re-reads itself after every rebaseline.
+import analysis as _an
+_REF = _an.load_baseline() or {}
+REF_CAGR, REF_N = _REF.get("cagr"), _REF.get("n")
 
 
 def lock_direction(s, i):

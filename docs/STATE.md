@@ -20,7 +20,13 @@ stale figure would have kept passing. Three fills in seven years were affected,
 two of which reached the ledger (1.0% of 195), against 0.17% of the corpus's
 bar-pairs that could express the defect: the flaw is everywhere in the data and
 almost nowhere in the results. **The precedent from L58 and L69 is the shape, not
-the size.**
+the size.** **L99 closed the residue**: the two remaining fill-bar refusals now
+consume the seat too, measured at exactly nil (0 falsy opens in 2,818,047 bars;
+`tradable` is None in every live path), no rebaseline. Going to re-run the
+suspension probe for it found three transcribed numbers L98 had left stale --
+including `analysis.BACKTEST_EDGE`, still 1.07 when the edge was 0.85, which is
+the figure the status report quotes: the honest wait was understated at 859
+trades when it is **1,362**, ~30 years against ~47.
 
 **The rank-depth slope was re-measured on the corrected path and survived:**
 -1.08% +/- 0.28% per cohort step, t = -3.87, n = 1,089 (batch

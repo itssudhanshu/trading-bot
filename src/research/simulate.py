@@ -376,13 +376,26 @@ def run(corpus, days, *, stop_pct=10.0, target_pct=20.0,
                         continue
                 if i + 1 >= len(s):
                     continue
+                # THE OTHER TWO UNFORESEEABLE REFUSALS, under the same policy
+                # as the hole guard above (L99). A falsy open, and a fill bar
+                # with no counterparty -- a signal-day lock is marked
+                # untriggered in selection, but tomorrow's lock is unknowable
+                # then, and an upper-locked bar has no sellers. Neither is
+                # knowable at the signal close, so neither may reach deeper down
+                # the ranking: that would be choosing today's substitute with
+                # tomorrow's news, and rank depth costs -1.08% per step.
+                #
+                # Both were `continue` until L99 and both were measured at
+                # exactly nil, because neither can fire on today's corpus -- 0
+                # falsy opens in 2,818,047 bars, and `tradable` is None in every
+                # live path. Adopted on the argument, not on the number. A guard
+                # that cannot fire today is the one that catches the next
+                # corpus; "never tested" is the state the fill bar was in before
+                # L98, and that state has cost this project three corrections.
                 e = s.open[i + 1]
-                if not e:
-                    continue
-                # The FILL bar needs its own guard: a signal-day lock is
-                # marked untriggered in selection, but tomorrow's lock is
-                # unknowable then -- and an upper-locked bar has no sellers.
-                if tradable and not tradable(s, i + 1, "entry"):
+                if not e or (tradable and not tradable(s, i + 1, "entry")):
+                    if fill_gap == "next_session":
+                        room -= 1
                     continue
                 vols = [v for v in (_liq(corpus[x["symbol"]],
                         corpus[x["symbol"]].index_of(day) or 0)[1] for x in rows)

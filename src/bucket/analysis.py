@@ -173,6 +173,7 @@ OCC_BASELINE = paths.SDATA / "occupancy_baseline.json"
 # --rebaseline` OVERWRITES baseline.json with a freshly computed dict and would
 # silently drop it. Same reasoning, same shape, as occupancy_baseline.json.
 SLOPE_BASELINE = paths.SDATA / "rank_slope_baseline.json"
+BASELINE = paths.SDATA / "baseline.json"
 
 
 def save_occupancy(dist, mean, config):
@@ -206,6 +207,16 @@ def save_rank_slope(b, se, t, n, batch, gap=None):
     return SLOPE_BASELINE
 
 
+def load_baseline():
+    """-> the recorded headline dict, or None. The sanity gate every research
+    module writes by hand -- suspension_probe and split_audit each carried their
+    own `REF_CAGR, REF_N` literal and both went stale the day L98 moved the
+    baseline, one of them silently reporting DRIFT while nothing had drifted.
+    """
+    import json
+    return (json.loads(BASELINE.read_text()) if BASELINE.exists() else None)
+
+
 def load_rank_slope():
     import json
     return (json.loads(SLOPE_BASELINE.read_text())
@@ -225,20 +236,27 @@ def load_occupancy():
 # Mean return per trade in the historical baseline, and the spread around it.
 # The reference point for "how many trades before this means anything".
 #
-# 1.07 is the edge after the non-equity fix (L61, batch 20260820-nonequity3,
-# n=193). The series of this one number is the whole story of this project's
+# 0.85 is the edge after the fill-hole guard (L98, batch 20260911-fillhole1,
+# n=196). The series of this one number is the whole story of this project's
 # corrections, and each step DOWN made the honest wait longer:
 #
 #     3.07  original                        ~105 trades to resolve
 #     2.15  after the circuit-lock guard    ~213 trades   (L58/L59)
 #     1.07  after the non-equity fix         859 trades   (L61)
+#     0.85  after the fill-hole guard      1,362 trades   (L98)
 #
 # Overstating it flatters the project twice -- once on the return, and once on
 # how soon anyone could know. A smaller edge needs MORE trades to detect, and
-# 859 at this book's recorded pace (~29/year) is ~30 years -- not a horizon
+# 1,362 at this book's recorded pace (~29/year) is ~47 years -- not a horizon
 # any forward test reaches. That is the honest number and it is meant to be
 # uncomfortable.
-BACKTEST_EDGE = 1.07
+#
+# A LITERAL, deliberately, and not the load_baseline() read that the two sanity
+# gates now use: baseline.json records cagr/maxdd/n/sessions and NOT per-trade,
+# so there is no file to read this from. It carries its batch tag instead, and
+# it must be restated by hand whenever the baseline is re-recorded -- which is
+# exactly what did not happen at L98 until L99 went looking.
+BACKTEST_EDGE = 0.85
 TRADE_SD = 16.0     # measured 15.6 here; kept at 16 as the conservative one
 
 # The day engine.gate() was first CALLED. Every finding recorded before it filled

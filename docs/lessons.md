@@ -4402,6 +4402,9 @@ this class of defect.
 - The two remaining fill-bar conditions — a zero/absent open, and the `tradable`
   hook — still `continue` down the ranking rather than consuming the seat. Same
   argument applies to them; neither is measured.
+  **Closed in L99**: both adopted, both measured at exactly nil, and neither can
+  fire on this corpus. L99 also found the three transcribed numbers this entry
+  left stale, including the per-trade edge the status report quotes.
 - `suspension_probe.py` (batch `20260824-suspensionprobe1`) measured the EXIT
   half of L71's residue at +0.20% / 39.1% / 201 against the same control and its
   result is in `data/research/suspension_probe.jsonl` with **no lessons entry and
@@ -4415,3 +4418,113 @@ this class of defect.
   `analysis.load_rank_slope()` exists and returns the measured figure. A number
   that looks sealed and is actually a copy is the exact defect
   `rank_test.py`'s own docstring records about `hold=15`.
+  **Closed**: it is a guarded `analysis.load_rank_slope()` read now, and the
+  same sweep found the slope transcribed in five agent prompts besides.
+
+## L99 — The last two fill-bar guards cannot fire; the numbers written around them could, and had
+
+L98 adopted one rule and named two neighbours that still disagreed with it.
+`simulate.run`'s entry loop has three ways to refuse a fill, and all three are
+things the book cannot know at the signal close:
+
+| | condition | before L99 |
+|---|---|---|
+| A | the next session's open is falsy | `continue` — reaches deeper |
+| B | `tradable` says the fill bar has no counterparty | `continue` — reaches deeper |
+| C | the fill bar is not the next session | consumes the seat (L98) |
+
+All three now take C's policy. The argument is C's argument and did not need
+re-deriving: at the signal close the book queues one order per free seat and
+cannot know which will fail to fill tomorrow, so reaching further down the
+ranking is choosing today's substitute with tomorrow's news — and rank depth
+costs −1.08% per step.
+
+### Registered before running, and the prediction was exactly zero
+
+`src/research/fill_residue_test.py`, batch `20260911-fillresidue1`. The
+question was NOT whether A and B should consume the seat. It was whether
+changing them could move any number, because a correctness fix with a
+measurable effect and one without get reported differently, and claiming an
+effect this cannot have would be worse than the defect.
+
+- **A is unreachable.** 0 falsy opens in **2,818,047 bars** — and 0 falsy high,
+  low and close. The corpus builder does not emit a zero price.
+- **B is inert.** `tradable` defaults to `None` and no live path passes one;
+  `suspension_probe.py` is the only caller and its guard was never adopted.
+
+**Result: +1.51% / 35.3% DD / 196 trades, before and after, to every digit.**
+The prediction held and no rebaseline was needed. Both facts are recomputed by
+the module rather than quoted, so a corpus that starts emitting a zero open stops
+the file claiming the branch is unreachable.
+
+### The structural finding, which is the part worth keeping
+
+`allocate()` returns at most `sum(TAKE_PER_CLUSTER)` rows — 3 micro + 2 small =
+5 — and that is the same number as the seat count. **So when the bucket is
+empty, a refusal has no deeper row to fall through TO, and the two policies
+agree by construction, not by luck.** That is the real reason L98's
+fallthrough sensitivity arm came out identical; "there was never a sixth row"
+was the observation, and this is why there could not be one.
+
+The distinction only bites when eligible rows EXCEED free seats, which happens
+on a partial refresh: some of the five are already held, so the untaken rows
+outnumber the room. Forced in the fixture with `max_pos=2` against a 5-row
+allocation, the two policies separate completely — `legacy` books 24 trades at
+full occupancy, `next_session` books **zero** and holds cash.
+
+### A fixture that asserted nothing, and passed
+
+The first version of that test refused a hand-picked half of the fixture's
+symbols and asserted the two policies differed. It failed — and the reason was
+not the policy. **The refused names never reached the fill step at all**: with
+two seats and the top two rows not in the refused set, the loop filled and broke
+before any refusal was evaluated. The refusal count was 0 and the test would have
+been just as green if the guard had been deleted.
+
+The fix is to assert the mechanism fired, not only its consequence — the fixture
+now derives the refused set from what the clean run actually buys, and asserts
+`refused["n"]` is non-zero before comparing anything. This is
+CLAUDE.md's *"a status message is not evidence"* inside a test: the assertion
+passed, and nothing had been exercised.
+
+### What the change broke, and what that exposed
+
+Putting B under the policy changed the MEANING of `suspension_probe.py`'s
+GUARDED arm, so its recorded row stopped being reproducible. Re-run under
+`20260911-suspensionprobe2`: **+0.52% / 38.5% DD / 200 trades, +0.67% ± 1.11
+per trade, edge −0.18% ± 1.57, t = −0.12.** The 20260824 row stays and describes
+the fallthrough book it measured. The guard is still **not adopted**.
+
+Going to re-run it surfaced three numbers L98 left wrong, all the same defect
+as `pipeline.py`'s sealed slope constant:
+
+- **`analysis.BACKTEST_EDGE` still said 1.07.** It is the per-trade edge the
+  status report quotes to say how long the honest wait is, and L98 moved it to
+  **0.85**. That is not cosmetic: trades-to-resolve scales as the inverse
+  square, so the wait went **859 → 1,362 trades**, about 30 years → **47 years**
+  at this book's ~29 trades a year. The file's own comment says overstating the
+  edge "flatters the project twice — once on the return, and once on how soon
+  anyone could know", and it had been doing exactly that for a day. It stays a
+  literal, because `baseline.json` records cagr/maxdd/n and NOT per-trade, so
+  there is no file to read it from — and the comment now says so, to stop the
+  next reader "fixing" it into a broken read.
+- **`suspension_probe.REF_CAGR, REF_N = 2.18, 194`** — its sanity gate would have
+  reported DRIFT while nothing had drifted, and by that module's own rule a
+  drifted gate voids every delta it prints.
+- **`split_audit.REF_CAGR, REF_N = 2.42, 193`** — survived only because its
+  tolerance is ±1.0 CAGR and the move was 0.91. **A gate that passes by 0.09 is
+  not a gate that noticed.**
+
+Both gates now read `analysis.load_baseline()`, added for exactly this: two
+research modules had each hand-written the same reference and both went stale on
+the same day.
+
+### The shape of the whole family, now that it is closed
+
+Four corrections, and the pattern is the same every time: the defect was found
+by READING the fill assumption, never by a statistic, and the per-trade error
+bar could not have resolved any of them. What separates them is only size —
+L58 took about half the CAGR, L69 two thirds of what was left, L98 0.40 points,
+and L99 exactly nothing. **A correctness fix does not get to choose its own
+effect size, and a project that only fixes the ones that move the number will
+keep the ones that do not — until a corpus changes and they start to.**

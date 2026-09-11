@@ -487,7 +487,14 @@ every future rule against a stale number.
 
 `simulate.FILL_GAP` names the live policy and `fill_gap="legacy"` still
 reproduces the old behaviour, which is the only way the control arm stays
-runnable. It is a research parameter: the forward book never had this defect --
+runnable. **It governs all THREE unforeseeable refusals since L99** -- the hole,
+a falsy open, and a `tradable` rejection of the fill bar -- because reaching
+deeper on any of them is the same lookahead. The other two were measured at
+exactly nil (neither can fire on this corpus) and adopted on the argument. The
+useful by-product: `allocate()` returns at most `sum(TAKE_PER_CLUSTER)` rows,
+which IS the seat count, so on an empty bucket a refusal has no deeper row to
+fall through to and the policies agree by construction -- the distinction only
+bites on a partial refresh, where untaken rows outnumber the room. It is a research parameter: the forward book never had this defect --
 `positions.step` fills a pending order at the open of whatever session the symbol
 next trades and stamps `entry_day` with THAT date.
 
