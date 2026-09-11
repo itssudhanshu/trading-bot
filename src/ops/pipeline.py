@@ -55,6 +55,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # -> src/
 import paths
+import analysis
 
 # NOT agent_state.json: data/agent_state.json is already the SCHEDULER's state
 # (agent.py:33, last_snapshot / last_runner / last_research). Two files with one
@@ -194,7 +195,18 @@ MIN_CONSECUTIVE = 3
 # Agent 5's sealed evaluation, in code so no upstream agent can move it.
 C_GRID = (0.0, 0.5, 1.0, 2.0, 3.0)     # the full sensitivity, never one number
 C_PROFITABLE_AT = 2.0                  # a rule must still pay here to PASS
-RANK_SLOPE_BASELINE = -1.12            # % per cohort step (se 0.28, t=-3.95)
+# READ, never transcribed. This was the literal `-1.12  # (se 0.28, t=-3.95)`
+# and it was stale TWICE over: rank_slope_baseline.json said -1.13 and the
+# measured value was -1.08. A number in code that does not read the file is the
+# defect that let baseline.json say +7.59% for three days (L61), one layer down
+# -- and the error bar beside it was a transcription of a batch nobody named.
+#
+# None when the ACTIVE strategy has never measured one. SLOPE_BASELINE is
+# strategy-scoped (paths.SDATA) and only breakout has the file, so a bare
+# subscript here would crash `STRATEGY=etf_trend python3 src/ops/pipeline.py`
+# at import -- which is the case the literal was silently covering.
+_SLOPE = analysis.load_rank_slope()
+RANK_SLOPE_BASELINE = _SLOPE["slope_pct_per_step"] if _SLOPE else None
 RANK_SLOPE_TOLERANCE = 0.3             # degrade by more than this and it FAILS
 MIN_AFFECTED_N = 30                    # affected trades needed in the test set
 # Agent 6's floor: below either of these, the verdict is always INCONCLUSIVE.
@@ -1254,6 +1266,16 @@ def cmd_vocab(files, check_legacy=False):
     return 1 if errs else 0
 
 
+# A FIXTURE value, deliberately frozen, and never RANK_SLOPE_BASELINE. The
+# constant is now a live read of rank_slope_baseline.json, so wiring it into an
+# assertion would make the selftest fail whenever rank_test.py re-measures --
+# for a reason that has nothing to do with the property being protected. That is
+# the hardcoded-mix failure CLAUDE.md records: assert the property, not the
+# number. It happens to equal the 20260911-rankslope value and must not be
+# updated when that moves.
+_FROZEN_SLOPE = -1.08
+
+
 def _selftest():
     """Every assertion is a rule the pipeline exists to enforce."""
     global STATE, CURRENT, RUNS, RESEARCH_DIR
@@ -1532,7 +1554,7 @@ def _selftest():
                "adoption_bar_met": False,
                "impact_sensitivity": [{"c": c, "cagr": 2.0, "per_trade": 1.0,
                                        "n": 41} for c in C_GRID],
-               "rank_slope": {"baseline": RANK_SLOPE_BASELINE, "with_rule": -1.10,
+               "rank_slope": {"baseline": _FROZEN_SLOPE, "with_rule": -1.10,
                               "delta": 0.02, "pass": True, "n": 1062},
                "affected_trades": [], "output_inspection": "clean",
                "forward_paper_trade_required": True}
@@ -1624,7 +1646,7 @@ def _selftest():
                "within_tolerance": True, "failure_mode_triggered": False,
                "impact_tail": {"live_pct": "0%", "backtest_pct": "3.1%",
                                "match": True},
-               "rank_slope": {"current": -1.10, "baseline": RANK_SLOPE_BASELINE,
+               "rank_slope": {"current": -1.10, "baseline": _FROZEN_SLOPE,
                               "delta": 0.02, "pass": True, "n": 1062},
                "verdict": "INCONCLUSIVE", "rollback_recommended": False,
                "next_review": "after 8 more triggered trades",

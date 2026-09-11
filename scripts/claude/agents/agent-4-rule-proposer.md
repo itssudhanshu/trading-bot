@@ -27,7 +27,10 @@ sed -n '1,60p' src/strategies/breakout/entry.py
 
 The registry already holds rules this repo tested and did not adopt. Read it
 before you design anything — `R-P02` is a skip-premium rule that reached
-+4.03% CAGR against +2.18% and still failed, at **t=+0.45**.
++4.03% CAGR against the +2.18% baseline recorded at the time and still failed, at
+**t=+0.45**. (Those are the numbers of that run and stay as they are; the live
+baseline has since moved to +1.51%. A past result is not restated when the
+baseline moves — it is read with the baseline it was measured against.)
 
 ## Hard gates — check these BEFORE designing
 
@@ -125,8 +128,10 @@ clause nobody can compute is a rule that never lands, and the rehearsal found
 exactly that.
 
 `RANK_SLOPE_IMPACT` is the one that matters most. The rank-depth slope is the
-only claim that survived both the circuit-lock guard and the non-equity
-correction — −1.12% per cohort step (std err 0.28%, t=−3.95, n=1,062). The score
+only claim that has survived all THREE data corrections — the circuit-lock guard,
+the non-equity removal and the fill-hole guard — at −1.08% per cohort step (std
+err 0.28%, t=−3.87, n=1,089). Read it from
+`data/breakout/rank_slope_baseline.json`, not from this line. The score
 works; the knobs around it are noise. A rule that lifts a return while flattening
 that slope has broken the thing that was working.
 

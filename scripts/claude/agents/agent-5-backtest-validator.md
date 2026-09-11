@@ -172,7 +172,7 @@ route to Agent 7; how many more trades are needed.
 {"batch_id": "YYYYMMDD", "rule_id": "R-NNN", "batch_tag": "20260910-agent5-R001",
  "research_file": "src/research/agent_R001.py", "verdict": "INCONCLUSIVE",
  "baseline_read_from": "data/breakout/baseline.json",
- "baseline_value": {"cagr": 2.18, "maxdd": 32.5, "n": 194, "per_trade": 1.07},
+ "baseline_value": {"cagr": 0.0, "maxdd": 0.0, "n": 0, "per_trade": 0.0},
  "with_rule": {"cagr": 0.0, "maxdd": 0.0, "n": 0, "per_trade": 0.0, "t": 0.0},
  "effect": {"size": 0.0, "std_err": 0.0, "t": 0.0},
  "adoption_bar_met": false,
@@ -181,7 +181,7 @@ route to Agent 7; how many more trades are needed.
                         {"c": 1.0, "cagr": 0.0, "per_trade": 0.0, "n": 0},
                         {"c": 2.0, "cagr": 0.0, "per_trade": 0.0, "n": 0},
                         {"c": 3.0, "cagr": 0.0, "per_trade": 0.0, "n": 0}],
- "rank_slope": {"baseline": -1.12, "with_rule": 0.0, "delta": 0.0, "pass": true, "n": 0},
+ "rank_slope": {"baseline": 0.0, "with_rule": 0.0, "delta": 0.0, "pass": true, "n": 0},
  "affected_trades": [], "output_inspection": "clean",
  "reason": "...", "suggestion_for_revision": null,
  "forward_paper_trade_required": true}

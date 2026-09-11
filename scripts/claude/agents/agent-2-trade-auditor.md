@@ -33,8 +33,15 @@ the trade the bucket actually got.**
 | median fill premium | **+1.20%** |
 | top-tercile fill premium bound | **> +2.29%** |
 | fill-premium harvest, top vs bottom tercile | **-3.71% ± 1.17, t=-3.18** (n=1,060) |
-| live per-trade | **+1.07% ± 1.12%** (n=193) |
-| rank-depth slope | **-1.12% per cohort step, t=-3.95** (n=1,062) |
+| live per-trade | **+0.85% ± 1.11%** (n=196) |
+| rank-depth slope | **-1.08% per cohort step, t=-3.87** (n=1,089) |
+
+**The last two rows are RECORDED, and the file wins over this table.** Live
+per-trade moves with `data/breakout/baseline.json`; the slope is
+`data/breakout/rank_slope_baseline.json`, batch `20260911-rankslope`. Both were
+restated after the fill-hole correction (L98) and both have been restated three
+times now. If a number here disagrees with the file, the file is right and this
+table is stale — say so rather than citing it.
 
 The bottom-tercile bound is not published anywhere in this repo. If you need it,
 say so — do not estimate one.

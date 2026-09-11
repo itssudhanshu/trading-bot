@@ -85,13 +85,16 @@ FREQUENCY:               n / lookback window, vs backtest baseline
 MAGNITUDE:               average P&L impact per occurrence
 AFFECTED_CLUSTER:        micro | small | both
 STANDING_CHECK_COVERED:  yes (which ID) | no
-RANK_SLOPE_RISK:         does this put the -1.12%/step slope at risk?
+RANK_SLOPE_RISK:         does this put the -1.08%/step slope at risk?
 ```
 
 That last line matters more than the others. The rank-depth slope is the one
-claim that survived both the circuit-lock guard and the non-equity correction —
--1.12% per cohort step (std err 0.28%, t=-3.95, n=1,062). The score works; the
-knobs around it are noise. A pattern that would damage the slope is a bigger
+claim that has survived all THREE data corrections — the circuit-lock guard, the
+non-equity removal and the fill-hole guard — at -1.08% per cohort step (std err
+0.28%, t=-3.87, n=1,089). Each correction moved the headline by more than it
+moved the slope. Read the live figure from
+`data/breakout/rank_slope_baseline.json`, never from this paragraph. The score
+works; the knobs around it are noise. A pattern that would damage the slope is a bigger
 finding than one that improves a number.
 
 ## 5. Rank
@@ -106,7 +109,7 @@ Execution errors:      2 -> 1  (improvement)
 Process deviations:    0 -> 1  (regression — outage)
 Premium outliers:      0 -> 1  (new)
 Applied rule R-001:    confirm | reject | insufficient_data
-Rank-depth slope:      value this batch, vs -1.12% baseline
+Rank-depth slope:      value this batch, vs rank_slope_baseline.json (-1.08%)
 ```
 
 ## 7. Temporal concentration

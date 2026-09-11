@@ -59,7 +59,9 @@ after how many more trades to re-evaluate.
 ## 4. Rank-slope monitor
 
 If the rule touches the score or the ranking, re-measure the slope on trades
-since application and compare to **−1.12%**. Degradation beyond 0.3% per cohort
+since application and compare to the recorded slope in
+`data/breakout/rank_slope_baseline.json` (**−1.08%** at batch
+`20260911-rankslope`). Degradation beyond 0.3% per cohort
 step is flagged `rank_slope_degrading` with accelerated review — **do not wait
 for the full sample.**
 
@@ -78,7 +80,7 @@ One line for Agent 3's next run:
  "actual_effect": "...", "predicted_effect": "...",
  "within_tolerance": true, "failure_mode_triggered": false,
  "impact_tail": {"live_pct": "...", "backtest_pct": "3.1%", "match": true},
- "rank_slope": {"current": 0.0, "baseline": -1.12, "delta": 0.0, "pass": true, "n": 0},
+ "rank_slope": {"current": 0.0, "baseline": 0.0, "delta": 0.0, "pass": true, "n": 0},
  "verdict": "INCONCLUSIVE", "rollback_recommended": false,
  "next_review": "after N more trades",
  "feedback_for_pattern_miner": "..."}
