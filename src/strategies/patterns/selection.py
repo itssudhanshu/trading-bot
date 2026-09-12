@@ -72,10 +72,11 @@ MAX_POSITIONS = 5
 # gap down together.
 #
 # Open risk at a full bucket is DEPLOY_PCT * STOP_PCT / 100 = 7.5% of capital.
-# engine.MAX_PORTFOLIO_HEAT (6%) is NOT a constraint on this path -- it is
-# checked only inside engine's own signal function, which nothing here calls.
-# An earlier comment cited it as though it bound this bucket; it never did, and
-# quoting a guard that does not run is the failure this project keeps making.
+# There is no engine-side heat cap any more. engine.MAX_PORTFOLIO_HEAT (6%) was
+# never a constraint on this path -- it lived inside engine.gate(), which had no
+# caller anywhere, and it contradicted the 7.5% this bucket actually runs. Both
+# it and gate() were removed on 2026-09-12 rather than corrected, because tuning
+# a risk floor to match the book is relaxing a criterion to fit a result.
 # The real cap is arithmetic: 5 stocks x Rs 45k x 10% stop.
 # 75% of Rs 3L over 5 stocks = Rs 45k each. The cap does less than its name
 # suggests: average occupancy is 3.09 of 5, so the bucket is really ~46%

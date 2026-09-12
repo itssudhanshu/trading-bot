@@ -5242,3 +5242,60 @@ very cache it exists to check, so any run within 12 hours of a refresh would
 report "not moved" whatever the feed said. `max_age_hours=0` forces the network.
 **A freshness window applied to the check for freshness is a cache confirming
 itself**, which is where this whole investigation started with `ok=2121`.
+
+## L107 — A risk limit nobody calls is not a risk limit, and its own test kept it looking alive
+
+`engine.py` opened by describing an "invariant gate" whose rules are "NEVER part
+of any search space", and CLAUDE.md carried the matching rule. A reachability
+census on 2026-09-12 — every public name in the module, counted against
+`engine.NAME` and `from engine import NAME` in code with comments stripped —
+found the live surface is **three names**: `Costs`, `impact_pct`, `IMPACT_C`.
+`gate()` and `size()` had no caller anywhere in `src/` or `tests/`.
+
+And every constant behind them contradicted the book it appeared to govern:
+
+| engine.py | value | the book runs | |
+|---|---|---|---|
+| `MIN_RR` | 3.0 | 2.0 (target 20 / stop 10) | would reject **every** live trade |
+| `RISK_PER_TRADE` | 0.5% | 1.5% (Rs 4,500 of Rs 3,00,000) | 3x understated |
+| `MAX_PORTFOLIO_HEAT` | 6% | 7.5% at a full book | exceeded by design |
+| `MAX_ADV_PARTICIPATION` | 1% | none | a cap CLAUDE.md records as **rejected** |
+
+**Removed, not corrected.** Tuning a 3.0 R:R floor down to 2.0 so the live book
+passes is relaxing a criterion to fit a result, and this file is precisely where
+that must not happen. The checks worth keeping already run elsewhere: the
+circuit lock is inline in each `selection.py` (L58), surveillance flags in
+`surveillance_known`, and "no restricted stock is a candidate" is an audit check.
+Point at those, never at a function nothing calls.
+
+**The detail that makes this more than tidying: `gate()` was alive inside its
+own test.** Forty lines of `_selftest` exercised the R:R floor, `RR_EPS` float
+dust, ASM/GSM/F&O flags, the liquidity cap, portfolio heat and a one-share
+viability case — thorough, passing, and the only caller in the repository. This
+is the orphan problem from L106 one level up: there, a helper nothing called was
+invisible; here, a *well-tested* function nothing called looked maintained.
+**A green test is not evidence that code runs in production.** It is evidence
+that the test runs.
+
+This is the L58 shape a third time. L58: `gate()` rejected circuit-locked bars
+and nothing called `gate()` — 6.5 CAGR points of phantom fills. L69: a denylist
+that could not see delisted funds — 5.17 points. Both were found by reading what
+the code actually reaches, not by any statistic. The difference here is that
+nothing was being computed wrongly, so no number moves: the cost was purely that
+an auditor reading `engine.py` would have described this book's risk policy in
+four numbers, none of which were true.
+
+`engine._selftest_reachable` now fails when a public name in the module stops
+being reached, unless it is listed in `KNOWN_UNREACHED` with a reason — the same
+"excluded by name so the exclusion has to be defended" idiom `run_selftests.py`
+uses. Seven names sit there today, and the honest entry is `Journal`: an sqlite
+trade journal for a live execution path that does not exist, while `positions.py`
+is the actual forward book. It should be adopted or deleted, not left drifting.
+
+The guard flagged `KNOWN_UNREACHED` itself on its first run, which is correct and
+useless; the census now excludes its own machinery.
+
+**Nothing about the book changes, and that is the claim to verify** — the removed
+code was unreachable, so `audit.py` must still pass 41/41 with the baseline
+unmoved at +1.51% / n=196. A deletion that moves a number was not a deletion of
+dead code.

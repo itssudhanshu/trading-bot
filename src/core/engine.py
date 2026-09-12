@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-"""Paper execution engine: invariant gate, gap-aware fills, India cost stack, journal.
+"""Costs and market impact for the paper book.
 
-The gate encodes rules that are NEVER part of any search space. A generator that
-can vary its own risk limits will discover that removing them improves backtest
-returns -- every optimiser does. These live here, deterministic and un-tunable.
+WHAT THIS MODULE IS REACHED FOR, and it is the whole list: `Costs` (the India
+cost stack -- brokerage, STT, exchange, GST, SEBI, stamp duty on the buy side,
+DP on the sell side), `impact_pct` (square-root market impact) and `IMPACT_C`.
+`_selftest_reachable` asserts that list against the rest of the tree, so the
+docstring cannot drift away from what the code does.
+
+It previously opened by describing an invariant gate whose rules were "NEVER
+part of any search space". That gate had no caller. The claim was true in spirit
+and false in fact for as long as the file existed, and a reader auditing risk
+would have taken four contradicting numbers as live policy. If a risk gate is
+wanted, it has to be CALLED and its rejections have to show up in the trade
+count -- not merely defined here.
 """
 
 import sys as _sys, pathlib as _pl
@@ -16,23 +25,24 @@ from pathlib import Path
 
 from paths import ROOT      # one definition; see paths.py
 
-# --- invariants: not tunable, not searchable -------------------------------
-MIN_RR = 3.0                  # asymmetric R:R floor
-# Targets built as entry + r*(entry-stop) recover a ratio of r only to within
-# float precision -- worst when (entry-stop) is small next to entry. Without
-# this tolerance a spec that asks for exactly 3.0 is rejected ~16% of the time.
-RR_EPS = 1e-9
-MAX_ADV_PARTICIPATION = 0.01  # never more than 1% of the day's traded value
-MAX_PORTFOLIO_HEAT = 0.06     # total open risk across all positions
-RISK_PER_TRADE = 0.005        # 0.5% of equity at risk per position
-# Round-trip costs must be a small fraction of the risk actually being taken.
-# When the liquidity cap sizes a position down to a handful of shares, fixed
-# brokerage (Rs 20/order, Rs 40 round trip) dwarfs the risk base: a 1-share
-# position risking Rs 0.94 books a Rs 45 loss -- R = -47, and the trade was
-# never viable. One invariant kills three pathologies at once: unviable sizing,
-# illiquid instruments that escaped classification, and the R-multiple blow-ups
-# they produce downstream.
-MAX_COST_RATIO = 0.10
+# --- what this module actually governs -------------------------------------
+# Costs and market impact. Nothing else.
+#
+# It used to carry a risk framework -- MIN_RR 3.0, RISK_PER_TRADE 0.5%,
+# MAX_PORTFOLIO_HEAT 6%, MAX_ADV_PARTICIPATION 1% -- behind `gate()` and
+# `size()`. A reachability census on 2026-09-12 found NOTHING in src/ or tests/
+# called either function: the live path imports `Costs` and `impact_pct` and no
+# more. Every one of those four numbers also contradicted the book it appeared
+# to govern (RR 2.0 against a 3.0 floor, 7.5% open risk against a 6% cap, 1.5%
+# per trade against 0.5%), and MAX_ADV_PARTICIPATION was a participation cap
+# CLAUDE.md records as TESTED AND REJECTED. They are removed rather than
+# corrected: tuning them to match the book would be relaxing a criterion to fit
+# a result, and this file is exactly where that must not happen.
+#
+# Where those checks actually live now: the circuit lock is inline in each
+# strategy's selection.py (L58), surveillance flags in `surveillance_known`,
+# and "no restricted stock is a candidate" is an audit.py check. Point at
+# those, never at a function nothing calls.
 
 
 # Square-root market impact: cost ~ volatility * sqrt(participation), the form
@@ -114,50 +124,6 @@ def slippage_bps(value: float, turnover: float, base: float = 5.0,
         return base * 10
     participation = value / turnover
     return base + per_pct_adv * (participation / 0.01)
-
-
-def size(signal: Signal, bar, equity: float) -> tuple[int, str | None]:
-    """-> (qty, reject_reason). qty 0 always carries a reason."""
-    risk_qty = int((equity * RISK_PER_TRADE) / signal.risk_per_share)
-    if risk_qty < 1:
-        return 0, "risk_qty_zero"
-    cap = int((MAX_ADV_PARTICIPATION * bar.turnover) / signal.entry)
-    if cap < 1:
-        return 0, "illiquid"
-    return min(risk_qty, cap), None
-
-
-def gate(signal: Signal, bar, equity: float, open_risk: float) -> tuple[int, str | None]:
-    """The invariants. Returns (qty, reject_reason); reason None means accepted."""
-    if signal.risk_per_share <= 0:
-        return 0, "stop_above_entry"
-    if signal.rr < MIN_RR - RR_EPS:
-        return 0, f"rr_below_{MIN_RR}"
-    if bar.asm:
-        return 0, f"asm:{bar.asm}"
-    if bar.gsm:
-        return 0, f"gsm:{bar.gsm}"
-    if bar.fo_ban:
-        return 0, "fo_ban"
-    # ponytail: high==low is a circuit-lock proxy; upgrade to NSE price-band
-    # file when intraday entries need the actual 2/5/10/20% band.
-    if bar.high == bar.low:
-        return 0, "circuit_locked"
-
-    qty, reason = size(signal, bar, equity)
-    if reason:
-        return 0, reason
-
-    risk_value = qty * signal.risk_per_share
-    round_trip = (DEFAULT_COSTS.charge(qty * signal.entry, "BUY")
-                  + DEFAULT_COSTS.charge(qty * signal.target, "SELL"))
-    if round_trip > MAX_COST_RATIO * risk_value:
-        return 0, "costs_exceed_risk"
-
-    trade_risk = risk_value / equity
-    if open_risk + trade_risk > MAX_PORTFOLIO_HEAT:
-        return 0, "portfolio_heat"
-    return qty, None
 
 
 def entry_fill(trigger: float, bar) -> float | None:
@@ -285,6 +251,87 @@ class Journal:
             " GROUP BY reject_reason ORDER BY 2 DESC").fetchall())
 
 
+# Public names this module keeps WITHOUT the live path reaching them. Named
+# here, with a reason, so the exclusion has to be defended -- the same idiom
+# run_selftests.py uses for modules it skips. A new unreachable name fails the
+# census below rather than quietly joining the four risk constants that spent
+# months reading as policy.
+KNOWN_UNREACHED = {
+    "Signal": "the signal record the Journal stores; kept with Journal",
+    "Journal": "sqlite trade journal for a live execution path that does not "
+               "exist yet. positions.py is the forward book; this is unused "
+               "scaffolding and should be deleted or adopted, not left drifting",
+    "DEFAULT_COSTS": "module-level default for Costs; simulate builds its own",
+    "slippage_bps": "linear slippage, superseded by impact_pct's sqrt form",
+    "entry_fill": "simulate.py implements its own gap-aware fills (L98/L99)",
+    "stop_fill": "as entry_fill",
+    "target_fill": "as entry_fill",
+}
+
+
+def _reachability():
+    """-> {public name: files outside engine.py that reference it}.
+
+    Counts `engine.NAME` and `from engine import NAME` in code, with comments
+    stripped -- a name that appears only in prose is not reached. This exists
+    because a census run by hand on 2026-09-12 found MIN_RR, RR_EPS,
+    MAX_ADV_PARTICIPATION, MAX_PORTFOLIO_HEAT, RISK_PER_TRADE and MAX_COST_RATIO
+    all at zero callers while the module docstring called them invariants.
+    """
+    import ast as _ast, re as _re
+    me = Path(__file__).resolve()
+    tree = _ast.parse(me.read_text())
+    names = []
+    for n in tree.body:
+        if isinstance(n, (_ast.FunctionDef, _ast.ClassDef)):
+            names.append(n.name)
+        elif isinstance(n, _ast.Assign):
+            names += [t.id for t in n.targets
+                      if isinstance(t, _ast.Name) and t.id.isupper()]
+    # The census's own machinery is not part of the surface it measures. (The
+    # first run flagged KNOWN_UNREACHED itself, which is correct and useless.)
+    names = [n for n in dict.fromkeys(names)
+             if not n.startswith("_") and n != "KNOWN_UNREACHED"]
+
+    roots = [ROOT / "src", ROOT / "tests"]
+    files = [p for r in roots if r.exists() for p in r.rglob("*.py")
+             if p.resolve() != me]
+    out = {}
+    for nm in names:
+        hits = set()
+        for p in files:
+            for line in p.read_text(errors="replace").splitlines():
+                code = line.split("#", 1)[0]
+                if _re.search(rf"\bengine\.{nm}\b", code) or (
+                        _re.search(r"from\s+engine\s+import", code)
+                        and _re.search(rf"\b{nm}\b", code)):
+                    hits.add(p.name)
+                    break
+        out[nm] = sorted(hits)
+    return out
+
+
+def _selftest_reachable():
+    reach = _reachability()
+    dead = {n for n, hits in reach.items() if not hits}
+    undocumented = dead - set(KNOWN_UNREACHED)
+    assert not undocumented, (
+        "engine.py grew a public name nothing outside it reaches: "
+        + ", ".join(sorted(undocumented))
+        + ". Either wire it into the live path, delete it, or add it to "
+          "KNOWN_UNREACHED with a reason. An unreachable constant in THIS file "
+          "reads as risk policy and is not.")
+    stale = set(KNOWN_UNREACHED) - dead
+    assert not stale, ("KNOWN_UNREACHED lists names that ARE now reached, so "
+                       "the exclusion is protecting nothing: "
+                       + ", ".join(sorted(stale)))
+    # the live surface, asserted positively so a rename cannot silently shrink it
+    for must in ("Costs", "impact_pct", "IMPACT_C"):
+        assert reach.get(must), f"{must} is engine's live surface and is unreached"
+    print(f"engine.reachability selftest ok "
+          f"({len(reach) - len(dead)} live, {len(dead)} documented unreached)")
+
+
 def _selftest():
     from universe import Bar
     d = date(2026, 1, 1)
@@ -296,53 +343,12 @@ def _selftest():
 
     eq, clean = 1_000_000.0, bar(100, 105, 99, 104)
 
-    # --- the R:R floor is absolute -----------------------------------------
-    just_under = Signal("X", "vcp", entry=100, stop=90, target=129.9)   # 2.99
-    assert abs(just_under.rr - 2.99) < 1e-9, just_under.rr
-    assert gate(just_under, clean, eq, 0)[1] == "rr_below_3.0"
-    assert gate(Signal("X", "vcp", 100, 90, 130), clean, eq, 0)[1] is None  # 3.00 passes
-
-    # Regression: targets built as entry + 3*(entry-stop) recover rr slightly
-    # under 3.0 when the stop is itself computed (swing_low - atr*mult), which
-    # carries its own dust. Real values from the 2022-2026 scan; without RR_EPS
-    # these 3R signals were rejected as "rr_below_3.0".
-    for e_, s_, t_ in [(267.51725, 245.78151627587297, 332.724451172381),
-                       (450.9004499999999, 409.18364660090975, 576.0508601972704),
-                       (2099.6975999999995, 1885.3288375577852, 2742.8038873266423)]:
-        built = Signal("X", "stage2", entry=e_, stop=s_, target=t_)
-        assert built.rr < MIN_RR, f"expected float dust, got {built.rr!r}"
-        assert gate(built, clean, eq, 0)[1] is None, \
-            f"float dust rejected a valid 3R: {built.rr!r}"
-
-    # --- surveillance flags block regardless of how good the setup looks ----
-    great = Signal("X", "vcp", entry=100, stop=90, target=200)
-    assert gate(great, bar(100, 105, 99, 104, asm="Stage I"), eq, 0)[1] == "asm:Stage I"
-    assert gate(great, bar(100, 105, 99, 104, gsm="II"), eq, 0)[1] == "gsm:II"
-    assert gate(great, bar(100, 105, 99, 104, fo_ban=True), eq, 0)[1] == "fo_ban"
-    assert gate(great, bar(100, 100, 100, 100), eq, 0)[1] == "circuit_locked"
-
-    # --- liquidity cap binds before the risk-based size --------------------
-    qty, _ = gate(great, bar(100, 105, 99, 104, turnover=1e6), eq, 0)
-    assert qty == int(0.01 * 1e6 / 100) == 100, qty          # 1% of 10L turnover
-    qty_liquid, _ = gate(great, clean, eq, 0)
-    assert qty_liquid == int(eq * RISK_PER_TRADE / 10) == 500, qty_liquid
-
-    # --- portfolio heat ----------------------------------------------------
-    assert gate(great, clean, eq, open_risk=0.059)[1] == "portfolio_heat"
-
-    # --- economic viability: a 1-share position is never a real trade -------
-    # Real case from the seed-42 search: KOTAKMNC, risk/share 0.94, qty 1,
-    # Rs 45 of fixed costs against a Rs 0.94 risk base -> R = -47.7
-    tiny = Signal("X", "vcp", entry=100.0, stop=99.06, target=102.82)
-    assert abs(tiny.rr - 3.0) < 0.01, tiny.rr
-    thin_bar = bar(100, 105, 99, 104, turnover=10_000)
-    q, why = gate(tiny, thin_bar, eq, 0)
-    assert why in ("costs_exceed_risk", "illiquid"), (q, why)
-    # and with ample liquidity the same near-zero risk is still refused
-    assert gate(tiny, clean, eq, 0)[1] != None or True
-    q2, why2 = gate(Signal("X", "vcp", 100.0, 99.9, 100.3), clean, eq, 0)
-    assert why2 == "costs_exceed_risk", (q2, why2)
-
+    # The gate assertions that stood here -- the R:R floor, RR_EPS float dust,
+    # surveillance flags, the liquidity cap, portfolio heat and the 1-share
+    # viability case -- went with `gate()`. They were thorough, they passed, and
+    # they were the ONLY caller: the function was alive inside its own test and
+    # dead everywhere else, which is precisely what kept it looking maintained.
+    # A test is not evidence that code runs in production.
     # --- fills: the gap cases are the whole point --------------------------
     assert entry_fill(100, bar(98, 105, 97, 104)) == 100      # trades through -> trigger
     assert entry_fill(100, bar(103, 106, 102, 105)) == 103    # gaps past -> open, worse
@@ -377,7 +383,8 @@ def _selftest():
 
     # --- journal round-trip ------------------------------------------------
     j = Journal(":memory:")
-    sid = j.signal(d, just_under, 0, "rr_below_3.0")
+    rejected = Signal("X", "vcp", entry=100, stop=90, target=129.9)
+    sid = j.signal(d, rejected, 0, "rr_below_3.0")
     j.fill(sid, d, "X", "BUY", 10, 100.0, 0.5, 25.0, "entry")
     assert j.reject_counts() == {"rr_below_3.0": 1}
 
@@ -393,6 +400,7 @@ def _selftest():
     pid2 = j.open_position("h0", good, d, 50, 30)
     j.expire_position(pid2, d)
     assert j.positions("pending") == [] and j.realised_pnl() == 1400.0
+    _selftest_reachable()
     print("engine selftest ok")
 
 

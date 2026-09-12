@@ -108,8 +108,18 @@ error is a finding about this price history, not about the market.
 - **Criteria may be tightened, never loosened.** Tightening a test that let
   something through is defensible; relaxing one that rejected a candidate is
   how this fails.
-- **Risk invariants in `engine.py` are never searched.** A generator that can
-  vary its own risk limits will discover that removing them improves returns.
+- **A risk limit must be CALLED, or it is not a risk limit.** The original form
+  of this rule said the invariants in `engine.py` are never searched -- true, and
+  beside the point: a 2026-09-12 reachability census found `engine.gate()` and
+  `engine.size()` had no caller anywhere in `src/` or `tests/`, and all four
+  constants behind them contradicted the live book (a 3.0 R:R floor against the
+  book's 2.0, a 6% heat cap against 7.5%, 0.5% per trade against 1.5%, and a
+  participation cap this file records as tested and REJECTED). They were removed,
+  not corrected: tuning a risk floor until the book passes is relaxing a
+  criterion to fit a result. `engine._selftest_reachable` now fails if a public
+  name there stops being reached. A generator still must not vary risk limits --
+  but the limits that matter are the ones in the live path, and they are
+  arithmetic: 5 stocks x Rs 45k x 10% stop.
 - **A status message is not evidence.** Verify the thing itself: a flag that
   prints "enabled" may do nothing, an HTTP 200 may not be the file requested,
   a knob that looks injectable may be a function-local that is never read.
