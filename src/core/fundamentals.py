@@ -296,8 +296,16 @@ def build_asof(symbol, force=False) -> list:
                   or (cons and not cur["consolidated"])
                   or (cons == cur["consolidated"] and bc < cur["visible_from"]))
         if better:
+            # NSE writes "-" (and occasionally "") where a filing has no XBRL
+            # attachment. Carried through verbatim that becomes the URL
+            # ".../corporate/xbrl/-", which the backfill dutifully requests and
+            # counts as a failure -- a 404 this repo generates itself and then
+            # reports as missing data.
+            url = (m.get("xbrl") or "").strip()
+            if url in ("-", "NA", "N/A"):
+                url = ""
             by_quarter[qe] = {"visible_from": bc, "quarter_end": qe,
-                              "consolidated": cons, "xbrl": m.get("xbrl")}
+                              "consolidated": cons, "xbrl": url or None}
     return sorted(by_quarter.values(), key=lambda r: r["visible_from"])
 
 
@@ -428,6 +436,7 @@ def _selftest():
     # test, it is a comment.
     _selftest_features()
     _selftest_refresh()
+    _selftest_placeholder_xbrl()
     _selftest_fresh()
     _selftest_modes()
     print("fundamentals selftest ok")
@@ -802,6 +811,29 @@ def _selftest_modes():
                              body, re.M))
     assert found == MODES, f"MODES {MODES} != dispatch chain {found}"
     print("fundamentals.MODES selftest ok")
+
+
+def _selftest_placeholder_xbrl():
+    """NSE's "-" must not become a URL. It produced 404s this repo asked for."""
+    import tempfile
+    g = globals()
+    real = g["RAW"]
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            g["RAW"] = Path(td)
+            (g["RAW"] / "index").mkdir(parents=True)
+            (g["RAW"] / "index" / "S.json").write_text(json.dumps([
+                {"broadCastDate": "14-Aug-2026 18:00", "toDate": "30-Jun-2026",
+                 "xbrl": "-"},
+                {"broadCastDate": "15-May-2026 18:00", "toDate": "31-Mar-2026",
+                 "xbrl": "https://x/real.xml"},
+            ]))
+            rows = {r["quarter_end"].isoformat(): r for r in build_asof("S")}
+            assert rows["2026-06-30"]["xbrl"] is None, rows["2026-06-30"]
+            assert rows["2026-03-31"]["xbrl"] == "https://x/real.xml"
+    finally:
+        g["RAW"] = real
+    print("fundamentals.build_asof placeholder-xbrl selftest ok")
 
 
 def _selftest_fresh():

@@ -25,7 +25,9 @@ This answers a question; it adopts nothing and changes no rule.
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401  -- puts the source dirs on sys.path
+import json
 import sys
+from pathlib import Path
 from collections import Counter
 from datetime import date
 
@@ -61,6 +63,54 @@ def missing(symbols, log=None, start=None):
             if not fu._xbrl_path(sym, f["quarter_end"]).exists():
                 out.append((sym, f["quarter_end"], f["xbrl"]))
     return out
+
+
+def raw_rows(symbol):
+    """-> the symbol's index JSON exactly as stored. No parsing, no network."""
+    p = fu.RAW / "index" / f"{symbol}.json"
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return []
+
+
+def drop_census(symbols, log=None):
+    """-> how many stored index rows `build_asof` silently discards, and why.
+
+    `build_asof` drops any row whose broadCastDate or toDate `_dt` cannot read
+    -- `if not bc or not qe: continue`, no log, no counter. `_dt` knows exactly
+    three date formats. So if NSE changed its date format at some point, every
+    row after that point vanishes without a word and the corpus stops dead on
+    the last date the old format was used.
+
+    That is the hypothesis this answers, and it needs no network: the rows are
+    already on disk. 2,021 of 2,120 symbols stopping at exactly 2024-12-31 is
+    either the source refusing to serve newer filings, or this drop. A cliff at
+    one shared date is what the second looks like.
+    """
+    seen = dropped = 0
+    bad_bc, bad_qe, examples = Counter(), Counter(), []
+    for i, sym in enumerate(symbols, 1):
+        if log and i % 500 == 0:
+            log(f"  read {i}/{len(symbols)}")
+        for m in raw_rows(sym):
+            seen += 1
+            raw_bc, raw_qe = m.get("broadCastDate"), m.get("toDate")
+            bc, qe = fu._dt(raw_bc), fu._dt(raw_qe)
+            if bc and qe:
+                continue
+            dropped += 1
+            if not bc:
+                bad_bc[repr(raw_bc)[:40]] += 1
+            if not qe:
+                bad_qe[repr(raw_qe)[:40]] += 1
+            if len(examples) < 5:
+                examples.append({"sym": sym, "broadCastDate": raw_bc,
+                                 "toDate": raw_qe})
+    return {"seen": seen, "dropped": dropped, "bad_broadcast": bad_bc,
+            "bad_todate": bad_qe, "examples": examples}
 
 
 def newest_listed(symbols):
@@ -113,6 +163,25 @@ def report(symbols=None, n=40, start=date(2019, 1, 1)):
     # NSE lists nothing after 2024 then there is no hole to fill and the whole
     # staleness question is about what is being served, not what is stored.
     print(f"scanning {len(symbols)} symbols")
+
+    # ENDPOINT -1, cheapest and most likely: rows we have but throw away.
+    cen = drop_census(symbols, log=print)
+    print(f"\n  stored index rows: {cen['seen']}, silently dropped by "
+          f"build_asof: {cen['dropped']} "
+          f"({cen['dropped']/max(cen['seen'],1):.1%})")
+    for label, c in (("broadCastDate", cen["bad_broadcast"]),
+                     ("toDate", cen["bad_todate"])):
+        if c:
+            print(f"    unreadable {label}, most common:")
+            for v, n in c.most_common(5):
+                print(f"      {n:6d}  {v}")
+    for e in cen["examples"][:3]:
+        print(f"    e.g. {e['sym']}: broadCastDate={e['broadCastDate']!r} "
+              f"toDate={e['toDate']!r}")
+    if not cen["dropped"]:
+        print("    -> nothing is being dropped; the index genuinely stops "
+              "where it stops, and the source is the problem")
+
     nl = newest_listed(symbols)
     tot = sum(nl.values())
     print(f"\n  newest quarter each symbol's index LISTS ({tot} with any):")
@@ -199,6 +268,29 @@ def _selftest():
     assert got["u2"]["is_xbrl"] is False, "200 with an HTML body counted as XBRL"
     assert got["u2"]["status"] == 200, got["u2"]
     assert got["u3"]["status"] == 404 and got["u3"]["bytes"] == 0, got["u3"]
+    # drop_census must COUNT the silent discard, including the exact shape the
+    # hypothesis predicts: a date format _dt does not know. If NSE switched to
+    # ISO, every such row vanishes from build_asof without a word.
+    import tempfile
+    g = globals()
+    real = fu.RAW
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            fu.RAW = Path(td)
+            (fu.RAW / "index").mkdir(parents=True)
+            (fu.RAW / "index" / "S.json").write_text(json.dumps([
+                {"broadCastDate": "14-Aug-2026 18:00", "toDate": "30-Jun-2026"},
+                {"broadCastDate": "2026-11-13T18:00:00", "toDate": "2026-09-30"},
+                {"broadCastDate": "", "toDate": "31-Dec-2024"},
+            ]))
+            c = drop_census(["S"])
+            assert c["seen"] == 3, c
+            assert c["dropped"] == 2, f"silent drops not counted: {c}"
+            assert any("2026-11-13" in k for k in c["bad_broadcast"]), \
+                f"the ISO-format row was not reported: {c['bad_broadcast']}"
+            assert raw_rows("MISSING") == [], "absent index must read as empty"
+    finally:
+        fu.RAW = real
     print("xbrl_probe selftest ok")
 
 

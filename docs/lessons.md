@@ -5099,3 +5099,39 @@ the indexes reach. `newest_listed()` reports each symbol's newest listed
 quarter, which settles whether NSE is serving recent filings at all — if it is
 not, no amount of refetching can help and `expected_next_filing` is marking
 2,378 symbols behind against filings that do not exist to fetch.
+
+**Addendum 5 — a cliff at one shared date.** Endpoint 0 came back decisive:
+**2,021 of 2,120 symbols list nothing after 2024-12-31**, and 0 of 2,120 list
+anything at 2025-06-30 or later. Endpoint 1: 1,255 filings listed but not
+stored, 0% of them in 2025-2026, which reconciles with the run's `fail=1240`
+(the gap is 2,420 symbols scanned against 2,378 refreshed). Endpoint 2: 40 of
+40 sampled fetches are 404, on archive links from 2019-2023.
+
+So there are two separate things, and neither is the one I first named:
+
+1. **The 404s are old dead links, not the new data.** Long-standing gaps in the
+   2019-2023 archive. One sampled URL was
+   `https://nsearchives.nseindia.com/corporate/xbrl/-` -- NSE writes `-` where a
+   filing has no XBRL attachment, `build_asof` carried it through verbatim, and
+   the backfill requested it. **A 404 this repo generated itself and then
+   counted as missing data.** Now normalised to None, asserted by
+   `_selftest_placeholder_xbrl`.
+
+2. **The cliff is the real question, and 95% of symbols sharing one date is not
+   what a source running dry looks like.** Companies do not all stop filing on
+   the same day. Two candidates: NSE stopped serving this endpoint's newer rows,
+   or we are throwing the newer rows away. `build_asof` does
+   `if not bc or not qe: continue` -- silent, uncounted -- and `_dt` knows
+   exactly three date formats. A format change at the source would delete every
+   row after it without a word and stop the corpus dead on the last date the old
+   format was used, which is exactly the observed shape.
+
+`drop_census` settles it offline, because the rows are already on disk: it
+counts what `build_asof` discards and prints the unreadable values. If it
+reports zero, the source is the problem and `behind_symbols` is marking 2,378
+symbols behind against filings that cannot be fetched -- in which case
+`--refresh` must say so rather than fetching 2,378 indexes every run.
+
+The general rule this keeps re-teaching: **`continue` on a parse failure is a
+data-loss path, and an uncounted one is invisible.** Every silent drop in this
+repo has eventually had to be given a counter.
