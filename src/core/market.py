@@ -45,12 +45,30 @@ universe is. This module is shared and knows nothing about any strategy --
 importing `clusters` here would resolve to whichever strategy `paths` happens to
 have activated, which is the failure `paths.py` exists to prevent.
 
-SURVIVORSHIP
-------------
+SURVIVORSHIP -- AND THE ARGUMENT BELOW IS MEASURED WRONG (L101)
+--------------------------------------------------------------
 A symbol whose series ends mid-window is not dropped -- it is carried at its
-last printed close and counted in `n_truncated`. Dropping it would compute the
-benchmark over survivors only, which flatters it exactly when the market was
-worst, and the whole point of a benchmark is the bad windows.
+last printed close and counted in `n_truncated`. The rule was adopted on this
+argument: dropping it would compute the benchmark over survivors only, which
+flatters it exactly when the market was worst, and the whole point of a
+benchmark is the bad windows.
+
+**That argument is false on this corpus.** `benchmark_probe.py` C4, batch
+`20260912-benchmarkprobe1`: dropping truncated names reads **-0.1643 +/-
+0.0382pp** against carrying them (t = -4.30, n = 21 windows), and the gap is
+NARROWER in the worst decile, not wider. Both halves of the prediction are
+refuted. Carrying is not removing an upward bias, it is adding one -- plausibly
+because a name that stops printing here is halted rather than dead, and L58
+found the circuit locks were all UPPER locks. That mechanism is untested and is
+a hypothesis, not a finding.
+
+The rule stays, for two reasons that are not "it was right": re-choosing on one
+post-hoc sample is churn, and the effect is 0.16pp against a p5/p95 spread of
+-8.9/+18.0. It is also harmless to the thing this benchmark exists for -- H12
+measures two arms against the SAME comparator, so a level bias cancels.
+
+**Anything quoting this benchmark quotes `n_truncated` and that +0.16pp with
+it.** A replacement rule is a fresh pre-registration.
 
     python3 src/core/market.py --selftest
 """

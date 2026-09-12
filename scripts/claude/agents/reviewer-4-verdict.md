@@ -57,8 +57,15 @@ thing the eventual measurement will look for.
 
 ## Output — the format is load-bearing
 
-Emitted exactly like this. It is parsed, appended to the review ledger, and
-carried forward; prose around the block is fine, prose inside it is not.
+Emitted exactly like this. `src/ops/review.py` parses it and **refuses** it if
+it does not hold up; prose around the block is fine, prose inside it is not.
+
+That module is the reason this section is not just advice. It checks what can be
+checked mechanically -- the grade is one of the three, the confidence is a number
+in range, the coverage you claim equals the coverage the dossier actually has,
+a return carries its trial count, and nothing here proposes a rule change. It
+does not and cannot judge whether your verdict is right. Everything above this
+line is yours; everything in the block is checked.
 
 ```
 VERDICT: proceed | proceed-with-note | stand-aside

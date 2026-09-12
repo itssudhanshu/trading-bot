@@ -145,9 +145,18 @@ did — which is the only shape from which this layer could ever earn authority.
   a machine with `data/raw`. The other four need the real corpus and report
   `not applicable` rather than `FAIL` where the sample cannot test them.
 
-  Until that run happens, **H12 quotes no alpha figure.** The probe exits 2 with
-  a plain message on a checkout without price history, so "it ran" and "it had
-  data" cannot be confused.
+  **The run happened (2026-09-12, 2,420 symbols / 1,715 sessions / 21 windows).**
+  C1 passed 21/21 byte-identical, C2 at 0.999 median coverage over a 1,018-name
+  universe, C3 at 1.84% median truncation. C4's registered prediction was
+  **refuted at t = -4.30** -- dropping truncated names reads 0.1643pp LOWER, not
+  higher, and the gap narrows in the tail instead of widening (L101).
+
+  So the benchmark is usable and carries one known, measured bias: the carry
+  rule adds roughly +0.16pp. **That bias cancels in H12**, which compares
+  `stand-aside` against `proceed` over the same comparator -- a level shift
+  moves both arms equally. H12 may now quote alpha, on two conditions: every
+  figure carries `n_used/n_asked` and `n_truncated`, and the +0.16pp carry bias
+  is stated wherever an ABSOLUTE alpha is reported rather than a difference.
 - **Control:** `proceed-with-note` is reported separately and is not pooled with
   either arm. Pooling it after seeing the split is how a three-grade scale
   becomes a two-grade scale that wins.

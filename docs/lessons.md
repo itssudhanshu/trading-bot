@@ -4624,3 +4624,73 @@ The lesson that does generalise: an agent architecture is a way of *organising*
 evidence and cannot manufacture any. Four roles reading the same four channels
 produce four readings of the same nulls, and the fluency of the prose around
 them is not a signal.
+
+## L101 — The benchmark does not read ahead; the survivorship rule I wrote does the opposite of what I predicted
+
+First real run of `benchmark_probe.py` (batch `20260912-benchmarkprobe1`), 2,420
+symbols, 1,715 sessions, 21 windows at the live 10-day hold.
+
+### The check that mattered passed
+
+**C1: 21/21 windows byte-identical against a corpus truncated at `end`.** The
+equal-weight benchmark cannot see past the window it prices. That was the only
+check with a registered prediction of exactly zero — one changed digit refutes
+it — and it is the family that has cost this project most: L58, L69 and L98
+were each something reading what it could not have read. Coverage is 0.999
+median over a 1,018-name universe (C2), truncation 1.84% median (C3).
+
+### The registered prediction was refuted, with a real error bar
+
+C4 asked whether the carry rule earns its place. The rule carries a name whose
+series ends mid-window at its last printed close rather than dropping it, and
+the justification written into `market.py` was survivorship: *dropping it would
+compute the benchmark over survivors only, which flatters it exactly when the
+market was worst.* That predicts **drop > carry**, and wider in bad windows.
+
+| | predicted | measured |
+|---|---|---|
+| drop − carry, overall | positive | **−0.1643 +/- 0.0382pp, t = −4.30, n = 21** |
+| drop − carry, worst decile | wider still | −0.0384pp — **narrower** |
+
+Both halves wrong, and not by a margin that noise explains. Carrying truncated
+names makes the benchmark **higher**, so the rule is not removing an upward
+bias — it is adding one.
+
+**A mechanism, labelled as a hypothesis and not a finding:** a name that stops
+printing mid-window here is likelier halted than dead, and this corpus has form.
+L58 found the circuit-locked bars were **all upper locks** — no sellers at any
+price. A microcap that runs limit-up and then stops printing is carried at an
+elevated last close. That would produce exactly this sign. It has not been
+tested and must not be quoted as though it had.
+
+### Why the rule stays anyway, and what changes instead
+
+Statistically solid, economically tiny: 0.1643pp against a benchmark whose own
+per-symbol spread is −8.9 / +18.0 at p5/p95. And decisively for the thing this
+benchmark was built for — **a constant shift cancels.** H12 compares
+`stand-aside` against `proceed` trades measured against the SAME benchmark, so a
+level bias in the comparator leaves the arms' difference untouched. The rule is
+wrong about the market and harmless to the test.
+
+So: the rule stays, because changing it now would be re-choosing on a post-hoc
+reading of one sample, and because the replacement carries the survivorship
+exposure the rule was built for — which 10-day windows at 1.84% truncation may
+simply be too short to contain. What changes is that **its stated justification
+is now known to be false on this corpus**, and every figure quoting this
+benchmark carries `n_truncated` and this measured +0.16pp with it. A replacement
+rule is a fresh pre-registration, as C4 declared before the run.
+
+### The defect the run exposed in the check itself
+
+C4 originally reported a bare mean difference. In a repo whose entire discipline
+is that a gap without an error bar is not evidence, the check built to enforce
+that standard did not meet it — and the first run's `−0.1643pp` was unreadable
+until the operator computed the t by hand. Paired per-window standard error, t
+and n are now in the verdict line. The PASS/FAIL condition was deliberately left
+alone: adding an error bar tells you whether a refutation is solid, moving a bar
+after seeing the number is loosening a criterion.
+
+**The pattern across L100 and this one:** every defect found this week was found
+by running the thing against real inputs, and none of them by reading it. A
+channel that reported `no data` on every symbol, a selftest passing on a skipped
+body, a check with no error bar in the one repo that would notice.
