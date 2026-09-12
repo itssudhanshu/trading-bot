@@ -5043,3 +5043,33 @@ nothing over the blunt option. That is not a fault in the selector; it is the
 measure of how stale the cache had become while `ok=2121` reported success. It
 should select a small minority on every subsequent run, and if it does not,
 something else is wrong.
+
+**Addendum 3 — the refresh ran properly and found 40 files. My explanation was
+wrong.** With every index forcibly refetched (`idx_cached: 0`, 2,078 pulled from
+NSE), stage 2 reported **`xbrl_ok=40, have=40639, fail=1240`** out of 41,919
+filings in window, and `fund_test` moved from 1,080 trades to 1,079 on the same
+34 blocks and the same 2023-07-27..2026-08-27 window. The audit passed 41/41
+with the baseline unmoved (+1.51% -> +1.51%).
+
+So the `--backfill` no-op was real — stage 1 genuinely made no requests — but
+the consequence I attached to it, that the corpus had been "confirming itself
+since February 2025" and was months behind, does not follow from anything
+measured. **A correctly diagnosed bug does not license a guess about its
+effect.** The fix was worth making; the story I told about what it would
+recover was not evidence, and I wrote it into this file as though it were.
+
+What IS established, and is the live question: the job list grew to 41,919
+while 40,679 files sit on disk, so **1,240 listed filings have no XBRL file and
+only 40 of the attempted downloads succeeded.** Those 1,240 are either the
+recent quarters (in which case the corpus cannot advance, and staleness is real
+but for a different reason) or long-standing gaps spread across 2019-2026 (in
+which case the refresh simply found nothing and the 98%-behind figure needs its
+own explanation). `src/ops/xbrl_probe.py` decides it with both endpoints stated
+first, because `snapshot.fetch` returns `(status, b"")` on an HTTPError and
+`(0, b"")` on everything else while `backfill` throws all of it into a single
+`xbrl_fail` counter — so 404, 403, timeout and "the body was not XBRL" are one
+number today, and they have completely different fixes.
+
+Its selftest asserts the trap this repo has already been bitten by once: NSE
+serves error pages with HTTP 200, so a fetch is classified by what came back,
+never by the status code.
