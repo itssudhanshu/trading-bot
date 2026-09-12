@@ -106,12 +106,6 @@ def _selftest():
     print("analysis selftest ok")
 
 
-if __name__ == "__main__":
-    import sys
-    if "--selftest" in sys.argv:
-        _selftest()
-
-
 # ------------------------------------------------------------------ findings
 FINDINGS = paths.SDATA / "findings.jsonl"   # one strategy's findings
 
@@ -326,3 +320,12 @@ def verdict(trades, sd_pct=TRADE_SD):
             f"{need} trades to tell.")
     return (f"{s['n']} trades, {s['mean']:+.2f}% each "
             f"[{s['lo']:+.2f}, {s['hi']:+.2f}] — inside the noise.{tail}")
+
+
+# Dispatch LAST. Everything above must already be defined when this runs; a
+# `__main__` block mid-file makes every later definition unreachable from the
+# CLI, which is how two of fundamentals.py's selftests never once executed.
+if __name__ == "__main__":
+    import sys
+    if "--selftest" in sys.argv:
+        _selftest()

@@ -78,6 +78,52 @@ def _dt(s):
     return None
 
 
+def index_cached(symbol) -> bool:
+    """-> True when `fetch_index` would answer from disk without a network call.
+
+    Exists so the backfill can report what it actually DID. Stage 1 logged
+    `ok=2121` for 2,121 cache reads and no requests, which reads as "metadata
+    refreshed" and means "cached files were readable" -- the exact shape
+    CLAUDE.md warns about, a status message standing in for evidence.
+    """
+    return (RAW / "index" / f"{symbol}.json").exists()
+
+
+def newest_visible(symbol):
+    """-> the newest quarter_end in the cached index, or None. No network."""
+    try:
+        rows = build_asof(symbol)
+    except Exception:
+        return None
+    return max((r["quarter_end"] for r in rows), default=None)
+
+
+def behind_symbols(symbols, day=None, log=None):
+    """-> symbols whose own filing cadence says a filing is missing.
+
+    The index is cached forever and `fetch_index` only hits the network when
+    forced, so nothing here can ever discover a filing published after the last
+    forced fetch. Refetching all 2,420 indexes to find out is the blunt option;
+    this is the targeted one, and it uses the company's own median lag rather
+    than a constant anyone picked (`expected_next_filing`).
+    """
+    from datetime import date as _date
+    day = day or _date.today()
+    day_iso = day.isoformat()
+    out = []
+    for sym in symbols:
+        rows = timeline(sym)
+        if not rows:
+            out.append(sym)                 # nothing parsed at all
+            continue
+        due = expected_next_filing(rows, day_iso)
+        if due is not None and due < day:
+            out.append(sym)
+    if log:
+        log(f"  {len(out)}/{len(symbols)} symbols are behind their own cadence")
+    return out
+
+
 def fetch_index(symbol, force=False):
     """Metadata for every quarterly filing. Raw bytes stored, parsed later."""
     out = RAW / "index" / f"{symbol}.json"
@@ -354,6 +400,15 @@ def _selftest():
     assert visible(rows, "2025-01-18")["revenue"] == 130.0
     assert visible(rows, "2025-01-18", back=1)["revenue"] == 110.0
     assert visible(rows, "2024-01-20", back=1) is None, "history does not reach back"
+
+    # These were defined and called from NOWHERE. `_selftest_features` held the
+    # only assertions covering the year-ago comparison -- including, after L102,
+    # the planted missing quarter -- and the sweep has never executed one of
+    # them. That is why a fixture with quarter_ends one MONTH apart survived
+    # long enough to agree with a real bug. A test nothing calls is not a weak
+    # test, it is a comment.
+    _selftest_features()
+    _selftest_refresh()
     print("fundamentals selftest ok")
 
 
@@ -363,24 +418,36 @@ def _xbrl_path(symbol, quarter_end):
     return RAW / "xbrl" / symbol / f"{quarter_end}.xml"
 
 
-def backfill(symbols, start=None, end=None, workers=6, log=print):
+def backfill(symbols, start=None, end=None, workers=6, log=print,
+             force_index=False):
     """Metadata for every symbol, then XBRL for filings visible in the window.
 
     Resumable: anything already on disk is skipped, so a killed run costs only
     what it had not finished. Raw bytes are stored and parsed later -- a parser
     bug must never cost a refetch of 70,000 files.
+
+    **`force_index` is what makes this able to find anything new.** Without it
+    `fetch_index` answers from `RAW/index/<sym>.json` and the run cannot learn
+    about a filing published since that file was written. The 2026-09-12 run
+    reported `ok=2121` in stage 1 and fetched 38 XBRL files out of 42,130 in
+    window, because stage 1 made no requests at all: the cache had been
+    confirming itself since February 2025.
     """
     import threading
     from concurrent.futures import ThreadPoolExecutor
     lock = threading.Lock()
-    tally = {"idx_ok": 0, "idx_fail": 0, "xbrl_ok": 0, "xbrl_have": 0, "xbrl_fail": 0}
+    tally = {"idx_ok": 0, "idx_fail": 0, "idx_cached": 0,
+             "xbrl_ok": 0, "xbrl_have": 0, "xbrl_fail": 0}
 
     def do_index(sym):
+        cached = index_cached(sym)
         try:
-            got = bool(fetch_index(sym))
+            got = bool(fetch_index(sym, force=force_index))
         except Exception:
             got = False
         with lock:
+            if got and cached and not force_index:
+                tally["idx_cached"] += 1
             tally["idx_ok" if got else "idx_fail"] += 1
             n = tally["idx_ok"] + tally["idx_fail"]
             if n % 100 == 0:
@@ -389,12 +456,15 @@ def backfill(symbols, start=None, end=None, workers=6, log=print):
     log(f"stage 1: metadata for {len(symbols)} symbols")
     with ThreadPoolExecutor(max_workers=workers) as pool:
         list(pool.map(do_index, symbols))
-    log(f"  done: ok={tally['idx_ok']} fail={tally['idx_fail']}")
+    log(f"  done: ok={tally['idx_ok']} fail={tally['idx_fail']}"
+        + (f"  ({tally['idx_cached']} read from cache, NOT refetched -- "
+           f"pass force_index to discover new filings)"
+           if tally["idx_cached"] else ""))
 
     jobs = []
     for sym in symbols:
         try:
-            for f in build_asof(sym):
+            for f in build_asof(sym, force=force_index):
                 if start and f["visible_from"] < start:
                     continue
                 if end and f["visible_from"] > end:
@@ -607,46 +677,6 @@ def visible(rows, day_iso, back=0):
     return seen[-1 - back]
 
 
-if __name__ == "__main__":
-    if "--selftest" in sys.argv:
-        _selftest()
-    elif "--parse" in sys.argv:
-        import features
-        corpus = features.load_corpus()
-        n = ok = 0
-        for sym in sorted(corpus):
-            n += 1
-            if build_parsed(sym):
-                ok += 1
-            if n % 250 == 0:
-                print(f"  parsed {n}  with data {ok}", flush=True)
-        print(f"done: {ok}/{n} symbols have parsed fundamentals")
-    elif "--parse-annual" in sys.argv:
-        import features
-        corpus = features.load_corpus()
-        n = ok = 0
-        for sym in sorted(corpus):
-            n += 1
-            if build_parsed_annual(sym):
-                ok += 1
-            if n % 250 == 0:
-                print(f"  annual {n}  with ocf {ok}", flush=True)
-        print(f"done: {ok}/{n} symbols have annual ocf timelines")
-    elif "--backfill" in sys.argv:
-        import features
-        from datetime import date
-        corpus = features.load_corpus()
-        syms = sorted(corpus)
-        print(f"backfilling fundamentals for {len(syms)} symbols")
-        backfill(syms, start=date(2019, 1, 1), end=date.today())
-    else:
-        sym = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
-        idx = fetch_index(sym)
-        print(f"{sym}: {len(idx)} quarterly filings")
-        for m in idx[:3]:
-            bc = _dt(m.get("broadCastDate"))
-            print(f"  {m['fromDate']} -> {m['toDate']}  broadcast {bc}  "
-                  f"lag {(bc - _dt(m['toDate'])).days}d  {m.get('consolidated','')}")
 
 
 # ---------------------------------------------------------------- as-of features
@@ -729,6 +759,45 @@ def features_asof(rows, day_iso):
     return {k: v for k, v in out.items() if v is not None}
 
 
+def _selftest_refresh():
+    """The staleness selector, on fixtures. No network, no corpus."""
+    from datetime import date as _date
+    import tempfile
+    global PARSED
+    real = PARSED
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            PARSED = Path(td)
+            # quarterly filer, current: newest quarter ends 2026-06-30,
+            # published 2026-08-14, so the next is due ~2026-11-13.
+            cur = [{"visible_from": v, "quarter_end": q, "revenue": 1.0,
+                    "net_profit": 1.0} for v, q in (
+                        ("2025-08-14", "2025-06-30"), ("2025-11-13", "2025-09-30"),
+                        ("2026-02-12", "2025-12-31"), ("2026-05-15", "2026-03-31"),
+                        ("2026-08-14", "2026-06-30"))]
+            (PARSED / "CURRENT.json").write_text(json.dumps(cur))
+            # the YUKEN shape: newest quarter 2024-12-31, published 2025-02-13
+            old = [{"visible_from": v, "quarter_end": q, "revenue": 1.0,
+                    "net_profit": 1.0} for v, q in (
+                        ("2024-02-14", "2023-12-31"), ("2024-05-22", "2024-03-31"),
+                        ("2024-08-07", "2024-06-30"), ("2024-11-13", "2024-09-30"),
+                        ("2025-02-13", "2024-12-31"))]
+            (PARSED / "STALE.json").write_text(json.dumps(old))
+
+            behind = behind_symbols(["CURRENT", "STALE", "NOTHING"],
+                                    day=_date(2026, 9, 12))
+            assert "STALE" in behind, behind
+            assert "NOTHING" in behind, "a symbol with no timeline is behind"
+            assert "CURRENT" not in behind, behind
+            # and on a date before the next filing is due, the stale one is not
+            # yet late -- the cadence decides, not a constant
+            early = behind_symbols(["STALE"], day=_date(2025, 3, 1))
+            assert early == [], early
+    finally:
+        PARSED = real
+    print("fundamentals.behind_symbols selftest ok")
+
+
 def _selftest_features():
     # REAL quarter ends. The fixture this replaced used 2023-01-01 through
     # 2023-05-01 -- one MONTH apart -- and asserted a four-month gap as
@@ -780,3 +849,86 @@ def _selftest_features():
     assert "rev_growth" not in n, n
 
     print("fundamentals.features_asof selftest ok")
+
+
+# The dispatch block lives HERE, at the end, because it used to sit at line 680
+# with ~200 lines of definitions after it -- `features_asof`, `_year_ago_row`,
+# `_selftest_features` and `_selftest_refresh` among them. Nothing in those
+# lines existed yet when the block ran, so the CLI could not reach them and the
+# two selftest helpers were not merely uncalled but uncallable. Module-level
+# code that runs before the module is finished being defined is a trap that
+# looks like ordinary file order.
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        _selftest()
+    elif "--parse" in sys.argv:
+        import features
+        corpus = features.load_corpus()
+        # WITHOUT --force this re-parses nothing: build_parsed returns the
+        # cached JSON whenever it exists, so newly fetched XBRL never reaches
+        # timeline(). That is the third cache layer between a filing arriving
+        # and features_asof seeing it.
+        force = "--force" in sys.argv
+        print(f"parsing ({'FORCED -- rebuilding every symbol' if force else 'cached where present'})")
+        n = ok = 0
+        for sym in sorted(corpus):
+            n += 1
+            if build_parsed(sym, force=force):
+                ok += 1
+            if n % 250 == 0:
+                print(f"  parsed {n}  with data {ok}", flush=True)
+        print(f"done: {ok}/{n} symbols have parsed fundamentals")
+    elif "--parse-annual" in sys.argv:
+        import features
+        corpus = features.load_corpus()
+        n = ok = 0
+        for sym in sorted(corpus):
+            n += 1
+            if build_parsed_annual(sym):
+                ok += 1
+            if n % 250 == 0:
+                print(f"  annual {n}  with ocf {ok}", flush=True)
+        print(f"done: {ok}/{n} symbols have annual ocf timelines")
+    elif "--backfill" in sys.argv:
+        import features
+        from datetime import date
+        corpus = features.load_corpus()
+        syms = sorted(corpus)
+        force = "--force" in sys.argv
+        print(f"backfilling fundamentals for {len(syms)} symbols"
+              + ("  (index FORCED)" if force else
+                 "  (index from cache -- add --force to discover new filings)"))
+        backfill(syms, start=date(2019, 1, 1), end=date.today(),
+                 force_index=force)
+
+    elif "--refresh" in sys.argv:
+        # The whole chain, targeted. Refetching 2,420 indexes to find the ones
+        # that moved is the blunt way; this forces only the symbols their own
+        # filing cadence says are overdue, then re-parses exactly those.
+        import features
+        from datetime import date
+        corpus = features.load_corpus()
+        syms = sorted(corpus)
+        stale = behind_symbols(syms, log=print)
+        if not stale:
+            print("nothing is behind its own cadence; cache is current")
+        else:
+            print(f"refreshing {len(stale)} symbols")
+            backfill(stale, start=date(2019, 1, 1), end=date.today(),
+                     force_index=True)
+            n = ok = 0
+            for sym in stale:
+                n += 1
+                if build_parsed(sym, force=True):
+                    ok += 1
+                if n % 250 == 0:
+                    print(f"  reparsed {n}/{len(stale)}", flush=True)
+            print(f"done: reparsed {ok}/{n} symbols with data")
+    else:
+        sym = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
+        idx = fetch_index(sym)
+        print(f"{sym}: {len(idx)} quarterly filings")
+        for m in idx[:3]:
+            bc = _dt(m.get("broadCastDate"))
+            print(f"  {m['fromDate']} -> {m['toDate']}  broadcast {bc}  "
+                  f"lag {(bc - _dt(m['toDate'])).days}d  {m.get('consolidated','')}")

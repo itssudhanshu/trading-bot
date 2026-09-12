@@ -130,6 +130,48 @@ def _selftest():
     for name, why in NO_SELFTEST.items():
         if why:
             assert name in t, f"{name} is excluded but no longer exists"
+    # A `_selftest_*` helper nothing calls is not a weak test, it is a comment.
+    # `fundamentals.py` carried two: `_selftest_features`, which held the ONLY
+    # assertions on the year-ago comparison, and `_selftest_refresh`. Neither had
+    # ever executed -- and they were not merely uncalled but unreachable, because
+    # the module's `__main__` block sat 200 lines above their definitions. That
+    # is why a fixture with quarter_ends one MONTH apart survived long enough to
+    # agree with a real bug (L102).
+    import re as _re
+    orphans = []
+    for d in paths.SRC + ("tests",):
+        root = paths.ROOT / d
+        if not root.exists():
+            continue
+        for f in sorted(root.rglob("*.py")):
+            src = f.read_text(encoding="utf-8", errors="replace")
+            for name in _re.findall(r"^def (_selftest_\w+)\(", src, _re.M):
+                if len(_re.findall(rf"\b{name}\(", src)) - 1 == 0:
+                    orphans.append(f"{f.relative_to(paths.ROOT)}::{name}")
+    assert not orphans, ("selftest helpers that nothing calls: "
+                         + ", ".join(orphans))
+
+    # Module-level dispatch must come LAST. Anything defined after it does not
+    # exist when it runs, so the CLI cannot reach it -- the mechanism that made
+    # the two orphans above uncallable rather than merely uncalled.
+    late = []
+    for d in paths.SRC:
+        root = paths.ROOT / d
+        if not root.exists():
+            continue
+        for f in sorted(root.rglob("*.py")):
+            body = f.read_text(encoding="utf-8", errors="replace").splitlines()
+            idx = next((i for i, l in enumerate(body)
+                        if l.startswith("if __name__ ==")), None)
+            if idx is None:
+                continue
+            after = [l for l in body[idx:] if l.startswith("def ")]
+            if after:
+                late.append(f"{f.relative_to(paths.ROOT)} "
+                            f"({len(after)} def(s) after __main__)")
+    assert not late, ("module dispatch is not last, so later definitions are "
+                      "unreachable from the CLI: " + "; ".join(late))
+
     print(f"run_selftests selftest ok ({len(t)} modules discovered)")
 
 

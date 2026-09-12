@@ -734,33 +734,6 @@ def _selftest():
           "selection/clusters)")
 
 
-if __name__ == "__main__":
-    if "--selftest" in sys.argv:
-        _selftest()
-        sys.exit()
-    from datetime import datetime as _dt
-    BATCH = _dt.now().strftime("%Y%m%d-%H%M")
-    corpus = features.load_corpus()
-    days = sorted({d for s in corpus.values() for d in s.days})
-    print(f"CLUSTER BOOK SIMULATIONS  {days[300]} .. {days[-1]}  "
-          f"(Rs {selection.CAPITAL:,})")
-    print(f"batch {BATCH}\n")
-    print("  variant                    CAGR      DD     n   win    avg-stop  micro/small/mid")
-    report("baseline 10/20/15d", run(corpus, days))
-    report("stop 12%", run(corpus, days, stop_pct=12.0))
-    report("stop 15%", run(corpus, days, stop_pct=15.0))
-    report("target 15%", run(corpus, days, target_pct=15.0))
-    report("target 25%", run(corpus, days, target_pct=25.0))
-    report("hold 10d", run(corpus, days, hold=10))
-    report("hold 25d", run(corpus, days, hold=25))
-    report("3 positions", run(corpus, days, max_pos=3))
-    report("8 positions", run(corpus, days, max_pos=8,
-                              take_per_cluster={"micro": 4, "small": 4}))
-    report("cap 2/bucket", run(corpus, days, cluster_cap=2))
-    report("small+mid only", run(corpus, days,
-                                 take_per_cluster={"small": 5}))
-
-
 # ---------------------------------------------------------------- keep/promote
 STRATS = paths.SDATA / "strategies.jsonl"
 
@@ -825,3 +798,33 @@ def best_strategy():
     """
     rows = load_strats()
     return max(rows, key=lambda r: r["cagr"]) if rows else None
+
+
+# Dispatch LAST. Everything above must already be defined when this runs; a
+# `__main__` block mid-file makes every later definition unreachable from the
+# CLI, which is how two of fundamentals.py's selftests never once executed.
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        _selftest()
+        sys.exit()
+    from datetime import datetime as _dt
+    BATCH = _dt.now().strftime("%Y%m%d-%H%M")
+    corpus = features.load_corpus()
+    days = sorted({d for s in corpus.values() for d in s.days})
+    print(f"CLUSTER BOOK SIMULATIONS  {days[300]} .. {days[-1]}  "
+          f"(Rs {selection.CAPITAL:,})")
+    print(f"batch {BATCH}\n")
+    print("  variant                    CAGR      DD     n   win    avg-stop  micro/small/mid")
+    report("baseline 10/20/15d", run(corpus, days))
+    report("stop 12%", run(corpus, days, stop_pct=12.0))
+    report("stop 15%", run(corpus, days, stop_pct=15.0))
+    report("target 15%", run(corpus, days, target_pct=15.0))
+    report("target 25%", run(corpus, days, target_pct=25.0))
+    report("hold 10d", run(corpus, days, hold=10))
+    report("hold 25d", run(corpus, days, hold=25))
+    report("3 positions", run(corpus, days, max_pos=3))
+    report("8 positions", run(corpus, days, max_pos=8,
+                              take_per_cluster={"micro": 4, "small": 4}))
+    report("cap 2/bucket", run(corpus, days, cluster_cap=2))
+    report("small+mid only", run(corpus, days,
+                                 take_per_cluster={"small": 5}))
