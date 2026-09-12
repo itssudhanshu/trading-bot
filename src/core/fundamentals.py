@@ -66,6 +66,13 @@ INSTANT_WANTED = {
 }
 
 
+# The CLI's modes, named once. The dispatch fallback reads this to say what
+# the build actually has; `_selftest_modes` asserts it against the elif chain,
+# because a list that drifts from the code tells the same lie the fallback was
+# added to stop.
+MODES = ("--selftest", "--parse", "--parse-annual", "--backfill", "--refresh")
+
+
 def _dt(s):
     """NSE mixes '16-Jan-2025 20:20:21' and '16-Jan-2025 20:20'."""
     if not s:
@@ -409,6 +416,7 @@ def _selftest():
     # test, it is a comment.
     _selftest_features()
     _selftest_refresh()
+    _selftest_modes()
     print("fundamentals selftest ok")
 
 
@@ -759,6 +767,21 @@ def features_asof(rows, day_iso):
     return {k: v for k, v in out.items() if v is not None}
 
 
+def _selftest_modes():
+    """MODES must be exactly the flags the dispatch chain tests."""
+    import re
+    src = Path(__file__).read_text()
+    body = src[src.index('if __name__ == "__main__":'):]
+    # Only the chain's OWN conditions -- `elif "--x" in sys.argv:` at one
+    # indent. A bare findall also takes `--force`, which is a modifier read
+    # INSIDE a branch and not a mode you can run on its own; that distinction
+    # is the whole reason the fallback can now say "unknown mode --force".
+    found = tuple(re.findall(r'^    (?:el)?if "(--[a-z-]+)" in sys\.argv:',
+                             body, re.M))
+    assert found == MODES, f"MODES {MODES} != dispatch chain {found}"
+    print("fundamentals.MODES selftest ok")
+
+
 def _selftest_refresh():
     """The staleness selector, on fixtures. No network, no corpus."""
     from datetime import date as _date
@@ -925,7 +948,18 @@ if __name__ == "__main__":
                     print(f"  reparsed {n}/{len(stale)}", flush=True)
             print(f"done: reparsed {ok}/{n} symbols with data")
     else:
+        # An unrecognised flag must NOT fall through to the symbol probe. A
+        # tree without this mode ran `--refresh` and printed
+        # "--refresh: 0 quarterly filings" -- the flag was read as a company
+        # name, fetch_index 404'd, and the empty result rendered as a finding
+        # about a real symbol with no filings. A missing feature has to look
+        # like a missing feature, not like an answer (L106).
         sym = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
+        if sym.startswith("-"):
+            raise SystemExit(
+                f"unknown mode {sym!r}. This build has: {', '.join(MODES)}.\n"
+                "If you expected one that is not listed, the tree is behind -- "
+                "git pull.")
         idx = fetch_index(sym)
         print(f"{sym}: {len(idx)} quarterly filings")
         for m in idx[:3]:

@@ -4988,3 +4988,20 @@ a criterion that rejected something is not relaxed to make a run green. Both
 blocks moved to the end instead, a pure relocation. The cost of the strict
 version is two file moves; the cost of the lenient version is the next
 `fundamentals.py`.
+
+**Addendum — the first `--refresh` run printed `--refresh: 0 quarterly
+filings`.** The mode did not exist in the tree that ran it (the fix had not
+been pulled), so the elif chain fell through to its fallback, which reads
+`sys.argv[1]` as a SYMBOL. `fetch_index("--refresh")` 404'd, returned `[]`,
+and the missing feature rendered as a clean factual answer about a company
+with no filings. The same sentence would be printed by a real symbol that has
+genuinely never filed, which is what makes it dangerous: there is nothing in
+the output to distinguish "this build does not have that mode" from "this
+company has no data". A typo does it too.
+
+The fallback now refuses anything starting with `-` and names the modes this
+build has. `MODES` is module-level and `_selftest_modes` asserts it against the
+dispatch chain's own conditions, because a hand-maintained list of what the CLI
+supports drifts and would tell exactly the lie the guard was added to stop. It
+earned itself on the first run by rejecting `--force` — a modifier read inside
+a branch, not a mode — which the regex had wrongly counted.
