@@ -4938,3 +4938,53 @@ correctly read `se is optimistic`. The docstring also claimed `fund_test` draws
 60 dates; it draws 61 and the estimator sees 34. **A design's date count is not
 its block count**, and quoting the first while the second is what runs is how a
 standard error comes to look better than it is.
+
+## L106 — Three cache layers, one status line, and two selftests that never ran
+
+**The report said the backfill worked.** `--backfill` printed `idx ok=2121
+fail=299`, which reads as 2,121 symbols refreshed. Stage 2 printed
+`xbrl_ok=38, xbrl_have=40802` — 38 new files against 40,802 already on disk.
+Those two lines cannot both describe a working refresh, and the second one is
+the honest one.
+
+`fetch_index(symbol, force=False)` returns the cached `RAW/index/<sym>.json`
+without a network call. `backfill`'s `do_index` called it without `force`;
+`build_asof` likewise; `build_parsed(symbol, force=False)` returns the cached
+parsed JSON. Three layers, each defaulting to the cache, and `ok` counted a
+successful **read**. So the corpus ends Feb 2025 — which is why YUKEN's dossier
+carried a fundamental figure 575 days stale (L102) — and the whole of it was
+reported as 2,121 successes.
+
+**A status message is not evidence** is already the rule. The refinement: a
+success counter that does not distinguish *fetched* from *found in cache* will
+report a no-op as a full run, every time, and nothing downstream can tell. The
+tally now carries `idx_cached` separately, `--force` exists on `--parse` and
+`--backfill`, and `--refresh` asks only the symbols that should have filed by
+now — `behind_symbols()` uses each company's own median lag
+(`expected_next_filing`) rather than a global cutoff, because a company filing
+quarterly and one filing late are not the same question.
+
+**Then the smaller finding, which is the worse one.** Wiring in
+`_selftest_refresh` showed `_selftest_features` had never been called. Not
+weakly called — *unreachable*: `if __name__ == "__main__":` sat at line 680 of
+`fundamentals.py` with ~200 lines of definitions after it, `features_asof`,
+`_year_ago_row` and both selftests among them. Running the module as a script
+executes the dispatch block before those names exist.
+
+That is how a fixture whose `quarter_end`s were one MONTH apart survived: it
+held the only assertions on the year-ago comparison, and it agreed with the
+real defect L102 measured at 12.8% of positions because neither had ever
+executed. **A test that cannot run agrees with any bug you like.**
+
+Two guards in `run_selftests._selftest()`:
+
+- a `_selftest_*` helper that nothing calls is a comment, not a test;
+- module dispatch must come **last**.
+
+The second flagged `analysis.py` (10 defs after `__main__`) and `simulate.py`
+(3). Checked both: nothing in either dispatch block reaches a later definition,
+so neither is a live defect. The guard was **not** narrowed to let them pass —
+a criterion that rejected something is not relaxed to make a run green. Both
+blocks moved to the end instead, a pure relocation. The cost of the strict
+version is two file moves; the cost of the lenient version is the next
+`fundamentals.py`.
