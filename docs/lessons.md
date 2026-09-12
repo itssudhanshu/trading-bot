@@ -5324,10 +5324,20 @@ Three things follow, and the third is the one that matters:
   mixing entry-dated and exit-dated rows.
 - **`near_high` carries weight 1.0 in the live score and appears in 9 of 2,765
   rows.** `learning.analyse` skips any feature with fewer than 30 observations,
-  so it is silently dropped every time the loop runs. The feature is scored,
-  weighted, and has never once been measured by the thing whose job is to
-  measure it. Meanwhile `off_high` and `score`, which carry no weight, are
-  present on 2,756 rows and measured faithfully.
+  so it is silently dropped every time the loop runs: the feature is scored,
+  weighted, and never measured by the thing whose job is to measure it.
+
+  **Corrected within the hour, and the correction matters.** The first version
+  of this entry said the information was missing. It is not. `entry_features`
+  returns BOTH `off_high` = `(hi125 - close) / hi125 * 100` and `near_high` =
+  the exact negative of it, so they are one feature under two names with
+  opposite signs, and `off_high` IS on all 2,756 seed rows. Nothing is lost;
+  what breaks is the lookup. `propose()` reads spreads for the keys in the
+  weights file, that file says `near_high`, the seed stores `off_high`, and the
+  match fails on a name rather than on data. A less alarming finding and a more
+  precise one -- and worth recording that the alarming version survived being
+  written down, and died the moment the function it described was actually
+  read.
 
 **The ledger cannot be rewritten to fix this** -- CLAUDE.md: append-only, "a
 mixed ledger cannot be un-mixed" -- so regenerating the seed is not available
@@ -5360,3 +5370,22 @@ not execute** -- `res["closed"]` where simulate returns `"trades"`, and
 `run()` reaches, including a source check that `simulate.run` still returns its
 trades under that key. A test that exercises every function except the one that
 touches real data will keep passing while the module cannot run.
+
+**Addendum — 268 of 268 trades reported "no measurable benchmark", and the
+benchmark was fine.** `equal_weight_return` returns `return_pct`;
+`benchmark_for` asked for `ret`, got `None`, and the `if b is None` branch
+counted it as missing data. **A wrong key wearing the costume of an empty
+result** — the run printed a coherent sentence about coverage and measured
+nothing.
+
+That is the third key in this one file written from memory (`res["closed"]` for
+`"trades"`, `clusters.bands` which does not exist, now `ret` for `return_pct`),
+and the guard added after the first two did not catch it: `hasattr` checks a
+module's attributes, and none of these were attributes. A returned dict is not
+covered by any name check.
+
+The selftest now CALLS `equal_weight_return` against `market._fake_corpus()` and
+asserts `return_pct` is present and `ret` is not. The general rule: when a
+function's contract is the shape of what it returns, the test has to run it.
+Every cheaper check I reached for first was cheaper because it checked
+something else.

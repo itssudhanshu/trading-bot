@@ -53,10 +53,12 @@ import market
 import selection
 import simulate
 
-# The features the live score actually weights. `off_high` and `score` sit in
-# the historical ledger and are NOT weighted; `rsi` is in learning.FEATURES but
-# carries no weight either. Measuring what is not scored would answer a question
-# nobody asked.
+# The features the live score actually weights, taken from the weights file's
+# own keys. `off_high` is deliberately absent and is NOT a fifth feature:
+# `entry_features` defines near_high as exactly -off_high, so they are one
+# measurement under two names and including both would report the same spread
+# twice with opposite signs. `score` and `rsi` carry no weight. Measuring what
+# is not scored would answer a question nobody asked.
 SCORED = ("rs", "deliv", "liq", "near_high")
 FAMILY_BAR = 2.6
 MIN_PER_FEATURE = 30        # matches learning.analyse's own floor
@@ -75,7 +77,11 @@ def benchmark_for(corpus, trade, universe_by_cluster):
     if not syms:
         return None
     r = market.equal_weight_return(corpus, syms, trade["entry_day"], trade["day"])
-    return r.get("ret") if r else None
+    # "return_pct", NOT "ret". equal_weight_return reports percent and says so
+    # in the key; asking for "ret" silently yields None, which this function
+    # then reports as "no measurable benchmark" -- 268 of 268 trades on the
+    # first run, a wrong key wearing the costume of missing data.
+    return r.get("return_pct") if r else None
 
 
 def tercile_spread(rows, key, value_key):
@@ -227,6 +233,16 @@ def _selftest():
     # or the comparison is against a different statistic than the loop uses.
     rows = [{"x": i, "ret": float(i), "excess": float(i) - 1.0}
             for i in range(90)]
+    # near_high is the exact negative of off_high in entry_features, so a
+    # sign flip must mirror the spread and not produce new information. This
+    # is asserted because the first reading of the ledger treated them as two
+    # features and concluded one had never been measured.
+    f = learning.entry_features
+    import inspect as _i
+    _src = _i.getsource(f)
+    assert '"near_high": -((hi125 - s.close[i]) / hi125 * 100)' in _src, \
+        "near_high is no longer the negative of off_high; SCORED needs revisiting"
+
     ts = tercile_spread(rows, "x", "ret")
     assert ts["n"] == 90 and ts["k"] == 30, ts
     assert abs(ts["spread"] - 60.0) < 1e-9, ts
@@ -271,6 +287,18 @@ def _selftest():
                     (cluster_se, "blocks"), (simulate, "run"),
                     (feat, "load_corpus")):
         assert hasattr(m, name), f"{m.__name__}.{name} is gone"
+    # Call equal_weight_return FOR REAL against market.py's own fixture, rather
+    # than asserting the name exists. Three keys in this file were written from
+    # memory and two of them could only fail at run time; a returned dict is not
+    # checked by `hasattr`.
+    fake_corpus, fake_days = market._fake_corpus()
+    ew = market.equal_weight_return(fake_corpus, sorted(fake_corpus),
+                                    fake_days[-21], fake_days[-1])
+    assert ew, "the fixture must produce a measurable benchmark"
+    assert "return_pct" in ew, sorted(ew)
+    assert "ret" not in ew, "key renamed -- benchmark_for reads return_pct"
+    assert market.alpha(5.0, ew["return_pct"]) is not None
+
     import inspect
     src = inspect.getsource(simulate.run)
     assert '"trades": closed' in src, \
