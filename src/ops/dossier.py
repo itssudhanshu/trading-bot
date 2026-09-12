@@ -85,7 +85,7 @@ import re
 import statistics
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # -> src/
@@ -532,14 +532,24 @@ def _tradeable(corpus, day):
     Imported here rather than at module scope: `clusters` resolves to whichever
     strategy `paths` activated, and this module is in `ops/`, which is allowed
     to know that -- `market.py`, which is shared, deliberately is not.
+
+    `day` is normalised to a `date` first. `size_clusters` matches it against
+    `Series.days`, which holds date objects, so a string matched NOTHING and
+    returned an empty universe -- and the market channel then read "no universe
+    supplied" on every live call, silently, because the bare `except` below
+    swallowed nothing and the empty dict looked like an honest answer.
+
+    Only ImportError is caught, and only because a checkout with no active
+    strategy should still produce the other four channels. Anything else is a
+    broken universe, which is not the same fact as an absent one.
     """
     if corpus is None:
         return None
     try:
         import clusters
-        bands = clusters.size_clusters(corpus, day)
-    except Exception:
+    except ImportError:
         return None
+    bands = clusters.size_clusters(corpus, _as_date(day))
     return [s for band in bands.values() for s in band]
 
 
@@ -556,7 +566,13 @@ def _fake_series(n=320, up=True):
         closes.append(px)
         highs.append(px * 1.01)
         lows.append(px * 0.99)
-        days.append(f"2024-{1 + i // 28:02d}-{1 + i % 28:02d}")
+        # `date`, not an ISO string. The real `Series.days` holds date objects,
+        # and a fixture that differs from the thing it stands in for tests the
+        # fixture. This one differed, and it hid a defect: `_tradeable` passing
+        # a string day to `size_clusters` matched nothing on the real corpus, so
+        # the market channel silently read "no universe" on every live call
+        # while the selftest -- on string days -- passed.
+        days.append(date(2024, 1, 1) + timedelta(days=i))
     return features.Series(symbol="TEST", days=days, open=list(closes),
                            high=highs, low=lows, close=closes,
                            volume=[1000] * n, turnover=[1e6] * n,
@@ -664,6 +680,18 @@ def _selftest():
     assert Reading("x", covered=True, value=None).band == "reported, unscored"
     assert Reading("x", covered=False).band == "no data"
     assert Reading("x", covered=True, value=0.8).band == "positive"
+
+    # --- a string day must not empty the universe ---------------------------
+    # It did: `size_clusters` matches against date objects, so a string matched
+    # nothing, `_tradeable` returned [], and the market channel read "no
+    # universe supplied" on every live call. The old fixture used string days,
+    # so the selftest agreed with the bug.
+    _fc = {f"S{i}": _fake_series(up=(i % 3 != 0)) for i in range(9)}
+    assert isinstance(_fc["S0"].days[0], date), \
+        "the fixture must hold dates, like the corpus it stands in for"
+    by_str = _tradeable(_fc, "2024-09-01")
+    by_date = _tradeable(_fc, date(2024, 9, 1))
+    assert by_str == by_date and by_str, (by_str, by_date)
 
     # --- the market channel refuses to guess a universe ---------------------
     mc = _fake_series()

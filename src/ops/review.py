@@ -62,7 +62,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # -> src/
@@ -236,6 +236,38 @@ def record(rec, ledger=None):
 # --------------------------------------------------------------------------
 # the session: what runs the four reviewers, in order, over a day's candidates
 # --------------------------------------------------------------------------
+
+def _as_date(day):
+    """-> `day` as a `date`. Normalised once, at the boundary.
+
+    `--open` handed the raw CLI string to `features.load_corpus(end=...)`, which
+    compares it against a list of `date` -- a TypeError on the operator's first
+    real run. The same string reached `dossier.build`, where it emptied the
+    tradeable universe silently. One conversion, at the edge, is the fix for
+    both.
+    """
+    if isinstance(day, date):
+        return day
+    return date.fromisoformat(str(day)[:10])
+
+
+def build_candidates(day, symbols, loader=None, builder=None):
+    """-> {symbol: dossier}, the corpus loaded once for all of them.
+
+    `loader` and `builder` are injectable so this path has a test at all. The
+    version inside `main()` had none -- it needed a corpus, so nothing exercised
+    it, and the date-type defect above shipped. Same pattern as
+    `benchmark_probe.probe(universe=...)`, for the same reason.
+    """
+    day = _as_date(day)
+    if loader is None or builder is None:
+        import dossier as _dos
+        import features
+        loader = loader or (lambda end: features.load_corpus(end=end))
+        builder = builder or _dos.build
+    corpus = loader(end=day)
+    return {s: builder(s, day, corpus=corpus) for s in symbols}
+
 
 def _key(role, rnd):
     return role if rnd is None else f"{role}-{rnd}"
@@ -567,6 +599,29 @@ def _selftest():
     assert fingerprint(dos) != fingerprint(other), \
         "two different dossiers must not share a fingerprint"
 
+    # --- --open converts the CLI string ONCE, at the boundary ---------------
+    # The loader is handed whatever --open passes down. It was the raw string,
+    # and `features.load_corpus` compares `end` against a list of dates, so the
+    # operator's first real run died on a TypeError. Assert the TYPE the loader
+    # receives, which is the thing that was wrong.
+    seen = {}
+
+    def _loader(end):
+        seen["end"] = end
+        return {"YUKEN": object()}
+
+    def _builder(sym, day, corpus=None):
+        seen["day"] = day
+        return dos
+
+    cands = build_candidates("2026-09-11", ["YUKEN"], _loader, _builder)
+    assert isinstance(seen["end"], date), \
+        f"load_corpus was handed {type(seen['end']).__name__}, not a date"
+    assert isinstance(seen["day"], date), \
+        f"dossier.build was handed {type(seen['day']).__name__}, not a date"
+    assert list(cands) == ["YUKEN"], cands
+    assert _as_date(date(2026, 9, 11)) == date(2026, 9, 11)
+
     # --- the session: the happy path end to end, FIRST ----------------------
     st = open_session("2026-09-11", {"TESTCO": dos})
     assert st["candidates"]["TESTCO"]["dossier"] == fingerprint(dos)
@@ -720,12 +775,8 @@ def main():
     if a.open_day:
         if not a.symbols:
             ap.error("--open needs --symbols")
-        import dossier as _dos
-        import features
-        corpus = features.load_corpus(end=a.open_day)
-        cands = {}
-        for s in [x.strip().upper() for x in a.symbols.split(",") if x.strip()]:
-            cands[s] = _dos.build(s, a.open_day, corpus=corpus)
+        syms = [x.strip().upper() for x in a.symbols.split(",") if x.strip()]
+        cands = build_candidates(a.open_day, syms)
         st = open_session(a.open_day, cands)
         save_state(st)
         print(status(st))
