@@ -1,0 +1,509 @@
+#!/usr/bin/env python3
+"""The analyst dossier: everything knowable about one candidate, as of one date.
+
+Adapted from the analyst team in TauricResearch/TradingAgents -- their four
+channels (fundamentals, sentiment, news, technical), their per-channel report
+shape, their data replaced. What is NOT adapted is the part that turns four
+reports into a rating, and the reason is the whole of this docstring.
+
+THE SPLIT, WHICH IS THE POINT
+-----------------------------
+This module decides WHAT WAS VISIBLE. It does not decide what it means.
+
+  assembled here      deterministic, reproducible, no model. Same symbol and
+                      same date give the same dossier every time.
+  judged elsewhere    `scripts/claude/agents/reviewer-*.md`. A model's reading,
+                      recorded with the dossier that produced it, never fed back
+                      into any measured result.
+
+That split is already this repo's convention: `src/ops/sentiment.py` decides
+what was visible and `skills/sentiment` decides what it means. The first version
+of sentiment had it the other way round -- evidence fixed, a model judging -- and
+the answer moved between runs, so it could never be measured against anything.
+A debate between two models is that failure with a second speaker.
+
+THERE IS NO COMPOSITE SCORE, DELIBERATELY
+-----------------------------------------
+Four channels are not averaged into one number here, and adding one later is the
+change this file exists to make somebody argue for.
+
+  - `pipeline.py` opens on it: a chain of agents is a summariser of summarisers,
+    and a summary of a summary is where n and the error bar go to die.
+  - Three of the four channels have already been MEASURED on this corpus and
+    none of them cleared its bar. Fundamentals: four features, 1,049 trades,
+    every CI straddling zero (|t| <= 0.89). Sentiment: eleven pre-registered
+    hypotheses, none adopted -- `ann_tone` at t = 1.71 against a bar of 2.6, the
+    graded text score flipping sign at t = -1.08. Averaging four readings, three
+    of them measured flat, produces a number with no evidence behind it and a
+    decimal point in front of it.
+  - The fourth channel is not independent evidence at all. See `prior` below.
+
+So a Dossier presents evidence and refuses to rank. Anything that wants a verdict
+has to produce one out loud, in a place where it can be scored later.
+
+`prior` MARKS THE CHANNEL THAT IS NOT NEW INFORMATION
+-----------------------------------------------------
+TradingAgents' market analyst reads MACD, RSI and the moving averages. Here that
+IS the strategy: the score is 6-month RS + delivery% + liquidity, gated on the
+200-day average and triggered on a 20-day breakout. A technical reading is
+therefore a restatement of why the name is on the list, not a second opinion
+about it, and `Reading.prior` says so on the row.
+
+That distinction is the `rs` lesson, which cost this project a book: rs had the
+highest t of any feature ever measured here (+1.40%, t = 3.07), and weighting it
+up produced the WORST of five variants, because the 200-DMA gate and the
+breakout trigger already captured it. Univariate significance is not marginal
+value. A channel has to be significant AND independent, and the technical
+channel is definitionally not the second one.
+
+COVERAGE IS NOT A SCORE OF ZERO
+-------------------------------
+Every Reading carries `covered`, and an uncovered channel has `value=None` --
+never 0.0, never "neutral". `features.rsi` already holds this line in its own
+docstring ("None until seeded -- never 50 as a stand-in for unknown") and the
+sentiment README holds it for whole channels: an absent channel scored as
+neutral reads as "no view" while meaning "no data". On an NSE microcap that is
+the common case, not the edge case.
+
+NO BACKTEST MAY IMPORT THIS
+---------------------------
+The news channel reads `data/news/`, which accumulates forward and has no
+history -- so a backtest touching this module would be reading the future. The
+guarantee is asserted in `_selftest`, beside the thing it protects, the same way
+`newswatch.py` asserts it.
+
+    python3 src/ops/dossier.py SYMBOL [--day YYYY-MM-DD]
+    python3 src/ops/dossier.py --selftest
+"""
+import argparse
+import re
+import sys
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # -> src/
+import paths
+
+import features
+import fundamentals
+import sentiment as _sentiment
+
+ROOT = paths.ROOT
+
+# Bounded readings, one scale for every channel so a person can compare rows
+# without a conversion table. -1 is as bearish as a channel can read, +1 as
+# bullish; None is no data and is printed as such.
+BANDS = ((0.35, "positive"), (0.10, "leaning positive"), (-0.10, "mixed"),
+         (-0.35, "leaning negative"), (-1.01, "negative"))
+
+
+def band(v):
+    """-> the word for a bounded reading, or 'no data' for None."""
+    if v is None:
+        return "no data"
+    for floor, word in BANDS:
+        if v >= floor:
+            return word
+    return "negative"
+
+
+def _clip(v, lo=-1.0, hi=1.0):
+    return max(lo, min(hi, v))
+
+
+@dataclass
+class Reading:
+    """One channel's view of one candidate, as of one date.
+
+    `covered` is the field that must be read first: False means the channel had
+    nothing to say, which is different from having said nothing of note. `value`
+    is None whenever `covered` is False, and the two are asserted consistent.
+
+    `prior` marks a channel that restates the selection rule rather than adding
+    to it -- see the module docstring. `backtest_safe` marks a channel with a
+    real point-in-time history behind it; the news channel does not have one.
+    """
+    channel: str
+    covered: bool
+    value: float | None = None
+    facts: dict = field(default_factory=dict)
+    evidence: list = field(default_factory=list)
+    note: str = ""
+    prior: bool = False
+    backtest_safe: bool = True
+
+    def __post_init__(self):
+        if not self.covered:
+            assert self.value is None, \
+                f"{self.channel}: an uncovered channel must not carry a value"
+        if self.value is not None:
+            assert -1.0 <= self.value <= 1.0, \
+                f"{self.channel}: reading {self.value} outside [-1, 1]"
+
+    @property
+    def band(self):
+        return band(self.value)
+
+
+# --------------------------------------------------------------------------
+# the four channels
+# --------------------------------------------------------------------------
+
+def technical(series, day=None):
+    """The market analyst: the selection rule restated, and marked as such.
+
+    RSI and MACD are here because TradingAgents' market analyst reads them and
+    the operator asked for them. They are NOT part of this book's score and
+    nothing here proposes that they become part of it -- `rsi_bounce_test.py`
+    and the rest of `research/` is where that argument would have to be won.
+    They are reported so a reviewer can see the same picture a discretionary
+    trader would, next to the gate and the trigger that actually chose the name.
+    """
+    closes = list(series.close or [])
+    days = list(series.days or [])
+    if day is not None:
+        iso = day.isoformat() if hasattr(day, "isoformat") else str(day)
+        keep = [i for i, d in enumerate(days) if str(d) <= iso]
+        if not keep:
+            return Reading("technical", covered=False, prior=True,
+                           note="no bars on or before the as-of date")
+        cut = keep[-1] + 1
+        closes, days = closes[:cut], days[:cut]
+        highs = list(series.high or [])[:cut]
+        lows = list(series.low or [])[:cut]
+    else:
+        highs, lows = list(series.high or []), list(series.low or [])
+
+    if len(closes) < 200:
+        return Reading("technical", covered=False, prior=True,
+                       note=f"{len(closes)} bars; the 200-day gate needs 200")
+
+    px = closes[-1]
+    sma200 = features.sma(closes, 200)[-1]
+    sma50 = features.sma(closes, 50)[-1]
+    rsi14 = features.rsi(closes, 14)[-1]
+    hi20 = features.rolling_max(closes[:-1], 20)[-1] if len(closes) > 20 else None
+    hi250 = max(closes[-250:])
+    atr14 = features.atr(highs, lows, closes, 14)[-1] if highs and lows else None
+
+    # MACD, the standard 12/26/9. Written out rather than imported because
+    # features.py carries no MACD and adding one there would put an indicator
+    # the strategy does not use into the module the strategy reads.
+    e12, e26 = features.ema(closes, 12), features.ema(closes, 26)
+    macd_line = [(a - b) if (a is not None and b is not None) else None
+                 for a, b in zip(e12, e26)]
+    seeded = [m for m in macd_line if m is not None]
+    sig = features.ema(seeded, 9)[-1] if len(seeded) >= 9 else None
+    macd = macd_line[-1]
+
+    facts = {
+        "close": round(px, 2),
+        "sma200": round(sma200, 2) if sma200 else None,
+        "sma50": round(sma50, 2) if sma50 else None,
+        "above_200dma": bool(sma200 and px > sma200),        # THE gate
+        "pct_above_200dma": round(100 * (px / sma200 - 1), 2) if sma200 else None,
+        "breakout_20d": bool(hi20 and px > hi20),            # THE trigger
+        "off_250d_high": round(100 * (px / hi250 - 1), 2) if hi250 else None,
+        "rsi14": round(rsi14, 1) if rsi14 is not None else None,
+        "atr14_pct": round(100 * atr14 / px, 2) if atr14 else None,
+        "macd": round(macd, 3) if macd is not None else None,
+        "macd_signal": round(sig, 3) if sig is not None else None,
+        "macd_above_signal": bool(macd is not None and sig is not None and macd > sig),
+    }
+
+    # The reading is the GATE and the TRIGGER, which is what put the name here.
+    # RSI and MACD do not move it: they are shown, not counted, because nothing
+    # on this corpus has measured them and a number nobody measured must not be
+    # allowed to vote.
+    v = 0.0
+    if facts["above_200dma"]:
+        v += 0.5
+    if facts["breakout_20d"]:
+        v += 0.5
+    ev = [f"close {facts['close']} vs 200-DMA {facts['sma200']} "
+          f"({facts['pct_above_200dma']:+}%)" if facts["sma200"] else "no 200-DMA",
+          f"20-day breakout: {'yes' if facts['breakout_20d'] else 'no'}",
+          f"RSI(14) {facts['rsi14']}, MACD {facts['macd']} vs signal "
+          f"{facts['macd_signal']} (shown, not counted)"]
+    return Reading("technical", covered=True, value=_clip(v), facts=facts,
+                   evidence=ev, prior=True,
+                   note="restates the selection rule; not independent evidence")
+
+
+def fundamental(series, day=None):
+    """The fundamentals analyst, over the XBRL filings, dated by broadCastDate.
+
+    Measured flat on this corpus: rev_growth, profit_growth, margin and
+    margin_change over 1,049 randomly sampled trades, every confidence interval
+    straddling zero at |t| <= 0.89. It is reported because a reviewer asked what
+    the company's numbers look like, and because a red flag is a different
+    question from an edge -- but `value` stays None and the channel does not
+    vote. Giving it one would be giving a weight to a measured null.
+    """
+    rows = getattr(series, "fund", None) or []
+    iso = (day.isoformat() if hasattr(day, "isoformat") else str(day)) \
+        if day is not None else date.today().isoformat()
+    if not rows:
+        return Reading("fundamental", covered=False,
+                       note="no filings visible on or before the as-of date")
+    f = fundamentals.features_asof(rows, iso)
+    if not f:
+        return Reading("fundamental", covered=False,
+                       note=f"no filing published on or before {iso}")
+    ev = [f"{k} {v:+.4f}" if isinstance(v, float) else f"{k} {v}"
+          for k, v in sorted(f.items())]
+    return Reading("fundamental", covered=True, value=None, facts=dict(f),
+                   evidence=ev,
+                   note="measured flat on 1,049 trades (|t| <= 0.89); "
+                        "reported, deliberately unscored")
+
+
+def sentiment_channel(symbol, day=None):
+    """The sentiment analyst, over the exchange announcement corpus.
+
+    `src/ops/sentiment.py` does the work; this wraps its composite onto the
+    dossier's scale and carries its coverage flag through honestly. Eleven
+    pre-registered hypotheses have been spent on this channel and none adopted,
+    so like `fundamental` it is reported and does not vote.
+    """
+    try:
+        s = _sentiment.stock_sentiment(symbol, day)
+    except Exception as e:                       # a channel outage is not a view
+        return Reading("sentiment", covered=False,
+                       note=f"channel unavailable: {type(e).__name__}: {e}")
+    if not s:
+        return Reading("sentiment", covered=False, note="no items in window")
+    items = s.get("items") or s.get("evidence") or []
+    n = len(items) if hasattr(items, "__len__") else 0
+    comp = s.get("composite")
+    if comp is None or not n:
+        return Reading("sentiment", covered=False,
+                       note="no scorable items in window")
+    ev = []
+    for it in (items[:6] if hasattr(items, "__getitem__") else []):
+        if isinstance(it, dict):
+            ev.append(str(it.get("title") or it.get("subject") or it)[:120])
+        else:
+            ev.append(str(it)[:120])
+    return Reading("sentiment", covered=True, value=None,
+                   facts={"composite": comp, "band": s.get("band"), "items": n},
+                   evidence=ev,
+                   note="11 hypotheses spent, none adopted "
+                        "(ann_tone t=1.71 vs a bar of 2.6); unscored")
+
+
+def news(symbol, day=None):
+    """The news analyst. Forward-only, and that is not a limitation to fix.
+
+    Nobody sells a complete, correctly-timestamped archive of Indian microcap
+    press coverage, and scraping one into existence gets you whatever survived
+    to today, dated by when you fetched it. `data/news/` accumulates forward
+    from the day `newswatch.py` started. So this channel is `backtest_safe=False`
+    and the module-level guard in `_selftest` is what keeps that true.
+    """
+    try:
+        ev = _sentiment.news_evidence(symbol, day)
+    except Exception as e:
+        return Reading("news", covered=False, backtest_safe=False,
+                       note=f"channel unavailable: {type(e).__name__}: {e}")
+    items = list(ev or [])
+    if not items:
+        return Reading("news", covered=False, backtest_safe=False,
+                       note="no headlines in window (the common case on a microcap)")
+    heads = []
+    for it in items[:6]:
+        heads.append(str(it.get("title") if isinstance(it, dict) else it)[:120])
+    return Reading("news", covered=True, value=None, backtest_safe=False,
+                   facts={"items": len(items)}, evidence=heads,
+                   note="forward-only archive; no history, never backtested")
+
+
+CHANNELS = ("technical", "fundamental", "sentiment", "news")
+
+
+@dataclass
+class Dossier:
+    symbol: str
+    as_of: str
+    readings: dict
+
+    @property
+    def covered(self):
+        return [c for c in CHANNELS
+                if c in self.readings and self.readings[c].covered]
+
+    @property
+    def independent(self):
+        """Covered channels that are not a restatement of the selection rule."""
+        return [c for c in self.covered if not self.readings[c].prior]
+
+    def render(self):
+        """-> the markdown a reviewer reads. Coverage first, always."""
+        out = [f"# {self.symbol} — analyst dossier, as of {self.as_of}", ""]
+        miss = [c for c in CHANNELS if c not in self.covered]
+        out.append(f"**Coverage:** {len(self.covered)}/{len(CHANNELS)} channels"
+                   + (f" — no data from: {', '.join(miss)}" if miss else ""))
+        out.append(f"**Independent of the selection rule:** "
+                   f"{', '.join(self.independent) or 'none'}")
+        out.append("")
+        for c in CHANNELS:
+            r = self.readings.get(c)
+            if r is None:
+                continue
+            tags = []
+            if r.prior:
+                tags.append("PRIOR — not independent evidence")
+            if not r.backtest_safe:
+                tags.append("FORWARD-ONLY — no history")
+            head = f"## {c}  ({r.band})"
+            out.append(head)
+            if tags:
+                out.append(f"> {'; '.join(tags)}")
+            if r.note:
+                out.append(f"_{r.note}_")
+            if not r.covered:
+                out.append("")
+                continue
+            for e in r.evidence:
+                out.append(f"- {e}")
+            out.append("")
+        out.append("_No composite score is produced here, deliberately — "
+                   "see the module docstring._")
+        return "\n".join(out)
+
+
+def build(symbol, day=None, series=None):
+    """-> a Dossier. `series` lets a caller supply the corpus row it already has.
+
+    The corpus is the expensive part (`features.load_corpus` reads every bar of
+    every symbol), so a caller assembling five candidates loads it once and
+    passes the row in. Passing nothing loads just this symbol's series.
+    """
+    iso = (day.isoformat() if hasattr(day, "isoformat") else str(day)) \
+        if day is not None else date.today().isoformat()
+    if series is None:
+        corpus = features.load_corpus(end=iso)
+        series = corpus.get(symbol)
+        if series is None:
+            raise SystemExit(f"{symbol}: not in the corpus as of {iso}")
+    return Dossier(symbol=symbol, as_of=iso, readings={
+        "technical": technical(series, day),
+        "fundamental": fundamental(series, day),
+        "sentiment": sentiment_channel(symbol, day),
+        "news": news(symbol, day),
+    })
+
+
+# --------------------------------------------------------------------------
+
+def _fake_series(n=320, up=True):
+    """A synthetic corpus row. The selftest must not need data/raw/, which is
+    gitignored and absent from a fresh clone -- a check that only runs on the
+    operator's disk is not a check."""
+    closes, highs, lows, days = [], [], [], []
+    px = 100.0
+    for i in range(n):
+        px *= 1.002 if up else 0.998
+        closes.append(px)
+        highs.append(px * 1.01)
+        lows.append(px * 0.99)
+        days.append(f"2024-{1 + i // 28:02d}-{1 + i % 28:02d}")
+    return features.Series(symbol="TEST", days=days, open=list(closes),
+                           high=highs, low=lows, close=closes,
+                           volume=[1000] * n, turnover=[1e6] * n,
+                           deliv_pct=[40.0] * n, surveillance_known=[False] * n,
+                           restricted=[False] * n, rs={}, fund=[])
+
+
+def _selftest():
+    # --- bands and the coverage invariant -----------------------------------
+    assert band(None) == "no data", "None must never read as a number"
+    assert band(0.5) == "positive" and band(-0.5) == "negative"
+    assert band(0.0) == "mixed"
+
+    ok = False
+    try:
+        Reading("x", covered=False, value=0.0)
+    except AssertionError:
+        ok = True
+    assert ok, "an uncovered channel carrying 0.0 is the failure this guards"
+
+    ok = False
+    try:
+        Reading("x", covered=True, value=1.5)
+    except AssertionError:
+        ok = True
+    assert ok, "a reading outside [-1, 1] must not be constructible"
+
+    # --- technical: covered, and marked as the prior ------------------------
+    r = technical(_fake_series(up=True))
+    assert r.covered and r.prior, "the technical channel is the selection rule"
+    assert r.facts["above_200dma"] is True, r.facts
+    assert r.facts["rsi14"] is not None and r.facts["macd"] is not None
+    assert r.value == 1.0, r.value
+
+    d = technical(_fake_series(up=False))
+    assert d.covered and d.facts["above_200dma"] is False, d.facts
+    assert d.value == 0.0, d.value
+
+    short = technical(_fake_series(n=150))
+    assert not short.covered and short.value is None, \
+        "under 200 bars the gate cannot be evaluated and must say so"
+
+    # --- the as-of cut is a cut, not a filter -------------------------------
+    s = _fake_series(n=320)
+    cut = technical(s, day="2024-11-01")
+    full = technical(s)
+    assert cut.facts["close"] != full.facts["close"], \
+        "the as-of date must actually truncate the series"
+
+    # --- unscored channels stay unscored ------------------------------------
+    f = fundamental(_fake_series())
+    assert not f.covered and f.value is None, "no filings is not a neutral read"
+
+    # --- a dossier refuses to produce a composite ---------------------------
+    dos = Dossier("TEST", "2024-06-01", {
+        "technical": technical(_fake_series()),
+        "fundamental": fundamental(_fake_series()),
+    })
+    assert not hasattr(dos, "composite") and not hasattr(dos, "score"), \
+        "a composite score is the thing this module exists to refuse"
+    assert dos.independent == [], \
+        "technical alone is the prior; it is not independent evidence"
+    txt = dos.render()
+    assert "Coverage: 1/4" in txt.replace("**", ""), txt[:300]
+    assert "PRIOR" in txt and "No composite score" in txt
+
+    # --- THE guarantee: no backtest can read this ---------------------------
+    # The news channel has no history, so anything reading this module during a
+    # backtest would be reading the future. Asserted beside the thing it
+    # protects, the same way newswatch.py asserts it.
+    pat = re.compile(r"^\s*(?:import\s+dossier|from\s+dossier\s+import)",
+                     re.MULTILINE)
+    offenders = []
+    for dsub in ("src/research", "src/strategies"):
+        for p in sorted((ROOT / dsub).rglob("*.py")):
+            if pat.search(p.read_text(encoding="utf-8", errors="replace")):
+                offenders.append(str(p.relative_to(ROOT)))
+    assert not offenders, \
+        f"a backtest imports the forward news channel, which has no history: {offenders}"
+
+    print("dossier selftest ok (4 channels; no composite; no backtest imports it)")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("symbol", nargs="?")
+    ap.add_argument("--day", default=None, help="as-of date, YYYY-MM-DD")
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args()
+    if a.selftest:
+        return _selftest()
+    if not a.symbol:
+        ap.error("a symbol is required (or --selftest)")
+    print(build(a.symbol.upper(), a.day).render())
+
+
+if __name__ == "__main__":
+    main()

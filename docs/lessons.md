@@ -4528,3 +4528,58 @@ L58 took about half the CAGR, L69 two thirds of what was left, L98 0.40 points,
 and L99 exactly nothing. **A correctness fix does not get to choose its own
 effect size, and a project that only fixes the ones that move the number will
 keep the ones that do not — until a corpus changes and they start to.**
+
+## L100 — The analyst team was already here, and three quarters of it is measured null
+
+Porting the TradingAgents analyst team (fundamentals / sentiment / news /
+technical, then a bull-bear debate, then a risk and portfolio layer) onto this
+book turned out to add **no new input**. Every one of the four channels already
+exists on disk, and three of them have already been through the error-bar
+protocol and failed it:
+
+| channel | already here | already measured |
+|---|---|---|
+| fundamentals | 40,775 XBRL filings, 94% coverage | 4 features, 1,049 trades, every CI straddles 0, \|t\| <= 0.89 |
+| sentiment | 1,019,495 announcement rows | **11 pre-registered hypotheses, none adopted** |
+| news | `data/news/`, forward-only | unmeasurable — no history exists to measure on |
+| technical | RS, 200-DMA, breakout, delivery | it **is** the strategy |
+
+So the thing that looked like four new information sources is one restatement of
+the selection rule, two measured nulls, and one channel that cannot be
+backtested at all. Building it as a scoring layer would have been re-running
+features already known to be flat, with a decimal point in front of them.
+
+### What was worth taking was the structure, not the inputs
+
+`src/ops/dossier.py` assembles all four deterministically and **scores none of
+them**: `technical` is flagged `prior` (it is why the name is on the list — the
+`rs` lesson, where the highest-t feature ever measured here produced the worst of
+five books), `fundamental` and `sentiment` carry `value=None`, `news` carries
+`backtest_safe=False` behind the same import guard `newswatch.py` uses. There is
+no composite score, deliberately: averaging four channels, three of them null,
+is `pipeline.py`'s own opening failure — a summariser of summarisers, where n
+and the error bar go to die.
+
+### Two changes to the source design, both for the same reason
+
+**The debate's first round is blind.** In the original the bull opens, the bear
+answers, and the judge reads a transcript in which somebody spoke last. That
+recency is invisible in a single decision and fatal to a measured one: a verdict
+that moves with speaking order cannot be scored against outcomes across
+candidates. Rebuttals still see each other.
+
+**The verdict records; it does not approve.** The original's portfolio manager
+emits a rating that drives the order. Here `daily.py` queues and `positions.step`
+fills exactly as before, and `stand-aside` stands nothing aside. A gating layer
+would be the largest unmeasured change ever made to this book, and it would
+consume its own evidence: the trades it blocked are the counterfactual you would
+need to judge it. H12 is pre-registered in
+`docs/superpowers/specs/2026-09-12-analyst-dossier-design.md` with the bar
+(2 standard errors), the power it needs (~200 trades an arm at sd 16%), the
+control that may not be pooled after the fact, and **no adoption path** — a
+positive H12 earns the right to pre-register a gating test, nothing more.
+
+The lesson generalises past this port: an agent architecture is a way of
+*organising* evidence and cannot manufacture any. Four roles reading the same
+four channels produce four readings of the same nulls, and the fluency of the
+prose around them is not a signal.

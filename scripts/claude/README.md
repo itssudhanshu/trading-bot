@@ -59,6 +59,24 @@ Cycle 2 (batch 20260910) was the first end-to-end run. It returned
 `no_actionable_pattern` on n=7 in main, which is the correct answer at that
 sample, and found three defects in the harness itself -- see L96.
 
+## agents/reviewer-*
+
+A SECOND, separate set: four reviewers that look at one forward candidate, not
+at the strategy. Bull, bear, risk, verdict -- the researcher/risk/portfolio
+structure from TauricResearch/TradingAgents, over evidence this repo already
+holds. They are named `reviewer-` rather than `agent-` because they are not
+stages of the eight-agent cycle and `pipeline.py` would reject them as orphans
+if they were.
+
+The deterministic half is `src/ops/dossier.py` and the judgement half is these
+prompts -- the same split as skills/sentiment below, for the same reason.
+
+**The verdict records; it does not approve.** Nothing in `selection.py`,
+`entry.py` or `engine.py` reads a word of it, and `stand-aside` stands nothing
+aside. L100 has the argument and
+`docs/superpowers/specs/2026-09-12-analyst-dossier-design.md` pre-registers H12,
+the test that would have to pass before any of this earns a vote.
+
 ## skills/experiment
 
 The protocol for measuring anything here: pre-register the hypothesis, name the
