@@ -318,7 +318,44 @@ def fundamental(series, day=None):
         return Reading("fundamental", covered=False, note=note)
     ev = [f"{k} {v:+.4f}" if isinstance(v, float) else f"{k} {v}"
           for k, v in sorted(f.items())]
-    return Reading("fundamental", covered=True, value=None, facts=dict(f),
+
+    # HOW OLD the newest filing is, always. YUKEN's dossier reported
+    # profit_growth -18.82 on 2026-09-11 -- correct arithmetic on a quarter that
+    # ended 2024-12-31 and became visible 575 days earlier -- while its news
+    # channel carried that quarter's actual successor. Nothing on the page said
+    # the number was twenty months old, so it read as a fact about the company
+    # today.
+    seen = sorted((r for r in rows
+                   if r.get("visible_from") and r["visible_from"] <= iso),
+                  key=lambda r: r["visible_from"])
+    facts = dict(f)
+    if seen:
+        newest = seen[-1]
+        age = (date.fromisoformat(iso)
+               - date.fromisoformat(newest["visible_from"])).days
+        facts["latest_quarter"] = newest.get("quarter_end")
+        facts["published"] = newest["visible_from"]
+        facts["age_days"] = age
+        ev.insert(0, f"newest filing: quarter ending {newest.get('quarter_end')}, "
+                     f"published {newest['visible_from']} -- {age} days ago")
+        # Overdue against THIS company's own median lag, not a constant anyone
+        # here picked. `expected_next_filing` is the existing machinery for it.
+        try:
+            due = fundamentals.expected_next_filing(rows, iso)
+        except Exception:
+            due = None
+        if due is not None and due.isoformat() < iso:
+            behind = (date.fromisoformat(iso) - due).days
+            facts["filings_overdue_days"] = behind
+            ev.insert(1, f"a further filing was due around {due.isoformat()} on "
+                         f"this company's own cadence and is not in the cache "
+                         f"-- {behind} days behind")
+
+    if "rev_growth" not in f and "margin" in f:
+        ev.append("year-on-year features absent: no filing for the quarter a "
+                  "year before this one is visible, so no growth figure is "
+                  "computable (it is not zero)")
+    return Reading("fundamental", covered=True, value=None, facts=facts,
                    evidence=ev,
                    note="measured flat on 1,049 trades (|t| <= 0.89); "
                         "reported, deliberately unscored")
@@ -635,6 +672,36 @@ def _selftest():
     # --- unscored channels stay unscored ------------------------------------
     f = fundamental(_fake_series())
     assert not f.covered and f.value is None, "no filings is not a neutral read"
+
+    # --- a stale filing must SAY it is stale --------------------------------
+    # YUKEN's live dossier reported profit_growth -18.82 on 2026-09-11 from a
+    # quarter published 575 days earlier, with nothing on the page saying so.
+    _s = _fake_series()
+    _s.fund = [{"visible_from": v, "quarter_end": q,
+                "revenue": 1000.0 * (i + 1), "net_profit": 100.0 * (i + 1)}
+               for i, (v, q) in enumerate(zip(
+                   ["2023-05-15", "2023-08-14", "2023-11-13", "2024-02-12",
+                    "2024-05-15"],
+                   ["2023-03-31", "2023-06-30", "2023-09-30", "2023-12-31",
+                    "2024-03-31"]))]
+    _fs = fundamental(_s, "2026-09-11")
+    assert _fs.covered and _fs.facts["age_days"] == 849, _fs.facts
+    assert _fs.facts["latest_quarter"] == "2024-03-31", _fs.facts
+    assert "849 days ago" in _fs.evidence[0], _fs.evidence[0]
+    assert _fs.facts["filings_overdue_days"] > 0, _fs.facts
+    # fresh data must NOT claim to be overdue
+    _fresh = fundamental(_s, "2024-05-20")
+    assert _fresh.facts["age_days"] == 5, _fresh.facts
+    assert "filings_overdue_days" not in _fresh.facts, _fresh.facts
+
+    # --- a missing year-ago quarter is stated, not silently zero ------------
+    _s2 = _fake_series()
+    _s2.fund = [r for r in _s.fund if r["quarter_end"] != "2023-06-30"]
+    _s2.fund.append({"visible_from": "2024-08-14", "quarter_end": "2024-06-30",
+                     "revenue": 6000.0, "net_profit": 600.0})
+    _g = fundamental(_s2, "2024-09-01")
+    assert "rev_growth" not in _g.facts, _g.facts
+    assert any("year-on-year features absent" in e for e in _g.evidence), _g.evidence
 
     # --- the sentiment channel must survive a COVERED result ----------------
     # This is the assertion whose absence let the channel ship dead: it bound to

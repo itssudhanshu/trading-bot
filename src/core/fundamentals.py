@@ -650,6 +650,37 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------- as-of features
+YOY_DAYS = 365
+# Quarters sit ~91 days apart, so a window this wide cannot reach a neighbour
+# while still absorbing leap years and a fiscal quarter-end that shifts a day.
+YOY_TOLERANCE_DAYS = 25
+
+
+def _year_ago_row(seen, cur):
+    """-> the visible row whose quarter ended about a year before `cur`, or None.
+
+    Searched among the rows VISIBLE on the as-of date only; reaching outside
+    that set would be the lookahead this module exists to prevent.
+    """
+    from datetime import date as _date
+    try:
+        qc = _date.fromisoformat(str(cur.get("quarter_end"))[:10])
+    except (TypeError, ValueError):
+        return None
+    best, best_off = None, None
+    for r in seen:
+        if r is cur:
+            continue
+        try:
+            q = _date.fromisoformat(str(r.get("quarter_end"))[:10])
+        except (TypeError, ValueError):
+            continue
+        off = abs((qc - q).days - YOY_DAYS)
+        if off <= YOY_TOLERANCE_DAYS and (best_off is None or off < best_off):
+            best, best_off = r, off
+    return best
+
+
 def features_asof(rows, day_iso):
     """-> company-momentum features visible on `day_iso`, or {} if not enough.
 
@@ -663,7 +694,16 @@ def features_asof(rows, day_iso):
     if len(seen) < 5:
         return {}                       # need this quarter and the year-ago one
     seen.sort(key=lambda r: r["visible_from"])
-    cur, yr = seen[-1], seen[-5]        # 4 quarters back
+    cur = seen[-1]
+    # The year-ago quarter is found BY DATE, not by counting five rows back.
+    # Counting assumed the timeline has no gaps, and `build_parsed` drops a
+    # quarter on three separate conditions -- the XBRL file missing, no index
+    # entry, or no figures parsed -- none of which leaves a marker. Measured
+    # 2026-09-12 across the whole cache: 1,460 of 11,408 computable positions
+    # (12.8%), over 781 of 2,081 symbols, compared periods that are NOT a year
+    # apart while reporting the result as year-on-year. 1,328 of them were the
+    # five-quarter signature of a single missing quarter.
+    yr = _year_ago_row(seen, cur)
     out = {}
 
     def growth(a, b):
@@ -671,28 +711,72 @@ def features_asof(rows, day_iso):
             return None
         return (a - b) / abs(b) * 100
 
-    out["rev_growth"] = growth(cur.get("revenue"), yr.get("revenue"))
-    out["profit_growth"] = growth(cur.get("net_profit"), yr.get("net_profit"))
+    # `margin` needs only the current quarter, so it survives a missing
+    # comparison. The three year-on-year features do not, and are ABSENT rather
+    # than computed from whatever row happened to sit five back -- a wrong
+    # number is worse than no number, which is the lesson of L58, L69 and L98.
     rev, np_ = cur.get("revenue"), cur.get("net_profit")
     out["margin"] = (np_ / rev * 100) if rev and np_ is not None and rev != 0 else None
-    prev_rev, prev_np = yr.get("revenue"), yr.get("net_profit")
-    prev_margin = ((prev_np / prev_rev * 100)
-                   if prev_rev and prev_np is not None and prev_rev != 0 else None)
-    out["margin_change"] = (out["margin"] - prev_margin
-                            if out["margin"] is not None and prev_margin is not None
-                            else None)
+    if yr is not None:
+        out["rev_growth"] = growth(cur.get("revenue"), yr.get("revenue"))
+        out["profit_growth"] = growth(cur.get("net_profit"), yr.get("net_profit"))
+        prev_rev, prev_np = yr.get("revenue"), yr.get("net_profit")
+        prev_margin = ((prev_np / prev_rev * 100)
+                       if prev_rev and prev_np is not None and prev_rev != 0 else None)
+        out["margin_change"] = (out["margin"] - prev_margin
+                                if out["margin"] is not None and prev_margin is not None
+                                else None)
     return {k: v for k, v in out.items() if v is not None}
 
 
 def _selftest_features():
-    rows = [{"visible_from": f"2024-0{i}-01", "quarter_end": f"2023-0{i}-01",
-             "revenue": 1000.0 * i, "net_profit": 100.0 * i} for i in range(1, 6)]
-    f = features_asof(rows, "2024-06-01")
-    assert abs(f["rev_growth"] - 400.0) < 1e-6, f      # 5000 vs 1000
+    # REAL quarter ends. The fixture this replaced used 2023-01-01 through
+    # 2023-05-01 -- one MONTH apart -- and asserted a four-month gap as
+    # year-on-year, so it agreed with the position-counting bug and could never
+    # have caught it. A fixture that differs from the thing it stands in for
+    # tests the fixture.
+    qe = ["2023-03-31", "2023-06-30", "2023-09-30", "2023-12-31",
+          "2024-03-31", "2024-06-30"]
+    vf = ["2023-05-15", "2023-08-14", "2023-11-13", "2024-02-12",
+          "2024-05-15", "2024-08-14"]
+    rows = [{"visible_from": v, "quarter_end": q,
+             "revenue": 1000.0 * (i + 1), "net_profit": 100.0 * (i + 1)}
+            for i, (v, q) in enumerate(zip(vf, qe))]
+
+    # --- a complete timeline compares against the right quarter -------------
+    f = features_asof(rows, "2024-06-01")          # cur 2024-03-31 vs 2023-03-31
+    assert abs(f["rev_growth"] - 400.0) < 1e-6, f  # 5000 vs 1000
     assert abs(f["margin"] - 10.0) < 1e-6, f
-    assert abs(f["margin_change"]) < 1e-6, f           # margin flat at 10%
-    # a filing not yet published must be invisible
+    assert abs(f["margin_change"]) < 1e-6, f       # margin flat at 10%
+
+    # --- a filing not yet published must be invisible -----------------------
     assert features_asof(rows, "2024-01-15") == {}, "used an unpublished filing"
-    later = features_asof(rows, "2024-04-15")
-    assert later == {}, "needs 5 visible filings, only 4 by then"
+    assert features_asof(rows, "2023-11-20") == {}, "needs 5 visible filings"
+
+    # --- ONE missing quarter must not produce a year-on-year number ---------
+    # This is the defect. Five rows back is four quarters back only if there is
+    # no gap; with 2023-06-30 absent, the old code compared 2024-06-30 against
+    # 2023-03-31 -- 456 days -- and called it year-on-year.
+    holed = [r for r in rows if r["quarter_end"] != "2023-06-30"]
+    h = features_asof(holed, "2024-09-01")         # cur 2024-06-30, no 2023-06-30
+    assert "rev_growth" not in h, h
+    assert "profit_growth" not in h, h
+    assert "margin_change" not in h, h
+    assert abs(h["margin"] - 10.0) < 1e-6, h       # needs only the current quarter
+
+    # --- the match is by DATE, not by position ------------------------------
+    # Same rows, shuffled visible_from order: the answer must not move.
+    import random as _rnd
+    shuffled = list(rows)
+    _rnd.Random(0).shuffle(shuffled)
+    assert features_asof(shuffled, "2024-06-01") == f, "position leaked in"
+
+    # --- a neighbouring quarter must never be mistaken for the year-ago one -
+    near = [dict(r) for r in rows]
+    for r in near:
+        if r["quarter_end"] == "2023-03-31":
+            r["quarter_end"] = "2023-09-30"        # now 274d before 2024-03-31
+    n = features_asof(near, "2024-06-01")
+    assert "rev_growth" not in n, n
+
     print("fundamentals.features_asof selftest ok")

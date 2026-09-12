@@ -4694,3 +4694,83 @@ after seeing the number is loosening a criterion.
 by running the thing against real inputs, and none of them by reading it. A
 channel that reported `no data` on every symbol, a selftest passing on a skipped
 body, a check with no error bar in the one repo that would notice.
+
+## L102 — The two numbers were both right. One of them was 575 days old
+
+The reviewer layer's first live call put YUKEN's `fundamental` channel
+(`profit_growth -18.82`) next to its news channel ("Q1 Results: Net profit rises
+29% YoY") and they disagreed. Neither was wrong.
+
+    latest parsed quarter   2024-12-31, visible 2025-02-13
+    dossier as-of           2026-09-11
+    (45,077,000 - 55,529,000) / 55,529,000 x 100 = -18.8226   <- exactly what it printed
+
+The arithmetic is right, on a quarter that became visible **575 days earlier**,
+and nothing on the page said so. The news figure is for a quarter the filing
+cache does not contain. A reviewer reading that dossier would have taken a
+twenty-month-old number as a fact about the company today.
+
+**The dossier now reports the age of the newest filing, always** -- quarter,
+publication date, days -- and flags when a further filing was due on **this
+company's own median lag** (`expected_next_filing`, already in the module) and is
+missing. No threshold was invented: the company's own cadence says when it is
+late.
+
+### Chasing it found a real defect, which YUKEN did not have
+
+`features_asof` picked the comparison row BY POSITION -- `cur, yr = seen[-1],
+seen[-5]`, commented "4 quarters back" -- and never looked at `quarter_end`,
+which sits in the row. Five rows back is four quarters back only if the timeline
+has no gaps, and `build_parsed` drops a quarter on three separate `continue`s
+(no XBRL file, no index entry, no figures parsed), none of which leaves a marker.
+
+Measured across the whole cache (`src/research/fundamentals_period_probe.py`):
+
+| | |
+|---|---|
+| computable positions | 11,408 across 2,081 symbols |
+| compared a year apart | 9,948 (87.20%) |
+| **compared something else** | **1,460 (12.80%) across 781 symbols** |
+| the dominant shape | **5 quarters: 1,328** -- one missing quarter |
+
+The rest is a tail of 6-9 quarters, and six positions at **-5 quarters**, where
+the comparison quarter is LATER than the current one -- a company filing an old
+quarter late, which `visible_from` ordering then puts out of period order.
+
+The most affected names are AHLWEST, ATLASCYCLE, JPINFRATEC, UNITECH,
+RADIOCITY: suspended and distressed companies that stopped filing on schedule,
+which is exactly the population the micro cluster is drawn from.
+
+`_year_ago_row` now finds the comparison by DATE, within 25 days of 365 --
+quarters sit ~91 days apart, so that window cannot reach a neighbour. Where no
+matching quarter is visible the three year-on-year features are **absent**
+rather than computed from whatever row sat five back; `margin` needs only the
+current quarter and survives. A wrong number is worse than no number, which is
+the whole of L58, L69 and L98.
+
+### What this does to the fundamentals null, and what it does not
+
+The four-feature null (rev_growth, profit_growth, margin, margin_change; every
+CI straddling zero at |t| <= 0.89 on 1,049 trades) was measured with roughly one
+position in eight built from mismatched periods. That is contamination with a
+direction: a feature computed from the wrong periods is noise, and adding noise
+to a predictor **biases the estimate toward zero**. So the null is consistent
+with the contamination and cannot be used to rule the features out.
+
+It is equally not evidence that they work. `fund_test.py` needs re-running on
+the corrected features before anything is claimed either way, and until then
+CLAUDE.md's fundamentals table describes a measurement, not a property of
+fundamentals. The features stay unscored in the dossier regardless -- nothing
+here argues for giving them a weight.
+
+### The third fixture this week that did not match reality
+
+`_selftest_features` built `quarter_end` values one MONTH apart (2023-01-01
+through 2023-05-01) and asserted a four-month gap as year-on-year. It agreed
+with the bug and could never have caught it. Before it: `_fake_series` held ISO
+strings where the corpus holds `date` objects, which hid the string day that
+silently emptied the market channel; and `benchmark_probe`'s selftest ran its
+assertions behind `if rows:` with rows always empty.
+
+**A fixture that differs from the thing it stands in for tests the fixture.**
+All three are now pinned by an assertion on the property that differed.
