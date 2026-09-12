@@ -4562,24 +4562,65 @@ and the error bar go to die.
 
 ### Two changes to the source design, both for the same reason
 
-**The debate's first round is blind.** In the original the bull opens, the bear
-answers, and the judge reads a transcript in which somebody spoke last. That
+**The debate's first round is blind.** In the original the bull opens and the
+bear answers, so the judge reads a transcript in which somebody spoke last. That
 recency is invisible in a single decision and fatal to a measured one: a verdict
 that moves with speaking order cannot be scored against outcomes across
 candidates. Rebuttals still see each other.
+
+*They had already found this and fixed it differently* -- both their Research
+Manager and Portfolio Manager prompts say to weigh the two sides "independent of
+which side spoke first or last", and `opponent_argument_or_opening` (#1176)
+stops the first speaker fabricating an opponent's position out of an empty
+string. So the difference is a structural fix against an instructional one, not
+a blind spot against a fix, and the first draft of L100 described it as the
+latter.
 
 **The verdict records; it does not approve.** The original's portfolio manager
 emits a rating that drives the order. Here `daily.py` queues and `positions.step`
 fills exactly as before, and `stand-aside` stands nothing aside. A gating layer
 would be the largest unmeasured change ever made to this book, and it would
 consume its own evidence: the trades it blocked are the counterfactual you would
-need to judge it. H12 is pre-registered in
+need to judge it.
+
+*And they do resolve outcomes* -- the first draft of this lesson implied they do
+not, which was wrong and was the cost of judging a 150-file repo from four
+files. `memory.py` appends each decision as `pending`; the next run on that
+ticker fetches the realised return **and the alpha against a benchmark**, stores
+the holding days, and writes a model-authored reflection that is re-injected
+into later prompts. It is a real outcome loop, with a real point-in-time guard
+(`resolved:`, #1251) so a historical run cannot read an outcome that had not
+happened yet.
+
+What it is not is a measurement: no n, no standard error, no control, no bar.
+And its mechanism -- prose from past trades re-entering a prompt -- is the one
+this repo has the most reason to distrust, because a model can be argued out of
+a standard, which is how two of five weight variants came to "beat" the live
+bucket at t < 0.5. **The addition here is the error bar, not the loop.** H12 is
+additive to their design, not a replacement for a missing piece of it. H12 is pre-registered in
 `docs/superpowers/specs/2026-09-12-analyst-dossier-design.md` with the bar
 (2 standard errors), the power it needs (~200 trades an arm at sd 16%), the
 control that may not be pooled after the fact, and **no adoption path** — a
 positive H12 earns the right to pre-register a gating test, nothing more.
 
-The lesson generalises past this port: an agent architecture is a way of
-*organising* evidence and cannot manufacture any. Four roles reading the same
-four channels produce four readings of the same nulls, and the fluency of the
-prose around them is not a signal.
+### The meta-lesson, which cost a commit to learn
+
+The first version of this entry was written after reading **four of about 150
+files** and made three claims about the source repo. Two were false: that its
+evidence assembly is model-judged (their sentiment analyst was redesigned to
+pre-fetch data deterministically, and `market_data_validator.py` is an
+explicitly LLM-free ground-truth snapshot built after an analyst was caught
+citing a bounce the data did not support), and that it has no outcome loop (it
+has one, with alpha and a point-in-time guard). Both were corrected only because
+the operator asked whether the repo had actually been read.
+
+That is this project's oldest failure in a new costume -- deciding what
+something means before checking it -- and it is worth noting that the failure
+mode was *generous to the port*: skimming produced an assessment in which our
+version was novel on three axes instead of one. A survey that flatters the thing
+being built is the one to re-run.
+
+The lesson that does generalise: an agent architecture is a way of *organising*
+evidence and cannot manufacture any. Four roles reading the same four channels
+produce four readings of the same nulls, and the fluency of the prose around
+them is not a signal.

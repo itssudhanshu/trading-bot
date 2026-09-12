@@ -72,3 +72,12 @@ NOTE: [optional, one line]
 `proceed-with-note` is for a real reservation that does not reach stand-aside —
 use it, rather than smearing the two into a middling confidence on `proceed`.
 Three grades that mean distinct things beat five that blur.
+
+**A block that does not parse is `REVIEW`, never a default.** If any field is
+missing or malformed, the whole emission is recorded as `REVIEW`, excluded from
+both measurement arms, and counted. Taken from the source design, where an
+unreadable decision yields `REVIEW` "so a parsing failure is visible instead of
+masquerading as a tradeable neutral `Hold`" — and it matters more here than
+there, because a verdict quietly dropped or quietly defaulted biases the very
+measurement this layer exists to feed. Never emit `REVIEW` deliberately: it is
+what a broken emission *becomes*, not a fourth grade you may choose.
