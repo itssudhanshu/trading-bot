@@ -131,11 +131,23 @@ did — which is the only shape from which this layer could ever earn authority.
   - `n_used` against `n_asked` travels with every result, since a benchmark over
     40 of 900 names is a different claim from one over 880.
 
-  What has NOT been done: nothing has checked how this proxy behaves on the real
-  corpus, because `data/raw` is absent from this checkout. Before H12 quotes a
-  single alpha figure, the proxy needs its own sanity pass -- coverage counts per
-  window, and the equal-weight series plotted against a known NSE index over the
-  same period. A benchmark nobody has looked at is not a benchmark.
+  The sanity pass is now a command rather than an intention:
+  `src/research/benchmark_probe.py`, batch `20260912-benchmarkprobe1`, five
+  checks with their bars declared in the docstring before any number existed --
+  lookahead (identical against a corpus truncated at `end`), coverage
+  (median >= 0.90, no window under 0.50), truncation (median <= 0.05),
+  survivorship direction (dropping truncated names must read HIGHER, and wider
+  in the worst decile), and shape (descriptive, no bar, deliberately).
+
+  **C1 is already proven**, on synthetic data, including a planted future bar
+  the check catches — so the property that has cost this project most (L58, L69,
+  L98 were each something reading what it could not have read) does not wait on
+  a machine with `data/raw`. The other four need the real corpus and report
+  `not applicable` rather than `FAIL` where the sample cannot test them.
+
+  Until that run happens, **H12 quotes no alpha figure.** The probe exits 2 with
+  a plain message on a checkout without price history, so "it ran" and "it had
+  data" cannot be confused.
 - **Control:** `proceed-with-note` is reported separately and is not pooled with
   either arm. Pooling it after seeing the split is how a three-grade scale
   becomes a two-grade scale that wins.
