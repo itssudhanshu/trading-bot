@@ -129,6 +129,46 @@ def source_ceiling(symbols):
     return max(c), c[max(c)]
 
 
+def ceiling_moved(symbols, sample=25, log=None):
+    """-> (moved?, stored_ceiling, probed_ceiling). Costs `sample` requests.
+
+    MEASURED 2026-09-12 (`feed_probe`): the quarterly results endpoint returns
+    nothing after the 2024-12-31 quarter for RELIANCE, TCS or INFY, under four
+    URL shapes including an explicit from_date/to_date -- which the endpoint
+    DOES honour, narrowing 130 rows to 2. The `corporate-announcements` control
+    returned 3,739 rows for the last seven days through the same client, so
+    this is the endpoint and not our access.
+
+    A full `--refresh` therefore spends 2,378 requests to rediscover a ceiling
+    that has not moved. This asks a sample first: refetch a spread of symbols
+    and see whether anything now lists a later quarter than the cache does. It
+    is a cheap precondition, not a guarantee -- a sample can miss a single
+    symbol that moved, which is what `--force` is for.
+    """
+    syms = sorted(symbols)
+    if not syms:
+        return False, None, None
+    step = max(1, len(syms) // max(sample, 1))
+    picked = syms[::step][:sample]
+    stored, _ = source_ceiling(syms)
+    probed = None
+    for s in picked:
+        try:
+            # max_age_hours=0: this must reach the network, or it asks the
+            # cache whether the cache is stale.
+            rows = build_asof(s, force=True, max_age_hours=0)
+        except Exception:
+            continue
+        for r in rows:
+            if probed is None or r["quarter_end"] > probed:
+                probed = r["quarter_end"]
+    if log:
+        log(f"  probed {len(picked)} symbols: newest listed {probed}, "
+            f"cache ceiling {stored}")
+    moved = bool(probed and stored and probed > stored)
+    return moved, stored, probed
+
+
 def behind_symbols(symbols, day=None, log=None):
     """-> symbols whose own filing cadence says a filing is missing.
 
@@ -176,14 +216,22 @@ def behind_symbols(symbols, day=None, log=None):
 FRESH_HOURS = 12
 
 
-def fetch_index(symbol, force=False):
-    """Metadata for every quarterly filing. Raw bytes stored, parsed later."""
+def fetch_index(symbol, force=False, max_age_hours=None):
+    """Metadata for every quarterly filing. Raw bytes stored, parsed later.
+
+    `max_age_hours` overrides FRESH_HOURS for a forced fetch; 0 means "the
+    network, whatever is on disk". `ceiling_moved` needs that: it forces a
+    refetch precisely to find out whether the cache is still right, and with
+    the default window a probe run within 12 hours of a refresh was answered
+    BY THE CACHE IT WAS CHECKING -- always "not moved", whatever the feed said.
+    """
     import time
     out = RAW / "index" / f"{symbol}.json"
     if out.exists() and not force:
         return json.loads(out.read_text())
-    if out.exists() and force and (
-            time.time() - out.stat().st_mtime < FRESH_HOURS * 3600):
+    window = FRESH_HOURS if max_age_hours is None else max_age_hours
+    if out.exists() and force and window and (
+            time.time() - out.stat().st_mtime < window * 3600):
         return json.loads(out.read_text())      # refetched within the window
     status, body = fetch(INDEX_URL.format(sym=symbol), timeout=30)
     if status != 200 or not body:
@@ -312,13 +360,13 @@ def quarter_figures(meta: dict, xbrl: bytes) -> dict:
 PREFER_CONSOLIDATED = True
 
 
-def build_asof(symbol, force=False) -> list:
+def build_asof(symbol, force=False, max_age_hours=None) -> list:
     """-> filings sorted by broadcast date, one per quarter, as-of dated.
 
     Each entry: {visible_from, quarter_end, consolidated, xbrl}. `visible_from`
     is the BROADCAST date -- the first day the numbers existed publicly.
     """
-    idx = fetch_index(symbol, force=force)
+    idx = fetch_index(symbol, force=force, max_age_hours=max_age_hours)
     by_quarter = {}
     for m in idx:
         bc, qe = _dt(m.get("broadCastDate")), _dt(m.get("toDate"))
@@ -473,6 +521,7 @@ def _selftest():
     # test, it is a comment.
     _selftest_features()
     _selftest_refresh()
+    _selftest_ceiling()
     _selftest_placeholder_xbrl()
     _selftest_fresh()
     _selftest_modes()
@@ -850,6 +899,41 @@ def _selftest_modes():
     print("fundamentals.MODES selftest ok")
 
 
+def _selftest_ceiling():
+    """The precondition that decides whether a 2,378-request sweep runs."""
+    import tempfile
+    from datetime import date as _d
+    g = globals()
+    real_raw, real_fetch = g["RAW"], g["fetch"]
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            g["RAW"] = Path(td)
+            (g["RAW"] / "index").mkdir(parents=True)
+            stored = [{"broadCastDate": "13-Feb-2025 18:00",
+                       "toDate": "31-Dec-2024", "xbrl": "u"}]
+            for s in ("A", "B"):
+                (g["RAW"] / "index" / f"{s}.json").write_text(json.dumps(stored))
+
+            # the feed still says what the cache says -> no sweep
+            g["fetch"] = lambda u, timeout=30: (200, json.dumps(stored).encode())
+            moved, st, pr = ceiling_moved(["A", "B"], sample=2)
+            assert moved is False, (moved, st, pr)
+            assert st == _d(2024, 12, 31) and pr == _d(2024, 12, 31), (st, pr)
+
+            # the feed advanced -> sweep. Note the probe must WIN over the
+            # cache here, which only works because it forces the refetch.
+            newer = stored + [{"broadCastDate": "14-Aug-2026 18:00",
+                               "toDate": "30-Jun-2026", "xbrl": "u"}]
+            g["fetch"] = lambda u, timeout=30: (200, json.dumps(newer).encode())
+            moved, st, pr = ceiling_moved(["A", "B"], sample=2)
+            assert moved is True and pr == _d(2026, 6, 30), (moved, st, pr)
+
+            assert ceiling_moved([], sample=2) == (False, None, None)
+    finally:
+        g["RAW"], g["fetch"] = real_raw, real_fetch
+    print("fundamentals.ceiling_moved selftest ok")
+
+
 def _selftest_placeholder_xbrl():
     """NSE's "-" must not become a URL. It produced 404s this repo asked for."""
     import tempfile
@@ -1068,6 +1152,21 @@ if __name__ == "__main__":
         from datetime import date
         corpus = features.load_corpus()
         syms = sorted(corpus)
+        # Assigned HERE, not inherited: the sibling branches that define `force`
+        # never run when this one does, so reading theirs is a NameError.
+        force = "--force" in sys.argv
+        # The ceiling check comes FIRST and costs ~25 requests. Without it this
+        # mode spends 2,378 to gain 40 files against a feed that is frozen at
+        # 2024-12-31 (feed_probe, L106 addendum 8), every single run.
+        moved, stored, probed = ceiling_moved(syms, log=print)
+        if not moved and not force:
+            print(f"the feed's newest listed quarter is still {stored}; "
+                  f"a full refresh cannot pull what is not listed.\n"
+                  f"Nothing fetched. Use --force to sweep anyway.")
+            raise SystemExit(0)
+        if moved:
+            print(f"the feed has advanced: {stored} -> {probed}. Sweeping.")
+
         stale = behind_symbols(syms, log=print)
         if not stale:
             print("nothing is behind its own cadence; cache is current")

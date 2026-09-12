@@ -5204,3 +5204,41 @@ message that could not tell those apart.
 served both from this family and a probe that assumes one shape reports a live
 endpoint as dead -- which would send this project hunting for a replacement
 source it does not need.
+
+**Addendum 8 — the feed is frozen, and the control is what makes that sayable.**
+`feed_probe`, four URL shapes against three large liquid names:
+
+| variant | RELIANCE | TCS | INFY |
+|---|---|---|---|
+| current (no dates) | 130 rows, newest 2024-12-31 | 162, 2024-12-31 | 144, 2024-12-31 |
+| quarterly + from/to 2025-01-01.. | 2 rows, 2024-12-31 | 2, 2024-12-31 | 2, 2024-12-31 |
+| no period arg | 0 rows | 0 | 0 |
+| control: period=Annual | 39 rows, 2024-03-31 | 42, 2024-03-31 | 34, 2024-03-31 |
+
+**The date filter WORKS** -- it narrowed 130 rows to 2 -- and asking for
+2025-01-01 onward still returns only Dec-2024 quarters. So the parameter
+hypothesis is refuted too, and that is the third of my explanations in this
+investigation to die on contact with a measurement (cache staleness, then a
+`_dt` format change, now a missing query parameter). The pattern is worth
+naming: each was plausible, each was argued from mechanism, and each was wrong.
+**The measurements were cheap and the reasoning was not reliable.** That ratio
+is the whole argument for probing before concluding.
+
+`corporate-announcements` returned **3,739 rows for the last seven days**
+through the same `fetch`, the same headers and the same absent cookies. Without
+that control the finding would have been "we cannot read NSE", which is a
+different problem with a different fix.
+
+**State the conclusion precisely.** The companies plainly filed -- RELIANCE and
+TCS did not stop reporting in 2025. What is established is that THIS API PATH no
+longer carries current results. "The data does not exist" would be wrong, and
+"the feed is frozen" is only true of the endpoint. Reaching 2025-2026
+fundamentals means finding where NSE serves them now.
+
+Operationally: `--refresh` now probes the ceiling with ~25 requests and refuses
+the 2,378-request sweep unless it moved. Writing that guard surfaced one more
+instance of the session's recurring bug -- `FRESH_HOURS` made the probe read the
+very cache it exists to check, so any run within 12 hours of a refresh would
+report "not moved" whatever the feed said. `max_age_hours=0` forces the network.
+**A freshness window applied to the check for freshness is a cache confirming
+itself**, which is where this whole investigation started with `ok=2121`.

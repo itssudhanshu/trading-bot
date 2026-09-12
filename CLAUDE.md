@@ -159,6 +159,25 @@ the right reason: fundamentals are kept as data (`fundamentals.py`,
 `features_asof`) and **must not be given a weight**, because nothing here
 constitutes evidence either way.
 
+**The corpus is capped at 2024-12-31 BY THE SOURCE, measured 2026-09-12
+(L106).** NSE's `corporates-financial-results` endpoint returns nothing after
+the Dec-2024 quarter: 2,021 of 2,120 symbols share that exact ceiling on indexes
+refetched the same day, and four URL shapes -- including an explicit
+`from_date`/`to_date`, which the endpoint DOES honour -- reach no further for
+RELIANCE, TCS or INFY. `period=Annual` stops at 2024-03-31. The control is what
+makes this attributable: `corporate-announcements` returned 3,739 rows for the
+last seven days through the same client, so this is the endpoint and not our
+access. The companies obviously filed; **this API path no longer carries it.**
+
+So no amount of refetching raises n, and `--refresh` now checks the ceiling with
+~25 requests and refuses the 2,378-request sweep unless it moved (`--force`
+overrides). Two things follow that are easy to get wrong: `behind_symbols`
+reporting 98% "behind their own cadence" is an ARTIFACT of a stopped feed rather
+than a measure of staleness, and reaching 2025-2026 fundamentals requires
+finding the endpoint NSE serves them from today -- not a parameter, and not more
+patience. Until then the fundamentals corpus is what it is, which changes
+nothing about the rule above: they are kept as data and given no weight.
+
 **Raising n does not straightforwardly fix it, but the reason is narrower than
 it first looked.** `sample()` draws 60 dates ~23 sessions apart, which at a
 10-day hold do not overlap. Reaching the ~4,300 trades that would resolve
