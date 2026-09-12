@@ -124,22 +124,49 @@ error is a finding about this price history, not about the market.
   reached deeper down the list to fill its five stocks. Rank first, trigger
   second, cash third.
 
-## Fundamentals: tested, no signal
+## Fundamentals: not measurable at this sample size (was: "tested, no signal")
 
 40,775 XBRL filings, 94% coverage of the tradeable clusters, dated by
-`broadCastDate` so a filing is invisible until published. Four company-momentum
-features measured on 1,049 RANDOMLY sampled trades:
+`broadCastDate` so a filing is invisible until published.
 
-| feature | spread | std err | t | verdict |
+**RE-MEASURED 2026-09-12 (L102/L103). The table that stood here is withdrawn:**
+it was computed over a 15-day hold the bucket has not run since L52, from
+features where 12.8% of comparisons were not year-on-year, and it carried no
+family bar. Corrected -- year-ago quarter matched by date, hold read from
+`selection.HOLD_DAYS`, 1,080 randomly sampled trades:
+
+| feature | spread | std err | t | n |
 |---|---|---|---|---|
-| rev_growth | -0.23% | 0.65% | -0.35 | indistinguishable from 0 |
-| profit_growth | +0.44% | 0.65% | +0.67 | indistinguishable from 0 |
-| margin | -0.58% | 0.66% | -0.89 | indistinguishable from 0 |
-| margin_change | +0.17% | 0.66% | +0.27 | indistinguishable from 0 |
+| rev_growth | +0.27% | 0.57% | +0.47 | 1,037 |
+| profit_growth | +0.73% | 0.57% | +1.27 | 1,038 |
+| margin | -0.09% | 0.56% | -0.16 | 1,073 |
+| margin_change | +0.55% | 0.57% | +0.95 | 1,030 |
 
-Every confidence interval straddles zero. Fundamentals are kept as data
-(`fundamentals.py`, `features_asof`) but must not be given a weight in the
-score without new evidence.
+Every sign moved and three of four flipped. Nothing approaches the family bar of
+|t| >= 2.6 over four features.
+
+**But that is a fact about the instrument, not about fundamentals.** At this
+sample the smallest resolvable spread is **1.48%**, and none of the price
+features this book actually scores would clear it either -- carried at the same
+0.57% standard error, `deliv` reads **t = +2.14**, `liq` -1.91, `off_high`
++0.53, `rs` -0.05. A test that cannot resolve the feature carrying the raised
+weight in the live score has not shown that anything is flat. It has shown that
+n is too small.
+
+So "tested, no signal" was never the right reading, and the old table said it on
+worse data than this one. The operative conclusion is unchanged and now rests on
+the right reason: fundamentals are kept as data (`fundamentals.py`,
+`features_asof`) and **must not be given a weight**, because nothing here
+constitutes evidence either way.
+
+**Raising n does not straightforwardly fix it.** `sample()` draws 60 dates ~23
+sessions apart, which at a 10-day hold barely overlap. Reaching the ~4,300
+trades that would resolve +0.73% means either dates closer together than the
+holding period -- overlapping windows sharing market moves -- or more names per
+date, which share that date's move. Both break the independence the Welch
+standard error assumes and would inflate `t` rather than earn it. The honest
+upgrade is a date-clustered or block-bootstrapped standard error, which is its
+own piece of work and its own pre-registration.
 
 **The same test undercut an earlier claim.** On 2,337 sampled trades the price
 features read: rs +1.40% (t=3.07), off_high -1.39% (t=-3.05), deliv +0.93%

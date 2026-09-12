@@ -4774,3 +4774,57 @@ assertions behind `if rows:` with rows always empty.
 
 **A fixture that differs from the thing it stands in for tests the fixture.**
 All three are now pinned by an assertion on the property that differed.
+
+## L103 — The fundamentals null was never a finding; the test cannot resolve its own score's features
+
+L102 corrected two defects in how fundamentals were measured: the year-ago
+quarter was matched by position rather than date (12.8% of comparisons were not
+a year apart), and `fund_test.py` hardcoded a 15-day hold the bucket has not run
+since L52. Re-measured with both fixed, and with a standard error the module
+never printed:
+
+| feature | spread | std err | t | n |
+|---|---|---|---|---|
+| rev_growth | +0.27% | 0.57% | +0.47 | 1,037 |
+| profit_growth | +0.73% | 0.57% | +1.27 | 1,038 |
+| margin | -0.09% | 0.56% | -0.16 | 1,073 |
+| margin_change | +0.55% | 0.57% | +0.95 | 1,030 |
+
+Against the withdrawn table (-0.23 / +0.44 / -0.58 / +0.17): **every spread
+moved and three of four flipped sign.** Nothing approaches the family bar of
+|t| >= 2.6 over four features.
+
+### The number that matters is not in the table
+
+At std err 0.57% the smallest resolvable spread is **1.48%**. Carried at that
+same error bar, the price features the script prints "for scale" read:
+
+    deliv     +1.22%  ->  t +2.14     liq      -1.09%  ->  t -1.91
+    off_high  +0.30%  ->  t +0.53     rs       -0.03%  ->  t -0.05
+
+**Not one of them clears 2.6 either** -- including `deliv`, which carries the
+raised 1.5 weight and is in the live score. A test that cannot resolve the
+feature this book already scores has not demonstrated that anything is flat. It
+has demonstrated that n is too small.
+
+So "Fundamentals: tested, no signal" was the wrong reading of a weaker version
+of this table, and it sat in CLAUDE.md for months as though it settled
+something. The operative rule does not change -- fundamentals get no weight --
+but it now rests on "no evidence either way" instead of a null that was partly
+an artefact of a wrong hold and mismatched periods.
+
+### And the obvious fix is a trap
+
+I recommended raising n to ~2,000 and wrote it into the module. That was wrong.
+`sample()` draws 60 dates ~23 sessions apart, which at a 10-day hold barely
+overlap. Reaching the ~4,300 trades that would resolve +0.73% needs either dates
+closer together than the holding period -- overlapping windows sharing market
+moves -- or more names per date, which share that date's move. Both break the
+independence the Welch standard error assumes, so `t` would rise without the
+evidence rising with it. **More rows would have bought a significant-looking
+number and no new information**, which is the exact failure this project names
+as a noise search.
+
+The honest upgrade is a date-clustered or block-bootstrapped standard error, and
+it is a methodology change that needs its own pre-registration rather than a
+knob turned once a result is in view.

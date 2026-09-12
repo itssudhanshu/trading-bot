@@ -44,11 +44,26 @@ FAMILY_BAR = 2.6
 #     n =  2,000   std err 0.47%   resolvable:                   1.22%
 #     n =  4,000   std err 0.33%   resolvable:                   0.87%
 #
-# So a real 1.2% spread is INVISIBLE at n = 1,000 and lands right on the bar at
-# n = 2,000. `sample()`'s n_dates and per_date are the only knobs that move
-# this. Raising them is legitimate -- it buys power on a question already
-# asked -- but the bar above is fixed BEFORE the run and the run happens once.
-# Raising n until a number crosses a line is not power, it is fishing.
+# So a real 1.2% spread is INVISIBLE at n = 1,000. The 2026-09-12 run measured
+# std err 0.57% at n = 1,038, so the smallest resolvable spread here is 1.48%.
+#
+# RAISING n DOES NOT CLEANLY FIX THIS, and an earlier note in this file said it
+# did. `sample()` draws 60 dates ~23 sessions apart, which at a 10-day hold
+# barely overlap. Reaching the ~4,300 trades that would resolve +0.73% needs
+# either dates closer together than the holding period -- overlapping windows
+# sharing the same market moves -- or more names per date, which share that
+# date's move. Either way the extra observations are correlated, the Welch
+# standard error above assumes they are not, and `t` would rise without the
+# evidence rising with it.
+#
+# The honest upgrade is a date-clustered or block-bootstrapped standard error.
+# That is a methodology change and needs its own pre-registration, not a knob
+# turned mid-result.
+#
+# What this design CAN say is bounded, and worth stating plainly: at std err
+# 0.57% not one of the price features quoted below would clear the family bar
+# either -- deliv +1.22% reads t = +2.14. A test that cannot resolve the feature
+# carrying the raised weight in the live score has not shown anything is flat.
 
 
 def sample(corpus, days, n_dates=60, per_date=40, seed=11):
