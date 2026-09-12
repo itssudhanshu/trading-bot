@@ -105,6 +105,30 @@ def newest_visible(symbol):
     return max((r["quarter_end"] for r in rows), default=None)
 
 
+def source_ceiling(symbols):
+    """-> the newest quarter_end any symbol's INDEX lists, and how many share it.
+
+    Measured 2026-09-12: 2,021 of 2,120 symbols stop at exactly 2024-12-31 and
+    0 of 2,120 list anything at 2025-06-30 or later. Companies do not all stop
+    filing on the same day, so that is a property of the feed, not of the
+    companies -- and it was NOT a parse failure: `drop_census` found 6,548
+    dropped rows, every one of them a null broadCastDate on a 2006-2007 filing,
+    with nothing from 2025 at all.
+    """
+    from collections import Counter
+    c = Counter()
+    for sym in symbols:
+        try:
+            rows = build_asof(sym)
+        except Exception:
+            continue
+        if rows:
+            c[max(r["quarter_end"] for r in rows)] += 1
+    if not c:
+        return None, 0
+    return max(c), c[max(c)]
+
+
 def behind_symbols(symbols, day=None, log=None):
     """-> symbols whose own filing cadence says a filing is missing.
 
@@ -128,6 +152,19 @@ def behind_symbols(symbols, day=None, log=None):
             out.append(sym)
     if log:
         log(f"  {len(out)}/{len(symbols)} symbols are behind their own cadence")
+        # "Behind" is only actionable if the feed HAS something newer. When the
+        # ceiling is the same quarter for nearly everyone, refetching every
+        # index discovers nothing -- the 2026-09-12 run spent 2,378 requests to
+        # gain 40 files. Say so rather than letting the operator infer it from
+        # a number that never moves.
+        ceil, share = source_ceiling(symbols)
+        if ceil is not None:
+            log(f"  the feed's newest listed quarter is {ceil} "
+                f"({share}/{len(symbols)} symbols stop there)")
+            if share / max(len(symbols), 1) > 0.5:
+                log("  -> most symbols share one ceiling, so this is the FEED, "
+                    "not the companies: a refresh cannot pull what is not "
+                    "listed (see docs/lessons.md L106 addendum 6)")
     return out
 
 
@@ -910,6 +947,11 @@ def _selftest_refresh():
             # yet late -- the cadence decides, not a constant
             early = behind_symbols(["STALE"], day=_date(2025, 3, 1))
             assert early == [], early
+            # the feed ceiling must be read from the INDEX, not from parsed
+            # timelines: it answers "is there anything newer to fetch", which
+            # is a different question from "has this company filed".
+            ceil, share = source_ceiling([])
+            assert ceil is None and share == 0, (ceil, share)
     finally:
         PARSED = real
     print("fundamentals.behind_symbols selftest ok")

@@ -5135,3 +5135,39 @@ symbols behind against filings that cannot be fetched -- in which case
 The general rule this keeps re-teaching: **`continue` on a parse failure is a
 data-loss path, and an uncounted one is invisible.** Every silent drop in this
 repo has eventually had to be given a counter.
+
+**Addendum 6 — the census refuted my own hypothesis, and the probe stalled on a
+shadowed variable.**
+
+`drop_census`: **149,273 stored index rows, 6,548 dropped (4.4%) — every one of
+them a null `broadCastDate`, on 2006-2007 filings.** Nothing from 2025 is being
+dropped, because nothing from 2025 is there. So `_dt` is exonerated and the
+format-change hypothesis I argued for is **wrong**. The feed genuinely stops at
+2024-12-31: 2,021 of 2,120 symbols share that exact ceiling.
+
+That is now the finding, and it is a fact about NSE's
+`corporates-financial-results?period=Quarterly` endpoint, not about this repo.
+Consequences worth stating plainly:
+
+- `behind_symbols` marks 2,378 of 2,420 symbols "behind their own cadence"
+  against filings **that are not listed and therefore cannot be fetched**. The
+  98% was never a measure of staleness; `expected_next_filing` predicts
+  `last_quarter_end + 91 + median_lag`, which marks any company whose feed has
+  stopped as permanently overdue.
+- `--refresh` therefore spends 2,378 index requests per run to gain 40 files,
+  and will do so on every future run. It now prints the feed's ceiling and how
+  many symbols share it, and says outright that a refresh cannot pull what is
+  not listed. A number that never moves is not a diagnosis.
+- The fundamentals corpus is frozen at 2024-12-31 **by the source**. Any plan to
+  lift `fund_test` past 34 blocks by fetching more data is dead until a feed
+  that serves 2025-2026 is found.
+
+**And the stall was mine.** Endpoint 2 announced "fetching 1255 of them" where
+the sample size is 40, then sat there: the census printed its histogram with
+`for v, n in c.most_common(5)`, rebinding the parameter `n` to 6,548, so
+`min(n, len(holes))` became 1,255 — every dead URL, serially, at a 40-second
+timeout. **A loop variable that shares a name with a parameter is a silent
+reassignment**, and the symptom was indistinguishable from a hang, which is the
+second time in this session a silent phase has looked like one. `n` is now
+asserted in range before use, and `probe` asserts it returns what was asked for,
+because a sample size that is not enforced as a cap is only a suggestion.

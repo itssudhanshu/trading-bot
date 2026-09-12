@@ -173,8 +173,8 @@ def report(symbols=None, n=40, start=date(2019, 1, 1)):
                      ("toDate", cen["bad_todate"])):
         if c:
             print(f"    unreadable {label}, most common:")
-            for v, n in c.most_common(5):
-                print(f"      {n:6d}  {v}")
+            for v, cnt in c.most_common(5):
+                print(f"      {cnt:6d}  {v}")
     for e in cen["examples"][:3]:
         print(f"    e.g. {e['sym']}: broadCastDate={e['broadCastDate']!r} "
               f"toDate={e['toDate']!r}")
@@ -218,8 +218,16 @@ def report(symbols=None, n=40, start=date(2019, 1, 1)):
           if recent / len(holes) > 0.5 else
           "  -> spread out: these are long-standing gaps, not a refresh failure")
 
-    print(f"\n  fetching {min(n, len(holes))} of them -- ENDPOINT 2:")
+    # `n` is the SAMPLE size and nothing else may rebind it. A census loop
+    # written `for v, n in c.most_common(5)` clobbered it with 6,548, so this
+    # asked for every one of 1,255 dead URLs, serially, at a 40s timeout. The
+    # assert is cheap and the failure it catches was an hours-long stall that
+    # looked exactly like a hang.
+    assert isinstance(n, int) and 0 < n <= 500, f"sample size out of range: {n}"
+    take = min(n, len(holes))
+    print(f"\n  fetching {take} of them -- ENDPOINT 2:")
     rows = probe(holes, n=n)
+    assert len(rows) == take, f"probe fetched {len(rows)}, asked for {take}"
     sc = Counter(r["status"] for r in rows)
     for status, c in sc.most_common():
         label = {0: "no HTTP response (timeout/DNS/connection)",
@@ -268,6 +276,12 @@ def _selftest():
     assert got["u2"]["is_xbrl"] is False, "200 with an HTML body counted as XBRL"
     assert got["u2"]["status"] == 200, got["u2"]
     assert got["u3"]["status"] == 404 and got["u3"]["bytes"] == 0, got["u3"]
+    # probe must never fetch more than it was asked for. The stall was in
+    # report(), where a census loop rebound `n`, but this is the invariant that
+    # made the consequence unbounded: a sample size that is not a cap.
+    many = [("S", date(2020, 3, 31), "u") for _ in range(50)]
+    assert len(probe(many, n=3, fetcher=lambda u, timeout=40: (404, b""))) == 3
+
     # drop_census must COUNT the silent discard, including the exact shape the
     # hypothesis predicts: a date format _dt does not know. If NSE switched to
     # ISO, every such row vanishes from build_asof without a word.
