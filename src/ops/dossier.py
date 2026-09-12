@@ -77,6 +77,7 @@ guarantee is asserted in `_selftest`, beside the thing it protects, the same way
 """
 import argparse
 import re
+import statistics
 import sys
 from dataclasses import dataclass, field
 from datetime import date
@@ -184,8 +185,19 @@ def technical(series, day=None):
     sma50 = features.sma(closes, 50)[-1]
     rsi14 = features.rsi(closes, 14)[-1]
     hi20 = features.rolling_max(closes[:-1], 20)[-1] if len(closes) > 20 else None
-    hi250 = max(closes[-250:])
     atr14 = features.atr(highs, lows, closes, 14)[-1] if highs and lows else None
+
+    # The score's OWN four inputs, computed the way `clusters.py` computes them
+    # -- 125 sessions for both rs and the high, 60 for delivery and turnover.
+    # The first version of this channel reported RSI, MACD and a 250-day high
+    # and omitted delivery and liquidity entirely: it carried the indicator menu
+    # of the framework this was adapted from, not the inputs this book ranks on.
+    # `deliv` is the weighted-up feature (1.5); leaving it out while claiming to
+    # restate the selection rule was the whole defect.
+    hi125 = max(highs[-126:]) if highs else None
+    rs125 = (px / closes[-126] - 1.0) if len(closes) > 126 and closes[-126] else None
+    dl = [d for d in (series.deliv_pct or [])[:len(closes)][-61:] if d and d > 0]
+    to = [x for x in (series.turnover or [])[:len(closes)][-61:] if x and x > 0]
 
     # MACD, the standard 12/26/9. Written out rather than imported because
     # features.py carries no MACD and adding one there would put an indicator
@@ -204,7 +216,12 @@ def technical(series, day=None):
         "above_200dma": bool(sma200 and px > sma200),        # THE gate
         "pct_above_200dma": round(100 * (px / sma200 - 1), 2) if sma200 else None,
         "breakout_20d": bool(hi20 and px > hi20),            # THE trigger
-        "off_250d_high": round(100 * (px / hi250 - 1), 2) if hi250 else None,
+        # --- the four scored features ---
+        "rs_125d_pct": round(100 * rs125, 2) if rs125 is not None else None,
+        "deliv_60d_pct": round(statistics.fmean(dl), 2) if dl else None,
+        "liq_60d_median_turnover": round(statistics.median(to), 0) if to else None,
+        "near_high_125d": round(-((hi125 - px) / hi125 * 100), 2) if hi125 else None,
+        # --- shown, never scored ---
         "rsi14": round(rsi14, 1) if rsi14 is not None else None,
         "atr14_pct": round(100 * atr14 / px, 2) if atr14 else None,
         "macd": round(macd, 3) if macd is not None else None,
@@ -222,10 +239,16 @@ def technical(series, day=None):
     if facts["breakout_20d"]:
         v += 0.5
     ev = [f"close {facts['close']} vs 200-DMA {facts['sma200']} "
-          f"({facts['pct_above_200dma']:+}%)" if facts["sma200"] else "no 200-DMA",
-          f"20-day breakout: {'yes' if facts['breakout_20d'] else 'no'}",
+          f"({facts['pct_above_200dma']:+}%) -- THE gate" if facts["sma200"]
+          else "no 200-DMA",
+          f"20-day breakout: {'yes' if facts['breakout_20d'] else 'no'} -- THE trigger",
+          f"scored: rs(125d) {facts['rs_125d_pct']}%, deliv(60d) "
+          f"{facts['deliv_60d_pct']}% [weight 1.5], liq(60d median turnover) "
+          f"{facts['liq_60d_median_turnover']}, near_high(125d) "
+          f"{facts['near_high_125d']}%",
           f"RSI(14) {facts['rsi14']}, MACD {facts['macd']} vs signal "
-          f"{facts['macd_signal']} (shown, not counted)"]
+          f"{facts['macd_signal']}, ATR14 {facts['atr14_pct']}% "
+          f"(shown, not counted -- none is in the score)"]
     return Reading("technical", covered=True, value=_clip(v), facts=facts,
                    evidence=ev, prior=True,
                    note="restates the selection rule; not independent evidence")
@@ -274,20 +297,35 @@ def sentiment_channel(symbol, day=None):
                        note=f"channel unavailable: {type(e).__name__}: {e}")
     if not s:
         return Reading("sentiment", covered=False, note="no items in window")
-    items = s.get("items") or s.get("evidence") or []
-    n = len(items) if hasattr(items, "__len__") else 0
+    # These key names are `sentiment.stock_sentiment`'s, read off that function
+    # rather than guessed. The first version of this channel guessed "items" and
+    # "evidence", neither of which it returns, so the channel reported `no data`
+    # on every symbol including strongly-scored ones -- and the selftest passed,
+    # because it only ever exercised the empty path. Covered-path assertions
+    # below are the fix for that, not the key names.
     comp = s.get("composite")
-    if comp is None or not n:
+    n_sig = s.get("n_signal") or 0
+    if comp is None:
         return Reading("sentiment", covered=False,
-                       note="no scorable items in window")
+                       note="no items in window")
+    if not n_sig:
+        return Reading("sentiment", covered=False,
+                       note=f"{s.get('n_announcements', 0)} filings and "
+                            f"{s.get('n_news', 0)} headlines, none of which "
+                            f"scored -- procedural filings are an absence of "
+                            f"observation, not a neutral observation")
     ev = []
-    for it in (items[:6] if hasattr(items, "__getitem__") else []):
-        if isinstance(it, dict):
-            ev.append(str(it.get("title") or it.get("subject") or it)[:120])
-        else:
-            ev.append(str(it)[:120])
+    for row in (s.get("top") or [])[:4]:
+        try:
+            score, source, text = row
+            ev.append(f"{score:+.0f}  {source}: {text}")
+        except (TypeError, ValueError):
+            ev.append(str(row)[:120])
     return Reading("sentiment", covered=True, value=None,
-                   facts={"composite": comp, "band": s.get("band"), "items": n},
+                   facts={"composite": comp, "band": s.get("band"),
+                          "n_signal": n_sig,
+                          "n_announcements": s.get("n_announcements", 0),
+                          "n_news": s.get("n_news", 0)},
                    evidence=ev,
                    note="11 hypotheses spent, none adopted "
                         "(ann_tone t=1.71 vs a bar of 2.6); unscored")
@@ -458,9 +496,47 @@ def _selftest():
     assert cut.facts["close"] != full.facts["close"], \
         "the as-of date must actually truncate the series"
 
+    # --- the technical channel must carry the SCORE's inputs ----------------
+    # Not the indicator menu of the framework this was adapted from. The first
+    # version reported RSI/MACD/a 250-day high and omitted delivery -- the
+    # feature carrying the 1.5 weight -- while claiming to restate the rule.
+    for key in ("rs_125d_pct", "deliv_60d_pct", "liq_60d_median_turnover",
+                "near_high_125d"):
+        assert key in r.facts and r.facts[key] is not None, \
+            f"the scored feature {key} is missing from the technical channel"
+    assert r.facts["deliv_60d_pct"] == 40.0, r.facts["deliv_60d_pct"]
+
     # --- unscored channels stay unscored ------------------------------------
     f = fundamental(_fake_series())
     assert not f.covered and f.value is None, "no filings is not a neutral read"
+
+    # --- the sentiment channel must survive a COVERED result ----------------
+    # This is the assertion whose absence let the channel ship dead: it bound to
+    # key names `stock_sentiment` does not return, so every symbol read `no
+    # data`, and a selftest that only exercised the empty path passed anyway. An
+    # uncovered-only test cannot tell a working channel from a broken one.
+    real = _sentiment.stock_sentiment
+    try:
+        _sentiment.stock_sentiment = lambda sym, day=None: {
+            "symbol": "TESTCO", "company": "Test Co", "as_of": "2026-09-11",
+            "announcement_score": 6.0, "news_score": 2.0, "composite": 5.0,
+            "band": "Bullish", "n_announcements": 7, "n_news": 3, "n_signal": 5,
+            "top": [(8.0, "Order win", "bags Rs 40 crore order")]}
+        sr = sentiment_channel("TESTCO", "2026-09-11")
+        assert sr.covered, "a scored sentiment result must read as covered"
+        assert sr.facts["n_signal"] == 5 and sr.facts["composite"] == 5.0, sr.facts
+        assert sr.evidence and "Order win" in sr.evidence[0], sr.evidence
+        assert sr.value is None, "sentiment reports; it does not vote"
+
+        # Items present but none scoring is NOT the same as nothing in window,
+        # and must not read as a neutral observation.
+        _sentiment.stock_sentiment = lambda sym, day=None: {
+            "composite": 0.0, "band": "Neutral", "n_announcements": 4,
+            "n_news": 0, "n_signal": 0, "top": []}
+        q = sentiment_channel("TESTCO", "2026-09-11")
+        assert not q.covered and "none of which scored" in q.note, q.note
+    finally:
+        _sentiment.stock_sentiment = real
 
     # --- a dossier refuses to produce a composite ---------------------------
     dos = Dossier("TEST", "2024-06-01", {
