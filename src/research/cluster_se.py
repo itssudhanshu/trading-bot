@@ -45,9 +45,12 @@ create information. A feature that reads t = 1.27 under Welch will read less,
 never more. Nothing here can rescue an underpowered test -- it can only stop one
 from looking powered.
 
-Also: CR1 is itself biased down when the cluster count is small. Rule of thumb
-is 40+; `fund_test` draws 60 dates. Below about 30 the number this returns is
-optimistic and should be said so out loud rather than quoted.
+Also: CR1 is itself biased down when the cluster count is small. Rule of thumb is 40+,
+and `MIN_CLUSTERS_TRUSTED` is set there. Note that a design's date count is NOT
+its block count: `fund_test` samples 61 dates and only 34 of them carry a row
+with fundamentals visible, so the estimator sees 34 clusters and its standard
+error is optimistic. Count the blocks that reach the estimator, never the dates
+the sampler intended.
 
     python3 src/research/cluster_se.py --selftest
 """
@@ -61,7 +64,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # -> src/
 import paths  # noqa: F401
 
-MIN_CLUSTERS_TRUSTED = 30
+# CR1 is biased down when clusters are few. The docstring cites the usual rule
+# of thumb, 40+, so the flag is set there rather than at the 30 it first carried
+# -- a threshold looser than the rule it quotes is the kind of gap that lets a
+# borderline run pass as clean. Tightened, never loosened: the 2026-09-12
+# fund_test run returned 34 blocks, which the old flag called trusted and this
+# one does not.
+MIN_CLUSTERS_TRUSTED = 40
 
 
 def blocks(session_index, hold):

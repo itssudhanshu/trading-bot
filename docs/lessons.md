@@ -4889,3 +4889,52 @@ table answers rather than something this file asserts.
 CR1 is itself biased low when clusters are few -- the rule of thumb is 40+, and
 `fund_test` draws 60 blocks. Below 30 the row says so instead of quoting a
 number that looks better than it is.
+
+## L105 — Clustering barely moved the answer, and the reason it barely moved is the finding
+
+`fund_test` re-run with the cluster-robust standard error of L104, on the real
+sample:
+
+| feature | spread | se (iid) | se (clustered) | t | n | blocks |
+|---|---|---|---|---|---|---|
+| rev_growth | +0.27% | 0.57% | 0.53% | +0.51 | 1,037 | 34 |
+| profit_growth | +0.73% | 0.57% | 0.59% | +1.23 | 1,038 | 34 |
+| margin | -0.09% | 0.56% | 0.69% | -0.13 | 1,073 | 34 |
+| margin_change | +0.55% | 0.57% | 0.67% | +0.82 | 1,030 | 34 |
+
+**Measured per-date imbalance 0.089**, and clustering widened the error bars by
+x1.09. That is exactly what L104's table predicts at that imbalance (Welch ~6%
+optimistic at 0.10), so the estimator agrees with its own simulation on live
+data. Nothing clears; `profit_growth` moved from t = +1.27 to +1.23.
+
+So the L103 warning was directionally right and much smaller than feared. The
+correlation penalty here is mild because the splits are close to even.
+
+### The real constraint is coverage, not correlation
+
+The sampler asks for 61 dates. **34 of them carry a row.** Twenty-seven produce
+nothing at all, because the filing cache does not reach the early history --
+`features_asof` needs five visible quarters and there are none to find. The
+fundamentals sample is therefore drawn from a later subsample of the history,
+not uniformly across it, which is exactly the blending CLAUDE.md's reporting
+rule exists to prevent.
+
+That number also decides the power ceiling. Under clustering the iid part of an
+error bar shrinks with rows and the cluster-level part shrinks only with BLOCKS:
+
+    rev_growth 0.00%   profit_growth 0.15%   margin 0.40%   margin_change 0.35%
+
+`profit_growth`'s cluster-level component is small, so more rows per date would
+help it -- but only down to that floor, and the floor is set by 34 blocks. The
+sampling window holds room for **127** non-overlapping blocks at a spacing just
+above the 10-day hold. The binding constraint is not the design; it is that the
+filing cache covers about half the history.
+
+### And a threshold in my own code was looser than the rule it quoted
+
+`cluster_se` documented the usual "40+ clusters" rule of thumb and set its flag
+at 30, so 34 blocks reported as trusted. Tightened to 40, which makes this run
+correctly read `se is optimistic`. The docstring also claimed `fund_test` draws
+60 dates; it draws 61 and the estimator sees 34. **A design's date count is not
+its block count**, and quoting the first while the second is what runs is how a
+standard error comes to look better than it is.

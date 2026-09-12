@@ -157,7 +157,20 @@ def main():
     rows = sample(corpus, days)
     print(f"{len(rows)} randomly-sampled trades with fundamentals visible")
     print(f"  hold {HOLD}d, stop {STOP}%, target {TARGET}% "
-          f"(read from selection.py)\n")
+          f"(read from selection.py)")
+    # How much of the intended design actually reached the estimator. The date
+    # count and the block count are not the same number, and the gap is the
+    # whole story: 61 dates were sampled on 2026-09-12 and 34 carried a row,
+    # because the filing cache does not reach the early history at all.
+    dis = sorted({r["_di"] for r in rows})
+    if dis:
+        lo, hi = days[dis[0]], days[dis[-1]]
+        span = (len(days) - 320) // 60 or 1
+        intended = len(range(300, len(days) - HOLD - 1, span))
+        print(f"  {len(dis)} of {intended} sampled dates carried a row; "
+              f"covered {lo} .. {hi}")
+        print(f"  ({len(days)} sessions in the corpus -- the dates with no row "
+              f"are where no filing is visible yet)\n")
     print(f"  {'feature':<15}{'spread':>9}{'se(iid)':>9}{'se(clust)':>11}"
           f"{'t':>7}{'n':>6}{'blk':>5}   reading")
     res = {}
@@ -185,6 +198,17 @@ def main():
               f"(sd of each date's upper-half share).")
         print(f"  Clustering widened the error bar by "
               f"x{statistics.fmean(widen):.2f} on average.")
+        # The part of the error bar that MORE ROWS PER DATE cannot shrink.
+        # Under clustering the iid component falls with n and the cluster-level
+        # component falls only with the number of BLOCKS, so this is the lever
+        # that says which knob buys power.
+        print("  Cluster-level component of each error bar -- the part that more")
+        print("  rows per date cannot shrink, only more blocks can:")
+        for k, v in res.items():
+            if not v:
+                continue
+            extra = max(0.0, v["se_cluster"] ** 2 - v["se_welch"] ** 2) ** 0.5
+            print(f"    {k:<16}{extra:>6.2f}%")
         print("  A date's market move cancels out of a difference of means when")
         print("  that date splits evenly; it leaks in proportion to how lopsided")
         print("  the split is. At imbalance 0.00 Welch is honest to within 1%;")
