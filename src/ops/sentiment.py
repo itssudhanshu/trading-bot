@@ -243,8 +243,26 @@ def news_evidence(symbol, day, window=NEWS_WINDOW):
             hay = f"{r.get('title','')} {r.get('source','')}".lower()
             if _mentions(hay, symbol, terms):
                 out.append(r)
-    out.sort(key=lambda r: r.get("captured_at", ""), reverse=True)
-    return out
+    # One story, one observation. The same headline arrives repeatedly -- the
+    # per-company query and a market-wide feed both carry it, and a story still
+    # on the wire is re-captured the next day -- and NOTHING deduplicated it.
+    # `stock_sentiment` scores this list item by item, so a headline seen three
+    # times counted three times in the news channel, which is the difference
+    # between "three sources agree" and "we looked three times".
+    #
+    # The EARLIEST capture is kept, because that is when the story became
+    # visible; keeping the newest would move an item's date every time it was
+    # re-captured.
+    out.sort(key=lambda r: r.get("captured_at", ""))
+    seen, unique = set(), []
+    for r in out:
+        key = " ".join((r.get("title") or "").lower().split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(r)
+    unique.sort(key=lambda r: r.get("captured_at", ""), reverse=True)
+    return unique
 
 
 def evidence(symbol, day=None):
@@ -318,6 +336,53 @@ def stock_sentiment(symbol, day=None, ev=None):
     }
 
 
+def _selftest_news_dedup():
+    """One story is one observation. Its own function so its `global NEWS` does
+    not collide with the one further down `_selftest`."""
+    global NEWS
+    import tempfile
+    from pathlib import Path          # sentiment.py imports paths, not Path
+    real = NEWS
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            NEWS = Path(td)
+            rows = [("2026-09-05", "Yuken India Net Sales at Rs 134.33 crore"),
+                    ("2026-09-06", "Yuken India Net Sales at Rs 134.33 crore"),
+                    ("2026-09-07", "yuken india  net sales at rs 134.33 crore"),
+                    ("2026-09-08", "Yuken India declares a dividend at the AGM"),
+                    ("2026-09-10", "Yuken India Q1: net profit rises 29% YoY")]
+            for d, t in rows:
+                with open(NEWS / f"{d}.jsonl", "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"symbol": "YUKEN", "title": t,
+                                         "captured_at": f"{d}T10:00:00Z",
+                                         "publisher": "x"}) + "\n")
+            got = news_evidence("YUKEN", date(2026, 9, 11))
+            assert len(got) == 3, [r["title"] for r in got]
+            # The EARLIEST capture is kept: a re-capture must not move the date
+            # a story became visible.
+            sales = [r for r in got if "134.33" in r["title"]]
+            assert len(sales) == 1, sales
+            assert sales[0]["captured_at"].startswith("2026-09-05"), sales
+    finally:
+        NEWS = real
+
+
+def _clip(text, n=110):
+    """-> `text` cut at a word boundary, with the cut made visible.
+
+    A hard slice at 110 turned "Record date ... is 28-Aug-2026" into
+    "... is 28-Aug-20", which reads as a real date six years wrong. A truncation
+    that produces a plausible value is worse than one that produces an obvious
+    one, so the cut lands on a space and says it happened.
+    """
+    text = (text or "").strip()
+    if len(text) <= n:
+        return text
+    cut = text[:n]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > n // 2 else cut).rstrip() + "\u2026"
+
+
 def _drivers(ev, ann, news):
     """-> the few items doing the most work, strongest absolute score first.
 
@@ -325,9 +390,9 @@ def _drivers(ev, ann, news):
     from one built from ten agreeing items, and the reader cannot tell without
     seeing which is which.
     """
-    rows = [(s, r.get("desc") or "filing", r.get("text", "")[:110])
+    rows = [(s, r.get("desc") or "filing", _clip(r.get("text", "")))
             for s, r in zip(ann, ev["announcements"]) if s]
-    rows += [(s, r.get("publisher") or "news", r.get("title", "")[:110])
+    rows += [(s, r.get("publisher") or "news", _clip(r.get("title", "")))
              for s, r in zip(news, ev["news"]) if s]
     rows.sort(key=lambda t: -abs(t[0]))
     return rows[:4]
@@ -388,6 +453,25 @@ def _selftest():
         _match_terms("IOL", "IOL Chemicals Limited")
     # A name with one distinctive word keeps it.
     assert _match_terms("IOL", "IOL Krishival Limited") == ["krishival"]
+
+    # --- one story is one observation ---------------------------------------
+    # Found on the reviewer layer's first live call: YUKEN's news channel showed
+    # six items that were three stories -- the per-company query and a
+    # market-wide feed both carry a headline, and a story still on the wire is
+    # re-captured the next day. `stock_sentiment` scores this list item by item,
+    # so the net-sales headline counted THREE times in the news channel. That is
+    # the difference between three sources agreeing and looking three times.
+    _selftest_news_dedup()
+
+    # --- a truncated value must not read as a real one ----------------------
+    # A hard slice at 110 turned "... is 28-Aug-2026" into "... is 28-Aug-20",
+    # which a reviewer reads as 2020.
+    _long = ("Yuken India Limited has informed the Exchange that Record date "
+             "for the purpose of Final Dividend  is 28-Aug-2026")
+    _c = _clip(_long)
+    assert _c.endswith("\u2026"), _c
+    assert "28-Aug-20" not in _c, f"the clip still produces a plausible date: {_c}"
+    assert _clip("short enough") == "short enough"
 
     # --- a generic word must not carry a match on its own -------------------
     # "Healthcare Global Enterprises" matched a Eurozone bond story on GLOBAL.
