@@ -5171,3 +5171,36 @@ reassignment**, and the symptom was indistinguishable from a hang, which is the
 second time in this session a silent phase has looked like one. `n` is now
 asserted in range before use, and `probe` asserts it returns what was asked for,
 because a sample size that is not enforced as a cap is only a suggestion.
+
+**Addendum 7 — one query parameter is the remaining candidate.** With the
+parser cleared and the ceiling confirmed on same-day refetched indexes, the only
+explanation left that is cheaper than "find another data source" is that the
+request itself is wrong. This repo's own announcements client sends a date
+range:
+
+    /api/corporate-announcements?index=equities&from_date=..&to_date=..
+
+and `fundamentals.INDEX_URL` sends none:
+
+    /api/corporates-financial-results?index=equities&symbol=X&period=Quarterly
+
+An endpoint that answers an undated request from a default window would produce
+exactly the observed shape -- a hard ceiling shared by 95% of symbols, on
+requests made today. `src/ops/feed_probe.py` tests four URL shapes against three
+large liquid names, and the verdict is one number: does any variant return a
+`toDate` after 2024-12-31.
+
+**The control is the part that makes a negative result usable.** It fetches
+`corporate-announcements` for the last seven days through the same `fetch`, the
+same headers, the same absence of cookies. If that returns current rows and the
+results endpoint does not, the difference is attributable to the endpoint rather
+than to our access -- and if the control is ALSO empty, the finding is about
+cookies or rate limiting and the "frozen feed" reading is wrong. A probe that
+cannot distinguish "they stopped publishing" from "we cannot authenticate"
+answers nothing, and this project has already spent a session on a status
+message that could not tell those apart.
+
+`newest_todate` accepts both a bare list and `{"data": [...]}`, because NSE has
+served both from this family and a probe that assumes one shape reports a live
+endpoint as dead -- which would send this project hunting for a replacement
+source it does not need.
