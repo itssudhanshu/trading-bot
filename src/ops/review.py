@@ -59,6 +59,7 @@ promote the record to a decision.
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -68,7 +69,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # -> src/
 import paths
 
 VERSION = 1
-LEDGER = paths.SDATA / "reviews.jsonl"      # strategy-scoped and append-only
+
+# REVIEW_DIR redirects all three files, for a REHEARSAL -- proving the runner
+# with a synthetic candidate that must never reach the live ledger. Same shape
+# as pipeline.PIPELINE_DIR, and added for the same reason it was: driving this
+# CLI end to end the first time wrote a demo verdict and five case files into
+# the live strategy directory. It is LOUD (main() prints a banner) and off by
+# default, because a quiet way to write somewhere else is how fixture rows got
+# into the live order book.
+_DIR = Path(os.environ["REVIEW_DIR"]) if os.environ.get("REVIEW_DIR") else paths.SDATA
+REHEARSAL = _DIR != paths.SDATA
+LEDGER = _DIR / "reviews.jsonl"             # strategy-scoped and append-only
+STATE = _DIR / "review_state.json"          # one open session; overwritten
+CASES = _DIR / "reviews"                    # the argument, kept as an audit trail
+
+# The order is the design. Round 1 is blind on BOTH sides, and the blindness is
+# enforced by `context_for` -- the only thing that hands a reviewer its context
+# -- rather than by a sentence in a prompt. A rule a model is asked to follow is
+# a rule it can be argued out of; a case it is never shown is not.
+STAGES = (("bull", 1), ("bear", 1), ("bull", 2), ("bear", 2),
+          ("risk", None), ("verdict", None))
+ROLES = ("bull", "bear")
+QUOTE_RUN = 40      # chars of the opponent verbatim that prove round 1 was not blind
 GRADES = ("proceed", "proceed-with-note", "stand-aside")
 REVIEW = "REVIEW"                            # what a broken emission becomes
 MAX_INDEPENDENT = 4        # the dossier's five channels less the prior one
@@ -212,6 +234,233 @@ def record(rec, ledger=None):
 
 
 # --------------------------------------------------------------------------
+# the session: what runs the four reviewers, in order, over a day's candidates
+# --------------------------------------------------------------------------
+
+def _key(role, rnd):
+    return role if rnd is None else f"{role}-{rnd}"
+
+
+def open_session(day, candidates):
+    """-> a fresh session. `candidates` is {symbol: dossier}.
+
+    One session per as-of date. A candidate is registered WITH the fingerprint
+    of the dossier it will be reviewed against, so a case written against one
+    evidence set cannot later be paired with another.
+    """
+    iso = day.isoformat() if hasattr(day, "isoformat") else str(day)
+    cands = {}
+    for s, d in (candidates or {}).items():
+        # The evidence is COPIED into the session, not re-derived later. A
+        # dossier rebuilt at verdict time is not guaranteed to match the one the
+        # reviewers read -- the news channel admits items captured the same day,
+        # so a capture between open and verdict changes the render and the
+        # fingerprint check would then refuse every verdict it was built to
+        # protect. Copying also means the verdict stage needs no corpus.
+        cands[s] = {"dossier": fingerprint(d), "render": d.render(),
+                    "independent": sorted(d.independent),
+                    "covered": sorted(d.covered),
+                    "cases": {}, "verdict": None}
+    return {"version": VERSION, "session": iso,
+            "opened_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "candidates": cands}
+
+
+def context_for(state, symbol, role, rnd):
+    """-> exactly what this reviewer may see, and nothing else.
+
+    THIS is the blind round. At `rnd == 1` the opponent's case is not in the
+    returned dict at all -- not redacted, not marked, absent -- so a runner that
+    goes through this function cannot leak it even by accident. At `rnd == 2`
+    the opponent's round-1 case is included in full, which is the rebuttal.
+
+    The framework this was adapted from runs Bull -> Bear -> judge at its shipped
+    default, so its bear sees the bull's argument and its bull never rebuts. The
+    asymmetry is mitigated there by instructing the judge to ignore speaking
+    order. Here there is no order to ignore.
+    """
+    cand = (state.get("candidates") or {}).get(symbol)
+    if cand is None:
+        raise KeyError(f"{symbol} is not in this session")
+    if role not in ROLES:
+        raise ValueError(f"{role} has no rounds; use the risk or verdict stage")
+    ctx = {"symbol": symbol, "as_of": state["session"], "role": role,
+           "round": rnd, "dossier_fingerprint": cand["dossier"],
+           "dossier": cand.get("render", "")}
+    if rnd == 1:
+        ctx["opponent"] = None
+        ctx["note"] = ("round 1 is blind -- the opposing case is withheld by the "
+                       "session, not by instruction")
+    else:
+        other = ROLES[1 - ROLES.index(role)]
+        ctx["opponent"] = cand["cases"].get(_key(other, 1), {}).get("text")
+        ctx["note"] = f"round 2 -- the {other}'s round-1 case in full"
+    return ctx
+
+
+def _stage_problems(cand, role, rnd):
+    """-> why this stage may not be submitted yet, in the STAGES order."""
+    key = _key(role, rnd)
+    if key in cand["cases"] or (role == "verdict" and cand["verdict"]):
+        return [f"{key} was already submitted; a case is not revised in place"]
+    want = STAGES.index((role, rnd))
+    missing = [_key(r, n) for r, n in STAGES[:want]
+               if _key(r, n) not in cand["cases"]]
+    if missing:
+        return [f"{key} cannot run before {', '.join(missing)} -- "
+                "the order is the design, not a convention"]
+    return []
+
+
+def submit(state, symbol, role, rnd, text):
+    """-> problems. Empty means the case was accepted and stored on the session."""
+    cand = (state.get("candidates") or {}).get(symbol)
+    if cand is None:
+        return [f"{symbol} is not in this session"]
+    if (role, rnd) not in STAGES:
+        return [f"{_key(role, rnd)} is not a stage; expected one of "
+                f"{[_key(r, n) for r, n in STAGES]}"]
+    problems = _stage_problems(cand, role, rnd)
+    if problems:
+        return problems
+    text = (text or "").strip()
+    if not text:
+        return [f"{_key(role, rnd)} is empty"]
+
+    # Round 1 blindness, checked as well as enforced. `context_for` makes a leak
+    # impossible through the session; this catches a runner that went around it.
+    # A verbatim run of the opponent is proof, where a mention of "the bear"
+    # would flag the word "bearish" and prove nothing.
+    if rnd == 1 and role in ROLES:
+        other = ROLES[1 - ROLES.index(role)]
+        prior = (cand["cases"].get(_key(other, 1)) or {}).get("text") or ""
+        for i in range(0, max(0, len(prior) - QUOTE_RUN), QUOTE_RUN // 2):
+            if prior[i:i + QUOTE_RUN] in text:
+                return [f"{_key(role, rnd)} quotes the {other}'s round-1 case "
+                        f"verbatim; round 1 is blind and this one was not"]
+
+    cand["cases"][_key(role, rnd)] = {
+        "text": text,
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    return []
+
+
+class _Evidence:
+    """The session's copy of a dossier, in the shape `accept` reads.
+
+    Not the Dossier itself: by verdict time the real one may have moved, and the
+    verdict must be gated against what the reviewers actually saw.
+    """
+
+    def __init__(self, cand):
+        self.independent = list(cand.get("independent") or [])
+        self.covered = list(cand.get("covered") or [])
+        self._render = cand.get("render", "")
+        self._fp = cand["dossier"]
+
+    def render(self):
+        return self._render
+
+
+def submit_verdict(state, symbol, text, dossier=None):
+    """-> (record, problems). Runs the same gate as `accept`, plus the order.
+
+    `dossier` is optional and is only used to CHECK: pass one and it must match
+    the session's copy. The gate itself always runs against the copy, so a
+    verdict is judged on the evidence its cases were written against even if the
+    live dossier has since changed.
+    """
+    cand = (state.get("candidates") or {}).get(symbol)
+    if cand is None:
+        return None, [f"{symbol} is not in this session"]
+    problems = _stage_problems(cand, "verdict", None)
+    if problems:
+        return None, problems
+    if dossier is not None and fingerprint(dossier) != cand["dossier"]:
+        return None, ["the dossier does not match the one this session opened "
+                      "with; a verdict must be made on the evidence its cases "
+                      "were written against"]
+    ev = _Evidence(cand)
+    rec, problems = accept(text, ev, symbol, state["session"])
+    if problems:
+        return None, problems
+    cand["verdict"] = rec
+    return rec, []
+
+
+def close_session(state, ledger=None, cases_dir=None):
+    """-> (rows, paths). Writes the cases, then appends one ledger row each.
+
+    A candidate with no verdict is SKIPPED and named, never written with a
+    default. The cases are written first so a row can never point at an audit
+    trail that does not exist.
+    """
+    rows, written, skipped = [], [], []
+    base = Path(cases_dir) if cases_dir else CASES
+    for symbol, cand in sorted((state.get("candidates") or {}).items()):
+        if not cand.get("verdict"):
+            skipped.append(symbol)
+            continue
+        d = base / state["session"] / symbol
+        d.mkdir(parents=True, exist_ok=True)
+        # The evidence goes in beside the argument. A case file without the
+        # dossier it answered is half an audit trail.
+        dp = d / "dossier.md"
+        dp.write_text(cand.get("render", ""), encoding="utf-8")
+        written.append(dp)
+        for key, case in sorted(cand["cases"].items()):
+            p = d / f"{key}.md"
+            p.write_text(case["text"], encoding="utf-8")
+            written.append(p)
+        rec = dict(cand["verdict"])
+        rec["cases"] = str(d.relative_to(paths.ROOT)) if str(d).startswith(
+            str(paths.ROOT)) else str(d)
+        rec["cases_kept"] = sorted(cand["cases"])
+        rows.append(rec)
+        record(rec, ledger)
+    return rows, {"cases": written, "skipped": skipped}
+
+
+def save_state(state, path=None):
+    """Write the open session. Temp file then replace, so a crash mid-write
+    cannot leave a half-parsed session behind."""
+    p = Path(path) if path else STATE
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=1, sort_keys=True), encoding="utf-8")
+    tmp.replace(p)
+    return p
+
+
+def load_state(path=None):
+    p = Path(path) if path else STATE
+    if not p.exists():
+        return None
+    s = json.loads(p.read_text(encoding="utf-8"))
+    if s.get("version") != VERSION:
+        raise SystemExit(f"review_state.json is version {s.get('version')}, "
+                         f"this module is {VERSION}")
+    return s
+
+
+def status(state):
+    """-> a line per candidate: what has run and what is next."""
+    if not state:
+        return "no open review session"
+    out = [f"session {state['session']}  "
+           f"{len(state.get('candidates') or {})} candidate(s)"]
+    for symbol, cand in sorted((state.get("candidates") or {}).items()):
+        done = [_key(r, n) for r, n in STAGES
+                if _key(r, n) in cand["cases"] or (r == "verdict" and cand["verdict"])]
+        nxt = next((_key(r, n) for r, n in STAGES
+                    if _key(r, n) not in cand["cases"]
+                    and not (r == "verdict" and cand["verdict"])), None)
+        out.append(f"  {symbol:<12} {len(done)}/{len(STAGES)} "
+                   f"next: {nxt or 'complete'}")
+    return "\n".join(out)
+
+
+# --------------------------------------------------------------------------
 
 GOOD = """VERDICT: proceed-with-note
 CONFIDENCE: 0.55
@@ -318,6 +567,116 @@ def _selftest():
     assert fingerprint(dos) != fingerprint(other), \
         "two different dossiers must not share a fingerprint"
 
+    # --- the session: the happy path end to end, FIRST ----------------------
+    st = open_session("2026-09-11", {"TESTCO": dos})
+    assert st["candidates"]["TESTCO"]["dossier"] == fingerprint(dos)
+    # The session carries the evidence, so the verdict stage needs no corpus and
+    # cannot be refused because the live dossier moved under it.
+    assert st["candidates"]["TESTCO"]["render"] == dos.render()
+    assert st["candidates"]["TESTCO"]["independent"] == ["sentiment"]
+
+    # round 1 is blind because the context does not CONTAIN the opponent
+    c1 = context_for(st, "TESTCO", "bull", 1)
+    assert c1["opponent"] is None and "withheld by the session" in c1["note"]
+    assert c1["dossier"] == dos.render(), "the reviewer must be handed the evidence"
+    assert not submit(st, "TESTCO", "bull", 1, "BULL R1: the order win is real.")
+    c1b = context_for(st, "TESTCO", "bear", 1)
+    assert c1b["opponent"] is None, "the bear saw the bull in round 1"
+    assert not submit(st, "TESTCO", "bear", 1, "BEAR R1: ATR is 3% against a 10% stop.")
+
+    # round 2 hands over the opponent's round-1 case in full
+    c2 = context_for(st, "TESTCO", "bull", 2)
+    assert c2["opponent"] == "BEAR R1: ATR is 3% against a 10% stop.", c2
+    assert not submit(st, "TESTCO", "bull", 2, "BULL R2: the ATR point stands.")
+    assert not submit(st, "TESTCO", "bear", 2, "BEAR R2: the order is one quarter.")
+    assert not submit(st, "TESTCO", "risk", None, "RISK: 3 of 5 held, no sector clash.")
+    rec, probs = submit_verdict(st, "TESTCO", GOOD, dos)
+    assert not probs and rec["verdict"] == "proceed-with-note", probs
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        led, cdir = Path(td) / "reviews.jsonl", Path(td) / "cases"
+        rows, info = close_session(st, led, cdir)
+        assert len(rows) == 1 and not info["skipped"], (rows, info)
+        files = sorted(p.name for p in (cdir / "2026-09-11" / "TESTCO").iterdir())
+        assert files == ["bear-1.md", "bear-2.md", "bull-1.md", "bull-2.md",
+                         "dossier.md", "risk.md"], files
+        assert (cdir / "2026-09-11" / "TESTCO" / "dossier.md").read_text() \
+            == dos.render(), "a case without its dossier is half an audit trail"
+        assert (cdir / "2026-09-11" / "TESTCO" / "bull-1.md").read_text() \
+            == "BULL R1: the order win is real."
+        assert rows[0]["cases_kept"] == ["bear-1", "bear-2", "bull-1", "bull-2", "risk"]
+        assert json.loads(led.read_text().strip())["verdict"] == "proceed-with-note"
+
+    # --- the order is enforced, not suggested -------------------------------
+    st2 = open_session("2026-09-11", {"TESTCO": dos})
+    probs = submit(st2, "TESTCO", "bull", 2, "rebuttal before anyone spoke")
+    assert probs and "cannot run before" in probs[0], probs
+    _, probs = submit_verdict(st2, "TESTCO", GOOD, dos)
+    assert probs and "cannot run before" in probs[0], probs
+    assert not submit(st2, "TESTCO", "bull", 1, "BULL R1: x")
+    probs = submit(st2, "TESTCO", "bull", 1, "BULL R1: a second attempt")
+    assert probs and "already submitted" in probs[0], probs
+    assert submit(st2, "TESTCO", "bull", 1, "")  # empty is refused at any stage
+    assert submit(st2, "NOSUCH", "bull", 1, "x")[0].startswith("NOSUCH is not")
+
+    # --- a runner that went around context_for is caught --------------------
+    st3 = open_session("2026-09-11", {"TESTCO": dos})
+    long_case = "BULL R1: delivery has run at 61% for six weeks, well above its own band."
+    assert not submit(st3, "TESTCO", "bull", 1, long_case)
+    probs = submit(st3, "TESTCO", "bear", 1,
+                   "BEAR R1: answering -- " + long_case[10:70])
+    assert probs and "round 1 is blind and this one was not" in probs[0], probs
+
+    # --- a verdict is bound to the evidence its cases were written against --
+    st4 = open_session("2026-09-11", {"TESTCO": dos})
+    for role, rnd, txt in (("bull", 1, "a"), ("bear", 1, "b"), ("bull", 2, "c"),
+                           ("bear", 2, "d"), ("risk", None, "e")):
+        assert not submit(st4, "TESTCO", role, rnd, txt)
+    _, probs = submit_verdict(st4, "TESTCO", GOOD, other)
+    assert probs and "does not match the one this session opened" in probs[0], probs
+    # ...and with no dossier passed at all, the gate still runs against the copy.
+    rec4, probs = submit_verdict(st4, "TESTCO", GOOD)
+    assert not probs and rec4["coverage"] == 1, probs
+    # the coverage cross-check uses the session copy, so a wrong claim still fails
+    st6 = open_session("2026-09-11", {"TESTCO": dos})
+    for role, rnd, txt in (("bull", 1, "a"), ("bear", 1, "b"), ("bull", 2, "c"),
+                           ("bear", 2, "d"), ("risk", None, "e")):
+        assert not submit(st6, "TESTCO", role, rnd, txt)
+    _, probs = submit_verdict(st6, "TESTCO", GOOD.replace("COVERAGE: 1/4",
+                                                          "COVERAGE: 4/4"))
+    assert any("but the dossier has 1 independent" in x for x in probs), probs
+
+    # --- no verdict means skipped and NAMED, never a default ----------------
+    st5 = open_session("2026-09-11", {"TESTCO": dos, "QUIET": dos})
+    with tempfile.TemporaryDirectory() as td:
+        rows, info = close_session(st5, Path(td) / "l.jsonl", Path(td) / "c")
+        assert rows == [] and info["skipped"] == ["QUIET", "TESTCO"], info
+
+    # --- state round-trips, and a version bump is refused -------------------
+    with tempfile.TemporaryDirectory() as td:
+        p = save_state(st, Path(td) / "review_state.json")
+        back = load_state(p)
+        assert back["session"] == "2026-09-11"
+        assert back["candidates"]["TESTCO"]["cases"]["bull-1"]["text"].startswith("BULL R1")
+        p.write_text(json.dumps({"version": VERSION + 1}))
+        try:
+            load_state(p)
+            raise AssertionError("a future state version must not be loaded")
+        except SystemExit:
+            pass
+    assert "next: complete" in status(st) and "no open review" in status(None)
+
+    # --- the rehearsal redirect moves ALL THREE, not two --------------------
+    # positions.py redirected STATE and LEDGER but not DB, and its selftest
+    # wrote two fixture positions into the live order book. Asserted here so
+    # the same shape of miss is visible rather than discovered later.
+    if REHEARSAL:
+        for p in (LEDGER, STATE, CASES):
+            assert str(p).startswith(str(_DIR)), f"{p} escaped REVIEW_DIR"
+    else:
+        assert LEDGER.parent == STATE.parent == CASES.parent == paths.SDATA
+
     # --- THE guarantee: this cannot reach an order --------------------------
     pat = re.compile(r"^\s*(?:import\s+review|from\s+review\s+import)", re.MULTILINE)
     offenders = []
@@ -332,21 +691,92 @@ def _selftest():
           "no order path imports it)")
 
 
+def _refuse(problems):
+    print("REFUSED:\n  " + "\n  ".join(problems))
+    raise SystemExit(1)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--file", help="a file holding one verdict block")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--status", action="store_true", help="where each candidate stands")
+    ap.add_argument("--open", dest="open_day", metavar="YYYY-MM-DD",
+                    help="open a session; needs --symbols")
+    ap.add_argument("--symbols", help="comma-separated, with --open")
+    ap.add_argument("--context", nargs=2, metavar=("SYMBOL", "STAGE"),
+                    help="what a reviewer may see, e.g. TESTCO bull-1")
+    ap.add_argument("--submit", nargs=2, metavar=("SYMBOL", "STAGE"),
+                    help="submit a case; the text comes from --file")
+    ap.add_argument("--verdict", metavar="SYMBOL", help="submit the verdict from --file")
+    ap.add_argument("--close", action="store_true", help="write cases and ledger rows")
+    ap.add_argument("--file", help="a file holding the case or verdict text")
     a = ap.parse_args()
     if a.selftest:
         return _selftest()
-    if not a.file:
-        ap.error("--file is required (or --selftest)")
-    rec, problems = accept(Path(a.file).read_text(encoding="utf-8"))
-    if problems:
-        print("REFUSED:\n  " + "\n  ".join(problems))
-        raise SystemExit(1)
-    print(json.dumps(rec, indent=1, sort_keys=True))
-    print(f"\n(not recorded -- pass a dossier to accept() from a caller that has one)")
+    if REHEARSAL:
+        print(f"*** REHEARSAL -- reading and writing {_DIR}, not the live "
+              f"strategy directory ***")
+
+    if a.open_day:
+        if not a.symbols:
+            ap.error("--open needs --symbols")
+        import dossier as _dos
+        import features
+        corpus = features.load_corpus(end=a.open_day)
+        cands = {}
+        for s in [x.strip().upper() for x in a.symbols.split(",") if x.strip()]:
+            cands[s] = _dos.build(s, a.open_day, corpus=corpus)
+        st = open_session(a.open_day, cands)
+        save_state(st)
+        print(status(st))
+        return
+
+    st = load_state()
+    if a.status or not any((a.context, a.submit, a.verdict, a.close)):
+        print(status(st))
+        return
+    if st is None:
+        raise SystemExit("no open review session -- --open one first")
+
+    if a.context:
+        symbol, stage = a.context[0].upper(), a.context[1]
+        role, _, rnd = stage.partition("-")
+        print(json.dumps(context_for(st, symbol, role, int(rnd) if rnd else None),
+                         indent=1, sort_keys=True))
+        return
+
+    if a.submit or a.verdict:
+        if not a.file:
+            ap.error("--submit and --verdict read the text from --file")
+        text = Path(a.file).read_text(encoding="utf-8")
+
+    if a.submit:
+        symbol, stage = a.submit[0].upper(), a.submit[1]
+        role, _, rnd = stage.partition("-")
+        problems = submit(st, symbol, role, int(rnd) if rnd else None, text)
+        if problems:
+            _refuse(problems)
+        save_state(st)
+        print(f"accepted {symbol} {stage}")
+        return
+
+    if a.verdict:
+        symbol = a.verdict.upper()
+        rec, problems = submit_verdict(st, symbol, text)
+        if problems:
+            _refuse(problems)
+        save_state(st)
+        print(json.dumps(rec, indent=1, sort_keys=True))
+        return
+
+    if a.close:
+        rows, info = close_session(st)
+        save_state(st)
+        print(f"{len(rows)} verdict(s) recorded -> {LEDGER}")
+        for p in info["cases"]:
+            print(f"  {p}")
+        if info["skipped"]:
+            print(f"  skipped (no verdict): {', '.join(info['skipped'])}")
 
 
 if __name__ == "__main__":

@@ -77,6 +77,21 @@ aside. L100 has the argument and
 `docs/superpowers/specs/2026-09-12-analyst-dossier-design.md` pre-registers H12,
 the test that would have to pass before any of this earns a vote.
 
+## skills/review
+
+The runner for the four reviewers above. Same division as `skills/pipeline`:
+`src/ops/review.py` holds the invariants, the prompts hold the judgement.
+
+It exists because the reviewer set originally had no runner at all -- four
+markdown files and nothing that dispatched them, so the layer was a thing a
+person ran by hand, four times, per name, and H12 accumulated no rows.
+
+The one piece worth knowing without reading it: **round 1 is blind because
+`context_for()` does not return the opposing case**, not because a prompt asks
+the runner to withhold it. `submit()` additionally refuses a round-1 case that
+quotes the opponent verbatim, which catches a runner that assembled its prompt
+somewhere else.
+
 ## skills/experiment
 
 The protocol for measuring anything here: pre-register the hypothesis, name the
