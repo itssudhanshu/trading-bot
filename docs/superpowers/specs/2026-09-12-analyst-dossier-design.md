@@ -111,13 +111,31 @@ did — which is the only shape from which this layer could ever earn authority.
 - **Population:** every forward equity fill in `main` carrying a verdict, from
   the first one recorded. No later exclusions; `etf_trend` is out (it is a
   separate strategy directory and never enters the equity pipeline).
-- **Endpoint:** mean realised return per trade, `stand-aside` verdicts against
-  `proceed`, both arms on the same fills over the same window. Their endpoint is
-  **alpha against a benchmark**, which is the better one and is not yet
-  available here: there is no index series in the corpus. `features.breadth` is
-  cross-sectional, not an index return. An equal-weight return over the
-  tradeable clusters would be a usable proxy and has to be built and argued for
-  before it is used, not assumed.
+- **Endpoint:** mean realised **alpha** per trade -- the trade's return less the
+  equal-weight return of the tradeable clusters over the same window --
+  `stand-aside` verdicts against `proceed`, both arms on the same fills. Raw
+  return is reported beside it, never instead of it.
+
+  **The proxy now exists** (`src/core/market.py`, `equal_weight_return`), which
+  it did not when this section was first written. It is not an index: it is an
+  equal-weight buy-and-hold return over the symbols this project trades,
+  computed from the corpus. Three properties make it usable and one makes it
+  unpublishable:
+
+  - the universe is the caller's, never a default -- benchmarking a microcap
+    book against the liquid tercile it refuses to buy measures the wrong thing,
+    and a silent default would re-open L69;
+  - a name whose series ends mid-window is **carried at its last print and
+    counted** in `n_truncated`, not dropped, because dropping it computes the
+    benchmark over survivors exactly when the market was worst;
+  - `n_used` against `n_asked` travels with every result, since a benchmark over
+    40 of 900 names is a different claim from one over 880.
+
+  What has NOT been done: nothing has checked how this proxy behaves on the real
+  corpus, because `data/raw` is absent from this checkout. Before H12 quotes a
+  single alpha figure, the proxy needs its own sanity pass -- coverage counts per
+  window, and the equal-weight series plotted against a known NSE index over the
+  same period. A benchmark nobody has looked at is not a benchmark.
 - **Control:** `proceed-with-note` is reported separately and is not pooled with
   either arm. Pooling it after seeing the split is how a three-grade scale
   becomes a two-grade scale that wins.
@@ -136,7 +154,30 @@ did — which is the only shape from which this layer could ever earn authority.
   every verdict rests on the prior channel alone, in which case this measures
   the score, not the review.
 
-## 5. What is deliberately not built
+## 5. The market channel, and what it is not
+
+The analyst comparison found one gap that was an absence rather than a
+difference of taste: **every channel was about one stock.** Nothing in the
+dossier could distinguish a name that was strong from one floating on a strong
+tape. TradingAgents fills that slot with FRED macro series and Polymarket
+prediction markets; neither is available for this universe, so `market.state`
+computes the equivalent from the cross-section already on disk -- breadth
+against each name's own 50-day EMA, the median 20-day return, and the
+cross-sectional dispersion.
+
+`market.py` lives in `src/core/` and **must not import a strategy**. `clusters`
+resolves to whichever strategy `paths` activated, so a shared module binding to
+it would silently describe a universe nobody chose -- the failure `paths.py`
+exists to prevent. A selftest asserts it on import lines rather than by
+substring search, after the first version tripped on its own banned-list
+literal.
+
+The channel is **unscored and ungated**. A regime filter is the obvious thing to
+build next and has never been measured here; it would need its own
+pre-registration, and "the tape was weak" is precisely the kind of explanation
+that survives in hindsight regardless of whether it predicted anything.
+
+## 6. What is deliberately not built
 
 - **No wiring into `daily.py`.** Capture has real value — a day not captured is
   a day that cannot be recovered, `newswatch.py`'s argument — but wiring a new
@@ -159,7 +200,7 @@ did — which is the only shape from which this layer could ever earn authority.
   its count is reported -- a silently-dropped verdict biases the very
   measurement H12 exists to run.
 
-## 6. The omission worth fixing first: outcome resolution
+## 7. The omission worth fixing first: outcome resolution
 
 The reflection loop was left out of this port because it was not read. It is
 the half that makes a recorded verdict worth recording, and this repo has

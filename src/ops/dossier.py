@@ -3,7 +3,12 @@
 
 Adapted from the analyst team in TauricResearch/TradingAgents -- their four
 channels (fundamentals, sentiment, news, technical), their per-channel report
-shape, their data replaced. What is NOT adapted is the part that turns four
+shape, their data replaced. A fifth, `market`, was added because comparing the
+two layers found a real absence rather than a difference of taste: every channel
+here was about ONE STOCK, so nothing could say whether a name was strong or
+merely floating on a strong tape. Their equivalent is FRED macro and prediction
+markets; neither exists for this universe, so `market.py` computes it from the
+corpus. What is NOT adapted is the part that turns four
 reports into a rating, and the reason is the whole of this docstring.
 
 THE SPLIT, WHICH IS THE POINT
@@ -88,6 +93,7 @@ import paths
 
 import features
 import fundamentals
+import market
 import sentiment as _sentiment
 
 ROOT = paths.ROOT
@@ -111,6 +117,23 @@ def band(v):
 
 def _clip(v, lo=-1.0, hi=1.0):
     return max(lo, min(hi, v))
+
+
+def _as_date(day):
+    """-> `day` as a `date`, or today. Normalised at the channel boundary.
+
+    `--day` arrives as a string and the sentiment channels do arithmetic on it
+    (`day - timedelta(...)`), so passing it through unconverted raised
+    `TypeError: unsupported operand type(s) for -: 'str' and 'timedelta'` --
+    which the channel caught and reported as `channel unavailable`. A crash
+    dressed as an absence of data is the worst of both: the dossier looked
+    healthy and the two evidence channels were silently off on every CLI call.
+    """
+    if day is None:
+        return date.today()
+    if isinstance(day, date):
+        return day
+    return date.fromisoformat(str(day)[:10])
 
 
 @dataclass
@@ -144,6 +167,17 @@ class Reading:
 
     @property
     def band(self):
+        """-> the word for this reading.
+
+        Three states, not two. A channel can be uncovered (`no data`), covered
+        and scored (a band), or covered and DELIBERATELY unscored -- which is
+        where `fundamental`, `sentiment` and `market` live, because each was
+        measured flat or never measured at all. Rendering that third state as
+        `no data` erased the difference between a channel with nothing to say
+        and a channel this project has decided not to let vote.
+        """
+        if self.covered and self.value is None:
+            return "reported, unscored"
         return band(self.value)
 
 
@@ -272,8 +306,16 @@ def fundamental(series, day=None):
                        note="no filings visible on or before the as-of date")
     f = fundamentals.features_asof(rows, iso)
     if not f:
-        return Reading("fundamental", covered=False,
-                       note=f"no filing published on or before {iso}")
+        # `features_asof` returns {} for two different reasons and the note must
+        # not conflate them: nothing published yet, or published but fewer than
+        # the five quarters a year-on-year comparison needs. The second is a
+        # young listing, not a silent company.
+        seen = sum(1 for r in rows
+                   if r.get("visible_from") and r["visible_from"] <= iso)
+        note = (f"no filing published on or before {iso}" if not seen else
+                f"{seen} quarter(s) published by {iso}; the year-ago "
+                f"comparison needs 5")
+        return Reading("fundamental", covered=False, note=note)
     ev = [f"{k} {v:+.4f}" if isinstance(v, float) else f"{k} {v}"
           for k, v in sorted(f.items())]
     return Reading("fundamental", covered=True, value=None, facts=dict(f),
@@ -291,7 +333,7 @@ def sentiment_channel(symbol, day=None):
     so like `fundamental` it is reported and does not vote.
     """
     try:
-        s = _sentiment.stock_sentiment(symbol, day)
+        s = _sentiment.stock_sentiment(symbol, _as_date(day))
     except Exception as e:                       # a channel outage is not a view
         return Reading("sentiment", covered=False,
                        note=f"channel unavailable: {type(e).__name__}: {e}")
@@ -341,7 +383,7 @@ def news(symbol, day=None):
     and the module-level guard in `_selftest` is what keeps that true.
     """
     try:
-        ev = _sentiment.news_evidence(symbol, day)
+        ev = _sentiment.news_evidence(symbol, _as_date(day))
     except Exception as e:
         return Reading("news", covered=False, backtest_safe=False,
                        note=f"channel unavailable: {type(e).__name__}: {e}")
@@ -357,7 +399,54 @@ def news(symbol, day=None):
                    note="forward-only archive; no history, never backtested")
 
 
-CHANNELS = ("technical", "fundamental", "sentiment", "news")
+def market_channel(corpus, day=None, symbols=None):
+    """The market analyst: what the cross-section was doing, not this stock.
+
+    The gap this closes was a real absence rather than a difference of taste --
+    every other channel here is about one stock, so nothing in the dossier could
+    say whether a name was strong or merely floating on a strong tape. The
+    framework this was adapted from fills the same slot with FRED macro series
+    and prediction markets; neither exists for this universe, so the reading is
+    computed from the corpus by `market.state`.
+
+    `symbols` is the universe to read, and there is no default: benchmarking a
+    microcap book against a set that includes the liquid tercile it refuses to
+    buy measures the wrong thing, and the corpus still holds instruments this
+    book does not trade (L69). `build()` passes the live tradeable clusters.
+
+    Unscored, like the other two evidence channels. A regime gate is an obvious
+    thing to build on top of this and has never been measured here; it would
+    need its own pre-registered test before any of it could reach `selection`.
+    """
+    if corpus is None:
+        return Reading("market", covered=False,
+                       note="no corpus supplied -- pass one to build() to read "
+                            "the market alongside the stock")
+    if not symbols:
+        return Reading("market", covered=False,
+                       note="no universe supplied; this channel will not guess one")
+    st = market.state(corpus, _as_date(day), symbols)
+    if not st:
+        return Reading("market", covered=False,
+                       note="no symbol in the universe has enough history on "
+                            "this date")
+    ev = [f"breadth {100 * st['breadth']:.1f}% of {st['n']} names above their "
+          f"own {st['ema_period']}-day EMA"]
+    if "dispersion" in st:
+        # Key built first: nesting the same quote inside an f-string is a 3.12+
+        # feature and this repo runs on the interpreter it finds.
+        med = st.get(f"median_{st['window']}d_return")
+        ev.append(f"median {st['window']}-day return {med:+.2f}%, "
+                  f"cross-sectional dispersion {st['dispersion']:.2f}%")
+    ev.append("a tape reading, not a view on this stock -- the bucket has no "
+              "regime rule and this does not create one")
+    return Reading("market", covered=True, value=None, facts=dict(st),
+                   evidence=ev,
+                   note="computed from the corpus, not fetched; unscored and "
+                        "not gated on")
+
+
+CHANNELS = ("technical", "fundamental", "sentiment", "news", "market")
 
 
 @dataclass
@@ -411,17 +500,20 @@ class Dossier:
         return "\n".join(out)
 
 
-def build(symbol, day=None, series=None):
-    """-> a Dossier. `series` lets a caller supply the corpus row it already has.
+def build(symbol, day=None, series=None, corpus=None):
+    """-> a Dossier. `series` and `corpus` let a caller reuse what it has.
 
     The corpus is the expensive part (`features.load_corpus` reads every bar of
     every symbol), so a caller assembling five candidates loads it once and
-    passes the row in. Passing nothing loads just this symbol's series.
+    passes it in. Pass BOTH `corpus` and `series` and nothing is loaded; pass
+    only `series` and the market channel reads `no corpus` rather than paying
+    for one behind the caller's back.
     """
     iso = (day.isoformat() if hasattr(day, "isoformat") else str(day)) \
         if day is not None else date.today().isoformat()
-    if series is None:
+    if series is None and corpus is None:
         corpus = features.load_corpus(end=iso)
+    if series is None:
         series = corpus.get(symbol)
         if series is None:
             raise SystemExit(f"{symbol}: not in the corpus as of {iso}")
@@ -430,7 +522,25 @@ def build(symbol, day=None, series=None):
         "fundamental": fundamental(series, day),
         "sentiment": sentiment_channel(symbol, day),
         "news": news(symbol, day),
+        "market": market_channel(corpus, day, _tradeable(corpus, day)),
     })
+
+
+def _tradeable(corpus, day):
+    """-> the symbols the live strategy would rank on `day`, or None.
+
+    Imported here rather than at module scope: `clusters` resolves to whichever
+    strategy `paths` activated, and this module is in `ops/`, which is allowed
+    to know that -- `market.py`, which is shared, deliberately is not.
+    """
+    if corpus is None:
+        return None
+    try:
+        import clusters
+        bands = clusters.size_clusters(corpus, day)
+    except Exception:
+        return None
+    return [s for band in bands.values() for s in band]
 
 
 # --------------------------------------------------------------------------
@@ -539,6 +649,34 @@ def _selftest():
         _sentiment.stock_sentiment = real
 
     # --- a dossier refuses to produce a composite ---------------------------
+    # --- a string date must not crash a channel into "unavailable" ----------
+    # The CLI passes --day as a string; the sentiment channels do date
+    # arithmetic on it. Before normalisation both reported `channel
+    # unavailable: TypeError`, which renders identically to a quiet market.
+    assert _as_date("2024-11-01") == date(2024, 11, 1)
+    assert _as_date(date(2024, 11, 1)) == date(2024, 11, 1)
+    assert _as_date(None) == date.today()
+    for ch in (sentiment_channel, news):
+        r_str = ch("TESTCO", "2024-11-01")
+        assert "TypeError" not in (r_str.note or ""), r_str.note
+
+    # --- covered-and-unscored is a third state, not "no data" ---------------
+    assert Reading("x", covered=True, value=None).band == "reported, unscored"
+    assert Reading("x", covered=False).band == "no data"
+    assert Reading("x", covered=True, value=0.8).band == "positive"
+
+    # --- the market channel refuses to guess a universe ---------------------
+    mc = _fake_series()
+    assert not market_channel(None, "2024-06-01", ["A"]).covered, \
+        "no corpus is not a market reading"
+    assert not market_channel({"X": mc}, "2024-06-01", []).covered, \
+        "an empty universe must not be read as the whole corpus"
+    fake_corpus = {f"S{i}": _fake_series(up=(i % 2 == 0)) for i in range(8)}
+    mk = market_channel(fake_corpus, "2024-11-01", sorted(fake_corpus))
+    assert mk.covered and mk.value is None, "market reports; it does not vote"
+    assert mk.facts["n"] == 8 and mk.facts["breadth"] == 0.5, mk.facts
+    assert not mk.prior, "the market is not a restatement of the stock's rank"
+
     dos = Dossier("TEST", "2024-06-01", {
         "technical": technical(_fake_series()),
         "fundamental": fundamental(_fake_series()),
@@ -548,7 +686,7 @@ def _selftest():
     assert dos.independent == [], \
         "technical alone is the prior; it is not independent evidence"
     txt = dos.render()
-    assert "Coverage: 1/4" in txt.replace("**", ""), txt[:300]
+    assert "Coverage: 1/5" in txt.replace("**", ""), txt[:300]
     assert "PRIOR" in txt and "No composite score" in txt
 
     # --- THE guarantee: no backtest can read this ---------------------------
@@ -565,7 +703,7 @@ def _selftest():
     assert not offenders, \
         f"a backtest imports the forward news channel, which has no history: {offenders}"
 
-    print("dossier selftest ok (4 channels; no composite; no backtest imports it)")
+    print("dossier selftest ok (5 channels; no composite; no backtest imports it)")
 
 
 def main():
