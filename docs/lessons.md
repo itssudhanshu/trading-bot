@@ -5433,3 +5433,40 @@ pre-registered endpoints did not need the levels, so the omission passed review
 exists in a table. Levels now carry their own cluster-robust error bar and t.
 A number this project publishes without a trial count and an error bar is a
 number it will quote back at itself later.
+
+**Addendum — with error bars on the levels, none of the four spreads survives,
+and the two endpoints survive anyway.** That distinction is the whole value of
+having fixed them in advance.
+
+| feature | raw | +/- | t | excess | +/- | t |
+|---|---|---|---|---|---|---|
+| rs | -2.09% | 2.66% | -0.79 | -2.89% | 2.51% | -1.15 |
+| deliv | -0.32% | 2.23% | -0.15 | -1.75% | 2.23% | -0.79 |
+| liq | +0.02% | 2.24% | +0.01 | +0.67% | 2.23% | +0.30 |
+| near_high | +3.73% | 2.30% | +1.62 | +3.35% | 2.25% | +1.49 |
+
+Mean cluster standard error 2.36%, so the smallest spread resolvable at the
+family bar is **6.13%** — larger than every level in the table. `near_high
++3.73%` reads as the standout and is t = +1.62. **`deliv -0.32%` is not a
+negative result, it is a zero**, which matters because the previous addendum
+warned the negative sign would be misread and the error bar makes the warning
+concrete rather than cautionary.
+
+**Which parts of the null are about the world and which about the instrument:**
+
+- ENDPOINT 1 (sign change) and ENDPOINT 2 (ranking order) are **answered**. They
+  compare two statistics computed on the SAME 264 trades and the same tercile
+  membership, so they do not depend on resolving either level against zero. The
+  ranking is identical both ways and no sign flips.
+- The family bar on the SHIFT is **power-limited**. `deliv` shifts +1.43% +/-
+  0.83%, t = +1.73 — the largest of the four and short of 2.6. This test cannot
+  tell that apart from noise, and it would at roughly three times the trades.
+
+So "the market does not explain the loop's ranking" is established; "the market
+contributes nothing to any individual spread" is not, and was never the endpoint.
+
+**A power note that must not be over-read the other way.** These 264 are one
+backtest's closed trades. `propose()` runs on `trade_features.jsonl`, ~2,756
+rows, where the standard error is roughly a third of this. The loop is better
+powered than the test auditing it, so nothing here says the loop is
+underpowered — only that this instrument is, for the levels.

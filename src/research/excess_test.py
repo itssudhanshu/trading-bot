@@ -234,6 +234,16 @@ def run(n_dates=None):
     if ok:
         r_order = [f for f, _ in sorted(ok.items(), key=lambda kv: -kv[1]["raw"])]
         e_order = [f for f, _ in sorted(ok.items(), key=lambda kv: -kv[1]["excess"])]
+        # What this test can and cannot resolve, stated with the result --
+        # fund_test does the same, and for the same reason: a null from an
+        # instrument that cannot see the effect is not a null about the effect.
+        ses = [v["raw_se"]["se_cluster"] for v in ok.values() if v["raw_se"]]
+        if ses:
+            import statistics as _st
+            floor = FAMILY_BAR * _st.fmean(ses)
+            print(f"\n  smallest spread resolvable here: {floor:.2f}% "
+                  f"(family bar x mean cluster se). Every LEVEL below that is\n"
+                  f"  inside its own error bar, including the largest.")
         print(f"\n  ranking by raw spread:    {' > '.join(r_order)}")
         print(f"  ranking by excess spread: {' > '.join(e_order)}")
         flipped = [f for f, v in ok.items()
