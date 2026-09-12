@@ -156,14 +156,21 @@ def probe(corpus, days, n_windows=WINDOWS, hold=HOLD, universe=None):
     if not usable:
         return []
     step = max(1, len(usable) // n_windows)
-    rows = []
-    for i in usable[::step][:n_windows]:
+    picked = usable[::step][:n_windows]
+    rows, skipped = [], []
+    for i in picked:
         start, end = days[i], days[i + hold]
         syms = universe(corpus, start)
         if not syms:
+            # Usually the head of the history: `size_clusters` needs a 250-day
+            # turnover window, so the earliest sampled dates have no universe.
+            # Counted rather than dropped quietly -- a run that silently
+            # produced 21 of 24 windows looks identical to one that produced 24.
+            skipped.append((market._iso(start), "no universe"))
             continue
         ew = market.equal_weight_return(corpus, syms, start, end)
         if not ew:
+            skipped.append((market._iso(start), "no measurable return"))
             continue
         # C1 on this window, against a corpus that cannot see past `end`.
         ew_cut = market.equal_weight_return(_truncate(corpus, end), syms, start, end)
@@ -190,6 +197,11 @@ def probe(corpus, days, n_windows=WINDOWS, hold=HOLD, universe=None):
             "p5": round(per[len(per) // 20], 2) if len(per) >= 20 else None,
             "p95": round(per[-max(1, len(per) // 20)], 2) if len(per) >= 20 else None,
         })
+    if skipped:
+        print(f"  {len(picked) - len(rows)} of {len(picked)} sampled windows "
+              f"produced nothing: " +
+              ", ".join(f"{d} ({why})" for d, why in skipped[:4]) +
+              (" ..." if len(skipped) > 4 else ""))
     return rows
 
 
@@ -237,16 +249,28 @@ def verdicts(rows):
                   "so the carry rule never engaged and the arms are identical "
                   "by construction")
     else:
+        # PAIRED per window: the two arms price the same names over the same
+        # dates and differ only in the rule, so the window-to-window variation
+        # cancels and the difference is the whole signal.
         gaps = [d - c for d, c in pairs]
         worst = sorted(rows, key=lambda r: r["return_pct"])[:max(1, len(rows) // 10)]
         wgaps = [r["drop_return_pct"] - r["return_pct"] for r in worst
                  if r["drop_return_pct"] is not None]
         mean_gap = statistics.fmean(gaps)
         wmean = statistics.fmean(wgaps) if wgaps else 0.0
+        # The first version of this check reported a bare mean difference, in a
+        # repo whose whole discipline is that a gap without an error bar is not
+        # evidence. The PASS/FAIL condition below is unchanged -- adding the
+        # error bar tells us whether a refutation is solid or noise, which is
+        # not the same as moving the bar after seeing the number.
+        se = (statistics.stdev(gaps) / (len(gaps) ** 0.5)) if len(gaps) >= 2 else None
+        t = (mean_gap / se) if se else None
+        stat = (f"{mean_gap:+.4f} +/- {se:.4f}pp (t = {t:+.2f}, n = {len(gaps)} "
+                f"windows)" if se else f"{mean_gap:+.4f}pp (n = {len(gaps)})")
         out["C4 survivorship"] = (
             mean_gap > 0 and wmean > mean_gap,
-            f"drop-minus-carry {mean_gap:+.4f}pp overall, {wmean:+.4f}pp in the "
-            f"worst decile over {trunc_total} truncated name-windows -- "
+            f"drop-minus-carry {stat}; worst decile {wmean:+.4f}pp over "
+            f"{len(wgaps)} window(s); {trunc_total} truncated name-windows -- "
             f"prediction was positive and wider in the tail")
 
     spreads = [r["return_pct"] - r["median_pct"] for r in rows]
