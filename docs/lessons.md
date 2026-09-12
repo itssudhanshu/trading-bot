@@ -5299,3 +5299,64 @@ useless; the census now excludes its own machinery.
 code was unreachable, so `audit.py` must still pass 41/41 with the baseline
 unmoved at +1.51% / n=196. A deletion that moves a number was not a deletion of
 dead code.
+
+## L108 — The learning ledger holds two incompatible schemas, and one scored feature has never been measured
+
+Finding 2 of the trader-layer comparison was "the loop ranks features by raw
+return, with no benchmark". Looking for somewhere to put `exit_date` found
+something worse first. `data/breakout/trade_features.jsonl`, 2,765 rows, two
+shapes:
+
+    2756  bucket, date, deliv, exit, liq, off_high, ret, rs, rsi, score
+       9  cluster, date, deliv, exit, liq, near_high, net, off_high, origin,
+          portfolio, ret, rs, rsi, source, symbol
+
+Three things follow, and the third is the one that matters:
+
+- **`bucket` vs `cluster` for the same field.** The historical seed calls a size
+  band a "bucket", which `docs/rules.md` R1 exists to forbid -- a bucket is the
+  five stocks held, a cluster is micro or small. The vocabulary rule was written
+  because these three words once all meant one thing; here the violation is in
+  the data, not the prose.
+- **`date` may not mean the same thing on both sides.** The forward writer
+  stamps `"date": str(day)` inside the CLOSE branch of `positions.step`, so it
+  is the exit day. Any time-block clustering over this ledger is therefore
+  mixing entry-dated and exit-dated rows.
+- **`near_high` carries weight 1.0 in the live score and appears in 9 of 2,765
+  rows.** `learning.analyse` skips any feature with fewer than 30 observations,
+  so it is silently dropped every time the loop runs. The feature is scored,
+  weighted, and has never once been measured by the thing whose job is to
+  measure it. Meanwhile `off_high` and `score`, which carry no weight, are
+  present on 2,756 rows and measured faithfully.
+
+**The ledger cannot be rewritten to fix this** -- CLAUDE.md: append-only, "a
+mixed ledger cannot be un-mixed" -- so regenerating the seed is not available
+and the schema split is a decision for the operator, not a patch. What it does
+rule out is measuring Finding 2 from the ledger at all.
+
+So `src/research/excess_test.py` measures from `simulate` instead, which already
+records `entry_day`, the exit `day`, `held`, `clu` and `ret` per trade. The
+benchmark is an equal-weight buy-and-hold of the trade's OWN cluster over the
+trade's OWN window -- not a fixed ten days, because exits are stop, target or
+time (82 / 39 / 75) and charging a two-day stop ten days of market is a
+different error than the one being corrected.
+
+**The hypothesis had to be narrowed before it was worth testing.** The naive
+form -- "raw return contains the market, so the spread is contaminated" -- is
+refuted by this repo's own `cluster_se` work: a move common to every trade on a
+date hits both halves of a split equally and cancels out of a difference of
+means. What survives is that `analyse()` POOLS across 2019-2026 with per-trade
+holding windows, and across dates nothing cancels. The selftest asserts both
+directions: a benchmark identical on every trade must leave the spread
+unchanged, and a benchmark correlated with the feature must not.
+
+Endpoints fixed before running: any feature changing SIGN, or the four-feature
+ORDER differing between raw and excess, with |t| >= 2.6 on the paired shift and
+standard errors reported iid and cluster-robust.
+
+**Both of this file's first-run failures were in the one path its selftest does
+not execute** -- `res["closed"]` where simulate returns `"trades"`, and
+`clusters.bands` which does not exist. The selftest now asserts the names
+`run()` reaches, including a source check that `simulate.run` still returns its
+trades under that key. A test that exercises every function except the one that
+touches real data will keep passing while the module cannot run.
