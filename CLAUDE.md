@@ -159,14 +159,25 @@ the right reason: fundamentals are kept as data (`fundamentals.py`,
 `features_asof`) and **must not be given a weight**, because nothing here
 constitutes evidence either way.
 
-**Raising n does not straightforwardly fix it.** `sample()` draws 60 dates ~23
-sessions apart, which at a 10-day hold barely overlap. Reaching the ~4,300
-trades that would resolve +0.73% means either dates closer together than the
-holding period -- overlapping windows sharing market moves -- or more names per
-date, which share that date's move. Both break the independence the Welch
-standard error assumes and would inflate `t` rather than earn it. The honest
-upgrade is a date-clustered or block-bootstrapped standard error, which is its
-own piece of work and its own pre-registration.
+**Raising n does not straightforwardly fix it, but the reason is narrower than
+it first looked.** `sample()` draws 60 dates ~23 sessions apart, which at a
+10-day hold do not overlap. Reaching the ~4,300 trades that would resolve
++0.73% means dates closer together than the holding period, or more names per
+date.
+
+The obvious objection -- rows sharing a date share that date's market move, so
+they are not independent -- is **not sufficient on its own**. A move common to
+every row on a date hits both halves of a median split equally and CANCELS out
+of a difference of means; simulated, Welch is then honest to within 1%
+(`src/research/cluster_se.py --demo`). It leaks only when a date's upper/lower
+split is LOPSIDED, which a cross-sectionally correlated feature produces, since
+a whole date can sit above the global median. At an imbalance of 0.28 Welch
+understates the true sampling spread by 31%.
+
+So the standard error is now reported both ways -- iid and cluster-robust by
+non-overlapping time block (L104) -- alongside the measured imbalance, and
+whether clustering matters here is an empirical question the table answers
+rather than one this page asserts.
 
 **The same test undercut an earlier claim.** On 2,337 sampled trades the price
 features read: rs +1.40% (t=3.07), off_high -1.39% (t=-3.05), deliv +0.93%

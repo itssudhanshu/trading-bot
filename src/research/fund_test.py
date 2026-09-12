@@ -16,6 +16,7 @@ import paths  # noqa: F401  -- puts the source dirs on sys.path
 import random
 import statistics
 
+import cluster_se
 import features as F
 import fundamentals
 import selection
@@ -94,29 +95,60 @@ def sample(corpus, days, n_dates=60, per_date=40, seed=11):
                 if s.high[k] >= tgt:
                     px = max(tgt, s.open[k]); break
             f["ret"] = (px / e - 1) * 100
+            # The session index travels with the row. Without it the clustered
+            # standard error has nothing to cluster ON, and the returns of forty
+            # names drawn on one date are not forty independent observations.
+            f["_di"] = di
             out.append(f)
     return out
 
 
 def spread(rows, feat):
-    """-> (spread, std_err, n). A spread without its error bar is not evidence.
+    """-> the full result dict from `cluster_se.diff_means`, or None.
 
-    This returned the point estimate alone, and `main` then labelled anything
-    past a hardcoded 0.5% as "does better" -- about 0.8 standard errors, well
-    inside the noise. Welch, because the two halves are independent samples
-    with their own variances and there is no reason to assume they match.
+    Returned a point estimate alone until 2026-09-12, and `main` then labelled
+    anything past a hardcoded 0.5% as "does better" -- about 0.8 standard
+    errors, well inside the noise.
+
+    Both standard errors are carried: Welch, which assumes every row is an
+    independent observation, and cluster-robust by non-overlapping time block,
+    which does not. `imbalance` is reported beside them because it is the whole
+    mechanism -- a date's market move only leaks into a difference of means when
+    that date's upper/lower split is lopsided. Where the splits are even, the
+    two standard errors agree and the clustering has bought nothing, which is a
+    result worth seeing rather than assuming either way.
     """
     vals = [r[feat] for r in rows if feat in r]
     if len(vals) < 100:
-        return None, None, 0
+        return None
     med = statistics.median(vals)
-    hi = [r["ret"] for r in rows if r.get(feat) is not None and r[feat] > med]
-    lo = [r["ret"] for r in rows if r.get(feat) is not None and r[feat] <= med]
-    if len(hi) < 50 or len(lo) < 50:
-        return None, None, 0
-    se = ((statistics.variance(hi) / len(hi))
-          + (statistics.variance(lo) / len(lo))) ** 0.5
-    return statistics.fmean(hi) - statistics.fmean(lo), se, len(hi) + len(lo)
+    use = [r for r in rows if r.get(feat) is not None]
+    group = [1 if r[feat] > med else 0 for r in use]
+    if sum(group) < 50 or len(group) - sum(group) < 50:
+        return None
+    blk = cluster_se.blocks([r["_di"] for r in use], HOLD)
+    out = cluster_se.diff_means([r["ret"] for r in use], group,
+                                [blk[r["_di"]] for r in use])
+    if out is None:
+        return None
+    out["imbalance"] = _imbalance(use, group)
+    return out
+
+
+def _imbalance(use, group):
+    """-> the sd of each date's share of upper-half rows, across dates.
+
+    0.0 means every date split evenly and a common market move cancels out of
+    the difference; the Monte Carlo in cluster_se puts Welch within 1% of the
+    truth there. It rises as dates become lopsided, and at 0.28 Welch understates
+    the true sampling spread by 31%.
+    """
+    per = {}
+    for r, d in zip(use, group):
+        hi, n = per.get(r["_di"], (0, 0))
+        per[r["_di"]] = (hi + d, n + 1)
+    shares = [hi / n for hi, n in per.values() if n >= 5]
+    return statistics.pstdev(shares) if len(shares) > 1 else 0.0
 
 
 def main():
@@ -126,18 +158,37 @@ def main():
     print(f"{len(rows)} randomly-sampled trades with fundamentals visible")
     print(f"  hold {HOLD}d, stop {STOP}%, target {TARGET}% "
           f"(read from selection.py)\n")
-    print(f"  {'feature':<16}{'spread':>10}{'std err':>10}{'t':>8}{'n':>7}   reading")
+    print(f"  {'feature':<15}{'spread':>9}{'se(iid)':>9}{'se(clust)':>11}"
+          f"{'t':>7}{'n':>6}{'blk':>5}   reading")
     res = {}
     for f in FEATS:
-        sp, se, n = spread(rows, f)
-        res[f] = (sp, se, n)
-        if sp is None:
-            print(f"  {f:<16}{'--':>10}{'--':>10}{'--':>8}{n:>7}   too few observations")
+        r = spread(rows, f)
+        res[f] = r
+        if r is None:
+            print(f"  {f:<15}{'--':>9}{'--':>9}{'--':>11}{'--':>7}"
+                  f"{0:>6}{0:>5}   too few observations")
             continue
-        t = sp / se if se else 0.0
+        t = r["t_cluster"]
         verdict = ("CLEARS the family bar" if abs(t) >= FAMILY_BAR else
                    "inside the noise")
-        print(f"  {f:<16}{sp:>+9.2f}%{se:>9.2f}%{t:>+8.2f}{n:>7}   {verdict}")
+        if not r["clusters_trusted"]:
+            verdict += f" (only {r['clusters']} blocks -- se is optimistic)"
+        print(f"  {f:<15}{r['spread']:>+8.2f}%{r['se_welch']:>8.2f}%"
+              f"{r['se_cluster']:>10.2f}%{t:>+7.2f}{r['n']:>6}"
+              f"{r['clusters']:>5}   {verdict}")
+    print()
+    imb = [r["imbalance"] for r in res.values() if r]
+    if imb:
+        widen = [r["se_cluster"] / r["se_welch"] for r in res.values()
+                 if r and r["se_welch"]]
+        print(f"  Per-date upper/lower imbalance {statistics.fmean(imb):.3f} "
+              f"(sd of each date's upper-half share).")
+        print(f"  Clustering widened the error bar by "
+              f"x{statistics.fmean(widen):.2f} on average.")
+        print("  A date's market move cancels out of a difference of means when")
+        print("  that date splits evenly; it leaks in proportion to how lopsided")
+        print("  the split is. At imbalance 0.00 Welch is honest to within 1%;")
+        print("  at 0.28 it understates the true spread by 31% (cluster_se).")
     print()
     print("  For scale, the price features measured the same way:")
     print("    deliv +1.22%   liq -1.09%   off_high +0.30%   rs -0.03%")
@@ -145,15 +196,18 @@ def main():
     print("  together. The largest of four point estimates is not a t-test, and")
     print("  reading the max as the finding is how a noise search produces one.")
     passed = [(k, v) for k, v in res.items()
-              if v[0] is not None and v[1] and abs(v[0] / v[1]) >= FAMILY_BAR]
+              if v and v["t_cluster"] is not None
+              and abs(v["t_cluster"]) >= FAMILY_BAR]
     if not passed:
         print("\n  VERDICT: no fundamental feature clears the bar. That is not the")
         print("  same as proving they carry nothing -- it is the sample being too")
         print("  small to resolve an effect this size.")
     else:
-        for k, (sp, se, n) in passed:
-            print(f"\n  VERDICT: {k} clears at {sp:+.2f}% +/- {se:.2f}% "
-                  f"(t {sp / se:+.2f}, n {n}).")
+        for k, v in passed:
+            print(f"\n  VERDICT: {k} clears at {v['spread']:+.2f}% +/- "
+                  f"{v['se_cluster']:.2f}% clustered "
+                  f"(t {v['t_cluster']:+.2f}, n {v['n']}, "
+                  f"{v['clusters']} blocks).")
         print("  Univariate significance is NOT marginal value to the bucket:")
         print("  rs had the highest t of any feature measured here and weighting")
         print("  it up produced the worst of five books. A weight needs a")

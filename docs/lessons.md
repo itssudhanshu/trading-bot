@@ -4828,3 +4828,64 @@ as a noise search.
 The honest upgrade is a date-clustered or block-bootstrapped standard error, and
 it is a methodology change that needs its own pre-registration rather than a
 knob turned once a result is in view.
+
+## L104 — Clustered standard errors, and the mechanism I had wrong
+
+L103 said the fundamentals test could not buy power by raising n, because rows
+sampled on the same date share that date's market move and are therefore not
+independent observations. `src/research/cluster_se.py` implements the
+cluster-robust standard error that would fix it, and its Monte Carlo refuted the
+reason on the first run.
+
+### A common shock cancels
+
+The estimator is a difference of means between a median split. A move common to
+EVERY row on a date lands on both halves equally and drops out of the
+difference. Simulated with a per-date shock of 6% and even splits, the true
+sampling spread is 0.709 and Welch reports 0.708 -- honest to within 1%, with
+clustering buying precisely nothing.
+
+The correlation only leaks when a date's upper/lower split is **lopsided**, so
+the shock enters weighted by the imbalance. That is not a hypothetical for a
+feature like `profit_growth`, which is cross-sectionally correlated: a whole
+date can sit above the global median in earnings season.
+
+| per-date shock | imbalance | true sd | Welch | clustered | Welch/true |
+|---|---|---|---|---|---|
+| 6.0 | 0.00 | 0.709 | 0.708 | 0.703 | **1.00** |
+| 6.0 | 0.10 | 0.749 | 0.707 | 0.764 | 0.94 |
+| 6.0 | 0.20 | 0.880 | 0.708 | 0.912 | 0.80 |
+| 6.0 | 0.28 | 1.033 | 0.708 | 1.026 | **0.69** |
+| 0.0 | 0.28 | 0.596 | 0.610 | 0.609 | 1.02 |
+| 9.0 | 0.28 | 1.415 | 0.815 | 1.381 | 0.58 |
+
+Both edges are informative: no shock and no imbalance both make Welch correct,
+and it is only their product that breaks it.
+
+### Proven against the truth, not against another formula
+
+The true sampling spread is measured by re-drawing the whole experiment 400
+times and taking the standard deviation of the estimate. An estimator that
+merely agrees with a second estimator has not been checked; this one is checked
+against what it claims to estimate. The clustered error tracks it to within 2%
+where Welch is 31% low.
+
+One claim did have to be withdrawn along the way: the module first asserted that
+with singleton clusters the sandwich reduces to Welch *exactly*. It reduces to
+the Welch FORM, but Welch divides squared residuals by `n_i - 1` where the
+sandwich uses `n_i`, and CR1's `n/(n-2)` correction nearly but not exactly
+cancels that. They agree to about 1e-7 at these sample sizes, and the selftest
+now asserts the gap SHRINKS with n, which is what asymptotic agreement means and
+what a coding error would not do.
+
+### What it does not do
+
+Widen a bar into a result. Clustering can only make an error bar larger, so a
+feature reading t = 1.27 under Welch reads less under clustering, never more.
+`fund_test` now prints both standard errors, the block count, and the measured
+imbalance, so whether clustering matters on the real sample is something the
+table answers rather than something this file asserts.
+
+CR1 is itself biased low when clusters are few -- the rule of thumb is 40+, and
+`fund_test` draws 60 blocks. Below 30 the row says so instead of quoting a
+number that looks better than it is.
