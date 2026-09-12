@@ -5005,3 +5005,41 @@ dispatch chain's own conditions, because a hand-maintained list of what the CLI
 supports drifts and would tell exactly the lie the guard was added to stop. It
 earned itself on the first run by rejecting `--force` — a modifier read inside
 a branch, not a mode — which the regex had wrongly counted.
+
+**Addendum 2 — the refresh went silent for an hour between its two stages.**
+Stage 1 finished at `ok=2078 fail=300` and then nothing printed. Not a hang:
+`backfill` builds its XBRL job list in a loop that calls `build_asof(sym,
+force=force_index)`, and `force` reaches `fetch_index`, so a forced run
+refetched all 2,378 indexes a SECOND time — serially, outside the thread pool
+that made stage 1 fast, and with no progress line between stage 1's "done" and
+stage 2's header. Roughly six times the duration of the stage that had a
+progress bar, looking from outside exactly like a stall.
+
+Stage 1 has already written every fresh index to disk, so the job loop reading
+the cache is not a shortcut — it is reading what stage 1 just fetched. Fixed to
+`build_asof(sym)`, with a progress line every 500 symbols so a multi-minute
+phase cannot be silent again.
+
+**And `force` broke the resumability the docstring promises.** "Resumable:
+anything already on disk is skipped, so a killed run costs only what it had not
+finished" was true of the XBRL stage and false of the index stage, where force
+meant refetch unconditionally — so a 2,378-symbol run killed at 90% paid for all
+2,378 again. `FRESH_HOURS = 12`: a forced refetch skips what was pulled inside
+the window. A docstring guarantee that holds for one of two stages is not a
+guarantee.
+
+`_selftest_fresh` asserts both directions with a monkeypatched `fetch`, because
+a network-skip nothing tests is the same unverified claim as the cache-read
+counter that started all this. **It failed on its first run by reaching the live
+NSE endpoint**: run as `__main__` this file is a different module object from
+the imported one, so `import fundamentals as _self; _self.fetch = spy` patched a
+copy nothing called. Patch `globals()`. A test that installs a spy and does not
+check the spy was used can be a live network call wearing a fixture's clothes.
+
+**One number worth recording: 2,378 of 2,420 symbols were behind their own
+cadence.** The targeted selector was built to avoid refetching everything, and
+at 98% it selected essentially everything — so on this first run it bought
+nothing over the blunt option. That is not a fault in the selector; it is the
+measure of how stale the cache had become while `ok=2121` reported success. It
+should select a small minority on every subsequent run, and if it does not,
+something else is wrong.

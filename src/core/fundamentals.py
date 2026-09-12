@@ -131,11 +131,23 @@ def behind_symbols(symbols, day=None, log=None):
     return out
 
 
+# A forced refetch skips anything pulled this recently. `backfill` promises to
+# be resumable -- "a killed run costs only what it had not finished" -- and that
+# promise was true of the XBRL stage and false of the index stage, where force
+# meant refetch unconditionally. A 2,378-symbol run killed at 90% therefore paid
+# for all 2,378 again.
+FRESH_HOURS = 12
+
+
 def fetch_index(symbol, force=False):
     """Metadata for every quarterly filing. Raw bytes stored, parsed later."""
+    import time
     out = RAW / "index" / f"{symbol}.json"
     if out.exists() and not force:
         return json.loads(out.read_text())
+    if out.exists() and force and (
+            time.time() - out.stat().st_mtime < FRESH_HOURS * 3600):
+        return json.loads(out.read_text())      # refetched within the window
     status, body = fetch(INDEX_URL.format(sym=symbol), timeout=30)
     if status != 200 or not body:
         return []
@@ -416,6 +428,7 @@ def _selftest():
     # test, it is a comment.
     _selftest_features()
     _selftest_refresh()
+    _selftest_fresh()
     _selftest_modes()
     print("fundamentals selftest ok")
 
@@ -469,10 +482,19 @@ def backfill(symbols, start=None, end=None, workers=6, log=print,
            f"pass force_index to discover new filings)"
            if tally["idx_cached"] else ""))
 
+    # NOT force=force_index. Stage 1 has already written every fresh index to
+    # disk, so forcing here refetches all of them a SECOND time -- serially,
+    # outside the thread pool, and with nothing printed between stage 1's
+    # "done" line and stage 2's header. A 2,378-symbol run sat silent in this
+    # loop for roughly six times as long as the stage that had a progress bar.
+    # Reading the cache here is not a shortcut; it is reading what stage 1 just
+    # fetched.
     jobs = []
-    for sym in symbols:
+    for i, sym in enumerate(symbols, 1):
+        if i % 500 == 0:
+            log(f"  reading index {i}/{len(symbols)} (cached -- no requests)")
         try:
-            for f in build_asof(sym, force=force_index):
+            for f in build_asof(sym):
                 if start and f["visible_from"] < start:
                     continue
                 if end and f["visible_from"] > end:
@@ -780,6 +802,46 @@ def _selftest_modes():
                              body, re.M))
     assert found == MODES, f"MODES {MODES} != dispatch chain {found}"
     print("fundamentals.MODES selftest ok")
+
+
+def _selftest_fresh():
+    """A forced refetch must skip a file pulled inside the window, and must
+    NOT skip one older than it. Asserted with a monkeypatched `fetch`, so a
+    skip that silently stopped working would show as a network call here."""
+    import os, tempfile, time
+    # globals(), NOT `import fundamentals`. Run as __main__ this file is a
+    # DIFFERENT module object from the imported one, so patching the import
+    # patches a copy nothing here calls -- the first version of this test sailed
+    # past its own spy and hit the live NSE endpoint.
+    g = globals()
+    real_raw, real_fetch = g["RAW"], g["fetch"]
+    calls = []
+
+    def _spy(url, timeout=30):
+        calls.append(url)
+        return 200, b'[{"toDate":"30-Jun-2026","broadCastDate":"14-Aug-2026"}]'
+
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            g["RAW"] = Path(td)
+            g["fetch"] = _spy
+            (g["RAW"] / "index").mkdir(parents=True)
+            p = g["RAW"] / "index" / "X.json"
+            p.write_text("[]")
+
+            fetch_index("X", force=True)
+            assert calls == [], "force refetched a file written seconds ago"
+            # older than the window: the force must now reach the network
+            old = time.time() - (FRESH_HOURS + 1) * 3600
+            os.utime(p, (old, old))
+            fetch_index("X", force=True)
+            assert len(calls) == 1, f"force did not refetch a stale file: {calls}"
+            # and force=False never calls out, whatever the age
+            fetch_index("X")
+            assert len(calls) == 1, "unforced read hit the network"
+    finally:
+        g["RAW"], g["fetch"] = real_raw, real_fetch
+    print("fundamentals.fetch_index freshness selftest ok")
 
 
 def _selftest_refresh():
