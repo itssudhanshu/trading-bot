@@ -27,12 +27,20 @@ _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
 import paths  # noqa: F401  -- puts the source dirs on sys.path
 import sys
 from collections import Counter
+from datetime import date
 
 import fundamentals as fu
 
 
-def missing(symbols, log=None):
+def missing(symbols, log=None, start=None):
     """-> [(sym, quarter_end, url)] for every in-index filing with no file.
+
+    `start` filters on visible_from exactly as `backfill` does. Without it this
+    counts the whole of history and cannot be reconciled with the run it is
+    diagnosing: the first version reported 51,250 holes against a job list of
+    41,919, because backfill windows from 2019-01-01 and this did not. A
+    diagnostic whose number does not tie out to the thing it diagnoses is
+    another number to explain, not an explanation.
 
     Reads the cached index only. No network: the point is to characterise the
     hole before deciding what to do about it.
@@ -48,8 +56,29 @@ def missing(symbols, log=None):
         for f in rows:
             if not f.get("xbrl"):
                 continue
+            if start and f["visible_from"] < start:
+                continue
             if not fu._xbrl_path(sym, f["quarter_end"]).exists():
                 out.append((sym, f["quarter_end"], f["xbrl"]))
+    return out
+
+
+def newest_listed(symbols):
+    """-> Counter of each symbol's NEWEST listed quarter_end.
+
+    The question the refresh actually raised: does NSE's index list 2025-2026
+    quarters at all? If most symbols' newest listed filing is 2024-12-31 then
+    nothing downstream can advance and no amount of refetching will help --
+    the data is not being served, rather than being dropped by this repo.
+    """
+    out = Counter()
+    for sym in symbols:
+        try:
+            rows = fu.build_asof(sym)
+        except Exception:
+            continue
+        if rows:
+            out[max(r["quarter_end"] for r in rows)] += 1
     return out
 
 
@@ -74,12 +103,31 @@ def probe(holes, n=40, fetcher=None):
     return rows
 
 
-def report(symbols=None, n=40):
+def report(symbols=None, n=40, start=date(2019, 1, 1)):
     import features
     if symbols is None:
         symbols = sorted(features.load_corpus())
-    print(f"scanning {len(symbols)} symbols for filings listed but not stored")
-    holes = missing(symbols, log=print)
+
+    # ENDPOINT 0, which the first run made the obvious one to ask: how far do
+    # the indexes themselves reach? Every hole below is a filing NSE listed. If
+    # NSE lists nothing after 2024 then there is no hole to fill and the whole
+    # staleness question is about what is being served, not what is stored.
+    print(f"scanning {len(symbols)} symbols")
+    nl = newest_listed(symbols)
+    tot = sum(nl.values())
+    print(f"\n  newest quarter each symbol's index LISTS ({tot} with any):")
+    for q, c in sorted(nl.items(), reverse=True)[:10]:
+        print(f"    {q}  {c:5d} symbol(s)")
+    if tot:
+        for label, cut in (("2026-03-31", date(2026, 3, 31)),
+                           ("2025-06-30", date(2025, 6, 30))):
+            c = sum(v for q, v in nl.items() if q >= cut)
+            print(f"    {c}/{tot} ({c/tot:.0%}) list a quarter ending "
+                  f"{label} or later")
+
+    print(f"\n  filings listed but not stored (visible_from >= {start}, "
+          f"the same window backfill uses):")
+    holes = missing(symbols, log=print, start=start)
     print(f"\n  {len(holes)} listed filings have no XBRL file on disk")
     if not holes:
         print("  nothing missing; the hole is elsewhere")
@@ -88,7 +136,13 @@ def report(symbols=None, n=40):
     print("\n  by quarter_end (top 12) -- ENDPOINT 1:")
     for q, c in sorted(qc.items(), reverse=True)[:12]:
         print(f"    {q}  {c:5d}")
-    recent = sum(c for q, c in qc.items() if q >= "2025-06-30")
+    # date, NOT a string. build_asof returns datetime.date for quarter_end and
+    # visible_from; comparing one to an ISO string raises, and in the places
+    # where Python does not raise it silently answers the wrong question.
+    cut = date(2025, 6, 30)
+    assert all(isinstance(q, date) for q in qc), \
+        f"quarter_end is not a date: {[type(q) for q in list(qc)[:3]]}"
+    recent = sum(c for q, c in qc.items() if q >= cut)
     print(f"\n  {recent}/{len(holes)} ({recent/len(holes):.0%}) are quarters "
           f"ending 2025-06-30 or later")
     print("  -> concentrated: the failures ARE the new data"
@@ -120,10 +174,17 @@ def report(symbols=None, n=40):
 def _selftest():
     # by_quarter must count, not assert. A concentration claim is the whole
     # endpoint, so it is computed from the rows rather than eyeballed.
-    holes = [("A", "2026-06-30", "u1"), ("B", "2026-06-30", "u2"),
-             ("C", "2021-03-31", "u3")]
+    # date objects, NOT ISO strings. build_asof returns datetime.date, and the
+    # first version of this fixture used strings -- so the selftest passed
+    # while the real run died on `q >= "2025-06-30"`. A fixture that gets the
+    # TYPE wrong tests nothing the caller will ever hit; the same mistake put
+    # ISO strings into _fake_series and hid a whole dead channel.
+    q1, q2 = date(2026, 6, 30), date(2021, 3, 31)
+    holes = [("A", q1, "u1"), ("B", q1, "u2"), ("C", q2, "u3")]
     qc = by_quarter(holes)
-    assert qc["2026-06-30"] == 2 and qc["2021-03-31"] == 1, qc
+    assert qc[q1] == 2 and qc[q2] == 1, qc
+    assert all(isinstance(q, date) for q in qc), "fixture drifted back to str"
+    assert sum(c for q, c in qc.items() if q >= date(2025, 6, 30)) == 2
 
     # probe must classify by what came BACK, never by the status alone: NSE
     # serves HTML error pages with HTTP 200, which is the trap bhavcopy_date

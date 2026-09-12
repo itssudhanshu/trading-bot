@@ -5073,3 +5073,29 @@ number today, and they have completely different fixes.
 Its selftest asserts the trap this repo has already been bitten by once: NSE
 serves error pages with HTTP 200, so a fetch is classified by what came back,
 never by the status code.
+
+**Addendum 4 — the probe crashed, and the shape of what it printed first was
+worth more than what it was trying to measure.** Two defects, both mine:
+`quarter_end` is a `datetime.date` and I compared it to an ISO string, and
+`missing()` scanned all of history where `backfill` windows from 2019-01-01, so
+it reported 51,250 holes against a job list of 41,919. **A diagnostic whose
+number cannot be reconciled with the run it diagnoses is one more number to
+explain, not an explanation.**
+
+The type bug is the third time a fixture has lied about a type in this project
+(`_fake_series` held ISO strings where the corpus holds `date`, and hid a dead
+channel; the dossier's `--day` did the same). The selftest PASSED while the real
+run died, because the fixture built its rows from strings. The rule that keeps
+falling over: a fixture that gets the type wrong tests nothing the caller will
+ever reach. It now asserts `isinstance(q, date)` so it cannot drift back.
+
+But the partial output answered a better question than the one I asked. Sorted
+newest-first, the most recent quarter with ANY missing filing was 2024-12-31,
+with 8 — and the counts in the top twelve are 1 to 78 against a total of
+51,250. So the holes are overwhelmingly OLD, and nothing is missing from 2025 or
+2026 because **nothing from 2025 or 2026 appears to be listed at all**. That
+reframes the whole thing: the question is not why downloads fail, it is how far
+the indexes reach. `newest_listed()` reports each symbol's newest listed
+quarter, which settles whether NSE is serving recent filings at all — if it is
+not, no amount of refetching can help and `expected_next_filing` is marking
+2,378 symbols behind against filings that do not exist to fetch.
