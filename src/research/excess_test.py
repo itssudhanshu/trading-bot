@@ -100,6 +100,27 @@ def tercile_spread(rows, key, value_key):
     return {"spread": hi - lo, "n": len(vals), "k": k}
 
 
+def level_se(rows, key, value_key, di_of):
+    """-> the tercile spread WITH its own error bar, iid and cluster-robust.
+
+    Added after the first run, which printed four spreads and an error bar only
+    on the raw-minus-excess SHIFT. The pre-registered endpoints did not need the
+    levels, but this project does not quote a return without its trial count and
+    its error bar, and `near_high +3.73%` is exactly the figure that gets
+    repeated once it exists. Descriptive: it decides nothing.
+    """
+    vals = [r for r in rows if r.get(key) is not None
+            and r.get(value_key) is not None]
+    if len(vals) < MIN_PER_FEATURE or len({r[key] for r in vals}) < 3:
+        return None
+    vals.sort(key=lambda r: r[key])
+    k = len(vals) // 3
+    obs = [(1, r) for r in vals[-k:]] + [(0, r) for r in vals[:k]]
+    return cluster_se.diff_means([r[value_key] for _, r in obs],
+                                 [g for g, _ in obs],
+                                 [di_of(r) for _, r in obs])
+
+
 def paired_shift(rows, key, di_of):
     """-> the raw-minus-excess difference in tercile spread, with both SEs.
 
@@ -177,8 +198,9 @@ def run(n_dates=None):
     mean_b = statistics.fmean(r["bench"] for r in rows)
     print(f"mean benchmark over the held windows: {mean_b:+.2f}%\n")
 
-    print(f"  {'feature':<12}{'raw':>9}{'excess':>9}{'shift':>9}"
-          f"{'se(iid)':>9}{'se(clu)':>9}{'t':>7}{'n':>6}  reading")
+    print(f"  {'feature':<12}{'raw':>9}{'+/-':>8}{'t':>6}"
+          f"{'excess':>9}{'+/-':>8}{'t':>6}"
+          f"{'shift':>9}{'t':>7}{'n':>6}  reading")
     out = {}
     for f in SCORED:
         raw = tercile_spread(rows, f, "ret")
@@ -188,18 +210,25 @@ def run(n_dates=None):
                   f"{'--':>7}{0:>6}  too few observations")
             out[f] = None
             continue
-        sh = paired_shift(rows, f, lambda r: blocks[r["_di"]])
+        blk = lambda r: blocks[r["_di"]]
+        lr = level_se(rows, f, "ret", blk)
+        le = level_se(rows, f, "excess", blk)
+        sh = paired_shift(rows, f, blk)
         t = sh["t_cluster"] if sh else 0.0
         note = ("the market explains part of it" if abs(t) >= FAMILY_BAR
                 else "shift inside the noise")
         if (raw["spread"] > 0) != (exc["spread"] > 0):
             note = "SIGN CHANGES -- endpoint 1 met"
-        print(f"  {f:<12}{raw['spread']:>+8.2f}%{exc['spread']:>+8.2f}%"
+        print(f"  {f:<12}{raw['spread']:>+8.2f}%"
+              f"{(lr['se_cluster'] if lr else 0):>7.2f}%"
+              f"{(lr['t_cluster'] if lr else 0):>+6.2f}"
+              f"{exc['spread']:>+8.2f}%"
+              f"{(le['se_cluster'] if le else 0):>7.2f}%"
+              f"{(le['t_cluster'] if le else 0):>+6.2f}"
               f"{raw['spread'] - exc['spread']:>+8.2f}%"
-              f"{(sh['se_welch'] if sh else 0):>8.2f}%"
-              f"{(sh['se_cluster'] if sh else 0):>8.2f}%"
               f"{t:>+7.2f}{raw['n']:>6}  {note}")
-        out[f] = {"raw": raw["spread"], "excess": exc["spread"], "shift": sh}
+        out[f] = {"raw": raw["spread"], "excess": exc["spread"], "shift": sh,
+                  "raw_se": lr, "excess_se": le}
 
     ok = {f: v for f, v in out.items() if v}
     if ok:
@@ -217,9 +246,24 @@ def run(n_dates=None):
                if v["shift"] and abs(v["shift"]["t_cluster"]) >= FAMILY_BAR]
         print(f"  family bar |t| >= {FAMILY_BAR} over {len(ok)} features: "
               f"{', '.join(big) if big else 'nothing clears it'}")
-        print(f"\n  {len(blocks and set(blocks.values()))} non-overlapping blocks. "
-              f"A shift that does not clear the bar is not a reason to move a "
-              f"weight, and this file moves none regardless.")
+        print(f"\n  {len(set(blocks.values()))} non-overlapping blocks "
+              f"(trusted above {cluster_se.MIN_CLUSTERS_TRUSTED}). A shift that "
+              f"does not clear the bar is not a reason to move a weight, and "
+              f"this file moves none regardless.")
+        # The levels are NOT a verdict on the features, and the reason is
+        # already a lesson here (L48). Every one of these trades was SELECTED
+        # using these features, so a spread among them says "among stocks
+        # already picked for high delivery, the even-higher ones did X" -- a
+        # statement about the selected sample, not about the universe.
+        # Inverting a weight on exactly this evidence cost 26 points of CAGR.
+        # learning.unconditioned_test samples the universe at random and is the
+        # only honest route to a feature's own value.
+        print("\n  CONDITIONING, and it applies to every level above: these are\n"
+              "  trades the score already chose USING these features, so a\n"
+              "  spread here describes the selected sample and not the\n"
+              "  universe. L48 records what inverting a weight on this kind of\n"
+              "  evidence cost: 26 CAGR points. For a feature's own value use\n"
+              "  learning.unconditioned_test, which samples at random.")
     return out
 
 
@@ -274,6 +318,11 @@ def _selftest():
     # diff_means names the difference "spread", not "diff" -- checked against
     # cluster_se rather than assumed, after this line was written from memory
     # and raised KeyError on its first run.
+    ls = level_se(rows, "x", "ret", lambda r: 0)
+    assert ls is not None and abs(ls["spread"] - 60.0) < 1e-9, ls
+    assert ls["se_cluster"] >= 0, ls
+    assert level_se(rows[:10], "x", "ret", lambda r: 0) is None
+
     sh = paired_shift(flat, "x", lambda r: 0)
     assert sh is not None and abs(sh["spread"]) < 1e-9, sh
     assert {"se_welch", "se_cluster", "t_cluster"} <= set(sh), sorted(sh)

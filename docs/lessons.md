@@ -5389,3 +5389,47 @@ asserts `return_pct` is present and `ret` is not. The general rule: when a
 function's contract is the shape of what it returns, the test has to run it.
 Every cheaper check I reached for first was cheaper because it checked
 something else.
+
+## L109 — Taking the market out does not disturb the loop's feature ranking
+
+`excess_test`, 264 of 268 closed trades carrying both entry features and a
+benchmark, 81 non-overlapping blocks (above the 40 `cluster_se` needs before it
+trusts a clustered error bar — unlike `fund_test`'s 34). Mean benchmark over the
+held windows **+1.61%**.
+
+| feature | raw spread | excess spread | shift | t (shift) |
+|---|---|---|---|---|
+| rs | -2.09% | -2.89% | +0.80% | +0.76 |
+| deliv | -0.32% | -1.75% | +1.43% | +1.73 |
+| liq | +0.02% | +0.67% | -0.65% | -0.79 |
+| near_high | +3.73% | +3.35% | +0.37% | +0.42 |
+
+Both pre-registered endpoints **not met**: no feature changes sign, and the
+ordering is identical either way — `near_high > liq > deliv > rs` on both. The
+family bar of |t| >= 2.6 takes nothing.
+
+**So the hypothesis is refuted, and that is the useful outcome.** The worry was
+that `analyse()` pooling raw returns across 2019-2026 would credit features with
+the market's move. The market contributed +1.61% on average, the shifts run
++1.43% to -0.65%, and none of them reorders anything. The loop's ranking is not
+an artefact of the benchmark being absent. Writing the endpoints down first is
+what makes this a result rather than four numbers to interpret afterwards.
+
+**What this does NOT say, and the table invites the error.** `deliv` shows a
+NEGATIVE spread while carrying the raised 1.5 weight, and `rs` is more negative
+still. Neither is evidence against those weights, for the reason
+`learning.unconditioned_test` already documents as L48: every one of these 264
+trades was SELECTED using these features, so a spread among them means "among
+stocks the score already picked for high delivery, the even-higher ones did
+worse". That is a statement about the selected sample. **Inverting a weight on
+exactly this evidence cost 26 points of CAGR.** The only honest route to a
+feature's own value samples the universe at random, which is what
+`unconditioned_test` is for. The runner now prints this warning under the table,
+because the caveat has to travel with the number.
+
+**The first run printed four spreads with an error bar only on the shift.** The
+pre-registered endpoints did not need the levels, so the omission passed review
+— and `near_high +3.73%` is precisely the figure that gets repeated once it
+exists in a table. Levels now carry their own cluster-robust error bar and t.
+A number this project publishes without a trial count and an error bar is a
+number it will quote back at itself later.
