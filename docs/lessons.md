@@ -5470,3 +5470,64 @@ backtest's closed trades. `propose()` runs on `trade_features.jsonl`, ~2,756
 rows, where the standard error is roughly a third of this. The loop is better
 powered than the test auditing it, so nothing here says the loop is
 underpowered — only that this instrument is, for the levels.
+
+## L110 — No verdict ever meets its outcome (part 4 of the TradingAgents comparison)
+
+The risk-and-portfolio layer, compared. Their side: three personas (aggressive,
+conservative, neutral) argue the trader's proposal under a round-robin router,
+a Portfolio Manager writes a typed decision, and `memory.py` stores the run as
+`pending` until a later run rewrites it with realised return, alpha, holding
+days and a `resolved:` date, then appends a reflection.
+`get_past_context(as_of=…)` makes recall point-in-time.
+
+Ours: caution is arithmetic, not argument. The 200-DMA gate, the breakout
+trigger and cash-as-a-position leave occupancy at 3.09 of 5 — the book runs
+~46% invested against a 75% cap. Open risk at a full book is 5 x Rs 45k x 10%
+= 7.5%. And the portfolio decision is not made at all: four books run forward
+with one variable different each.
+
+**The one real gap: `review.py` appends a verdict and nothing ever resolves it.**
+`resolve`, `realised` and `outcome` each appear zero times in the file.
+`record()` writes a JSON line per accepted verdict and the ledger is never read
+back. A reviewer that never learns whether it was right is a formatter with a
+ledger.
+
+Two things keep this honest rather than inflated:
+
+- **The verdicts are firewalled out of the order path on purpose** — `review.py`
+  asserts by regex that no selection or execution module imports it — so a
+  verdict has no P&L of its own. But the dossier's subject is a stock on a date
+  and the forward return from that date is measurable. **The absence of a trade
+  is not the absence of an outcome.**
+- **`reviews.jsonl` is append-only**, so their approach of rewriting the pending
+  tag is unavailable. A resolution ROW referencing the verdict is itself an
+  append. The constraint shapes the design; it does not block it.
+
+Worth copying from their implementation rather than the idea of it:
+`_fetch_returns` leaves an entry pending unless the full holding window is
+present in BOTH series, so a resolution is never computed on a short window; the
+known-by date is the last bar's date, not today's; and rotation prunes the
+oldest RESOLVED entry, never a pending one.
+
+**Where this book is ahead, and it is structural.** `forward_test.BOUNDS` fixes
+each book's expected rate, per-trade edge and standard error BEFORE the evidence
+exists — including `etf_trend`, which is running forward having **failed** its
+promotion bar (+1.04% +/- 1.08%, t = +1.19, L70) and says so. TradingAgents
+records outcomes faithfully and fixes no threshold, so no result there can fail
+one. `overview.py` refuses a YES on backtests alone, and
+`analysis.trades_needed` turns that into a number: 5.7 years at the backtested
+rate.
+
+**Two counts had drifted, both in prose, both in a registry of record.**
+`positions.py` opened "TWO BUCKETS RUN FORWARD" while `BUCKETS` held four, and
+`forward_test.py` said "Two buckets now run side by side" while `BOUNDS`
+registered all four. The code was right in both files and only the sentence was
+stale — the more dangerous direction, because a reader checking what the book
+does reads the heading, not the dict beneath it. Corrected.
+
+**What four parts of comparison actually produced**, since the method is the
+transferable part: more was found by reading what the code REACHES than by
+comparing feature lists. The dead `engine.gate()`, the unreachable selftests in
+`fundamentals.py`, the two-schema learning ledger, a wrong dict key reported as
+missing data, a risk framework contradicting the book it appeared to govern.
+Every one was invisible to a feature comparison and obvious to a census.

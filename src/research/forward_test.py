@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """What the forward run must show, written down before it has anything to show.
 
-Two buckets now run side by side inside breakout -- `main` (rank inside each band,
-fill a 3/2 quota) and `pooled` (rank everything, take the best five). This file
+FOUR buckets now run forward -- `main` (rank inside each band, fill a 3/2 quota),
+`pooled` (rank everything, take the best five), `etf_trend` (liquid funds on an
+absolute trend gate) and `capped` (main plus a one-name-per-sector cap). All four
+carry pre-registered bounds in BOUNDS below; this line said "two" long after the
+other two were registered, which is the kind of drift that makes a reader trust
+the prose over the code. This file
 fixes, in advance, what would count as the backtest being RIGHT and what would
 count as it being WRONG, so that in three months the numbers are read against a
 standard rather than argued about.

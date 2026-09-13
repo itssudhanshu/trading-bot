@@ -92,9 +92,12 @@ POOLED = "pooled"
 ETF = "etf_trend"
 CAPPED = "capped"
 
-# TWO BUCKETS RUN FORWARD, side by side, on the same signals and the same
-# capital. They differ in ONE thing -- how the five seats are allotted -- so a
-# divergence between them has one cause and not two:
+# FOUR BUCKETS RUN FORWARD (this header said TWO until 2026-09-13, while the
+# registry below held four -- the count is load-bearing for anyone reading this
+# file to find out what the book is doing). The first two share signals and
+# capital and differ in ONE thing -- how the five seats are allotted -- so a
+# divergence between them has one cause and not two. The third and fourth are
+# described where they are registered, further down.
 #
 #   main    ranks inside each size band and fills a 3/2 quota (the live rule)
 #   pooled  ranks every eligible name together and takes the best five, so the
