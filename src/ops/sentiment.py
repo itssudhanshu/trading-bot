@@ -509,11 +509,18 @@ def _selftest():
     assert not _mentions("cement stocks rally", "20MICRONS", m20)
 
     # --- news matching is word-boundary, and reads captured_at not pubDate ---
-    global NEWS
-    real = NEWS
+    global NEWS, company_name
+    real, real_name = NEWS, company_name
     try:
         with tempfile.TemporaryDirectory() as td:
             NEWS = _pl.Path(td)
+            # company_name reads equity_master.csv out of data/raw/, which a
+            # fresh checkout does not have -- data/raw/ is gitignored. Without
+            # it the symbol yields the single term "20microns", which cannot
+            # match the spaced headline "20 Microns wins order", and the block
+            # failed with a bare `AssertionError: []`. Pinned here so this
+            # tests MATCHING rather than the operator's snapshot.
+            company_name = lambda s: "20 Microns Limited" if s == "20MICRONS" else ""
             day = date(2026, 8, 20)
             rows = [
                 {"title": "20 Microns wins order", "source": "et",
@@ -526,6 +533,16 @@ def _selftest():
             ]
             (NEWS / "2026-08-20.jsonl").write_text(
                 "".join(json.dumps(r) + "\n" for r in rows))
+            # The POSITIVE case first, and that ordering is the point: every
+            # negative assertion below is of the form "nothing unwanted came
+            # back", which an always-empty matcher satisfies perfectly. Two of
+            # them passed vacuously for exactly that reason while the matcher
+            # was returning nothing at all.
+            assert [r["title"] for r in news_evidence("20MICRONS", day)], \
+                ("news_evidence returned nothing for the fixture's own item, "
+                 "so every 'must not appear' assertion below would pass "
+                 "without testing anything")
+
             # A symbol-tagged item belongs to its symbol and to no other, even
             # when the name would match. Attribution beats guessing.
             tagged = dict(rows[0], title="Tagged elsewhere", link="d",
@@ -554,7 +571,7 @@ def _selftest():
             assert len(got) == 1, got
             assert _archive_start() == "2026-08-20"
     finally:
-        NEWS = real
+        NEWS, company_name = real, real_name
 
     # --- the scorer ---------------------------------------------------------
     # Bands, at their edges. An off-by-one here mislabels every borderline

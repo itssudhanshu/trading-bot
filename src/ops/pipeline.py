@@ -1276,11 +1276,45 @@ def cmd_vocab(files, check_legacy=False):
 _FROZEN_SLOPE = -1.08
 
 
+def _seed_closed_equity(pos_mod, n=3):
+    """Put `n` closed equity positions into the REDIRECTED order book.
+
+    The fixture then states records_received and independent_paths from one
+    known quantity instead of reading one from the live book and hardcoding
+    the other. Written through positions.db() so the real schema and the real
+    append-only triggers apply -- a fixture that invents its own table would
+    not exercise the query _closed_equity_count actually runs.
+    """
+    c = pos_mod.db()
+    for i in range(n):
+        c.execute(
+            "INSERT INTO pos(symbol, cluster, status, queued_on, entry_day,"
+            " entry_px, qty, stop, target, exit_day, exit_px, exit_reason,"
+            " net, bucket, origin) VALUES(?,?,'closed',?,?,?,?,?,?,?,?,?,?,?,?)",
+            (f"FIXT{i}", "micro", "2026-09-01", "2026-09-02", 100.0, 10,
+             90.0, 120.0, "2026-09-10", 95.0, "stop", -50.0, "main", "live"))
+    c.commit()
+    return n
+
+
 def _selftest():
     """Every assertion is a rule the pipeline exists to enforce."""
     global STATE, CURRENT, RUNS, RESEARCH_DIR
+    import positions as _pos
     td = Path(tempfile.gettempdir())
     saved = (STATE, CURRENT, RUNS, RESEARCH_DIR)
+    # positions.DB is redirected too, and that is not tidiness. This selftest
+    # read the LIVE order book through _closed_equity_count(), so its fixture
+    # was only self-consistent on a machine whose book happened to hold a
+    # closed equity trade. On a fresh clone -- where data/positions.db is
+    # gitignored and created empty -- records_received came back 0 against a
+    # hardcoded independent_paths of 1, and the module FAILED the sweep every
+    # time. A check that passes because of the operator's data is not a check
+    # on the code, the same way the PYTHONPATH sweep was not.
+    saved_db = _pos.DB
+    _pos.DB = td / "pipeline_selftest_pos.db"
+    _pos.DB.unlink(missing_ok=True)
+    _seed_closed_equity(_pos, n=3)
     RESEARCH_DIR = td
     STATE = td / "pipeline_selftest_state.json"
     CURRENT = td / "pipeline_selftest_current.json"
@@ -1733,23 +1767,45 @@ def _selftest():
         # exist, and the failure lands where nobody reads it -- exactly the
         # failure agent.py._selftest was built to catch when the scripts moved.
         adir = paths.ROOT / ".claude" / "agents"
-        missing = [s["agent"] for s in STAGES.values()
-                   if not (adir / f"{s['agent']}.md").exists()]
-        assert not missing, ("the pipeline is not runnable -- no definition for: "
-                             + ", ".join(missing))
+        sdir = paths.ROOT / "scripts" / "claude" / "agents"
         known = {s["agent"] for s in STAGES.values()}
-        orphan = [p.name for p in adir.glob("agent-*.md") if p.stem not in known]
-        assert not orphan, f"agent files matching no stage: {orphan}"
+
+        # The TRACKED source is checked unconditionally, because it is the copy
+        # a fresh checkout gets and the only one review ever sees.
+        missing_src = [a for a in known if not (sdir / f"{a}.md").exists()]
+        assert not missing_src, (
+            "no staged definition in scripts/claude/agents/ for: "
+            + ", ".join(sorted(missing_src)) + " -- it would not survive a "
+            "fresh checkout")
+        orphan_src = [p.name for p in sdir.glob("agent-*.md")
+                      if p.stem not in known]
+        assert not orphan_src, f"staged agent files matching no stage: {orphan_src}"
+
+        # The INSTALLED copy is checked only when it exists. `.claude/` is
+        # gitignored and created by a cp, so on a fresh clone it is absent and
+        # nothing is dispatching a subagent at all -- asserting against it there
+        # failed the whole module with "the pipeline is not runnable", which was
+        # false: the pipeline was fine and merely uninstalled. That is the third
+        # check in this repo to fail on the operator's ENVIRONMENT rather than on
+        # the code (PYTHONPATH in the sweep, the live order book above).
+        if not adir.exists():
+            print("  (.claude/agents not installed -- staged source checked "
+                  "instead; `cp -R scripts/claude/agents .claude/` to enable "
+                  "the drift check)")
+        else:
+            missing = [a for a in known if not (adir / f"{a}.md").exists()]
+            assert not missing, (
+                "installed .claude/agents/ is missing a definition the pipeline "
+                "dispatches: " + ", ".join(sorted(missing)))
+            orphan = [p.name for p in adir.glob("agent-*.md")
+                      if p.stem not in known]
+            assert not orphan, f"agent files matching no stage: {orphan}"
         # .claude/ is gitignored on purpose; scripts/claude/ is the reviewable
         # source and one cp installs it. So the two must not drift -- this repo
         # has already held a settings.json contradicting the one in force, which
         # is the same bug with a different filename.
-        sdir = paths.ROOT / "scripts" / "claude" / "agents"
-        for s in STAGES.values():
+        for s in STAGES.values() if adir.exists() else ():
             src, inst = sdir / f"{s['agent']}.md", adir / f"{s['agent']}.md"
-            assert src.exists(), (
-                f"{s['agent']} is installed but not staged in scripts/claude/"
-                "agents/ -- it would not survive a fresh checkout")
             assert src.read_text() == inst.read_text(), (
                 f"{s['agent']} differs between scripts/claude/agents/ and "
                 ".claude/agents/: the installed copy has drifted from the "
@@ -1805,6 +1861,8 @@ def _selftest():
     finally:
         for f in (STATE, CURRENT, RUNS, research_path("R-001")):
             f.unlink(missing_ok=True)
+        _pos.DB.unlink(missing_ok=True)
+        _pos.DB = saved_db
         STATE, CURRENT, RUNS, RESEARCH_DIR = saved
 
 

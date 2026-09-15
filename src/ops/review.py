@@ -92,6 +92,15 @@ STAGES = (("bull", 1), ("bear", 1), ("bull", 2), ("bear", 2),
 ROLES = ("bull", "bear")
 QUOTE_RUN = 40      # chars of the opponent verbatim that prove round 1 was not blind
 GRADES = ("proceed", "proceed-with-note", "stand-aside")
+
+# Which subagent definition runs each stage. Named here, in the module that
+# owns STAGES, so the mapping and the stage list cannot drift apart -- and so
+# _selftest can assert the files exist. pipeline.py has had this check for its
+# eight agents since it was written; the four reviewers had none, and a rename
+# would have left a session dispatching a subagent that is not there, with the
+# failure landing in a log nobody reads.
+AGENT_FOR = {"bull": "reviewer-1-bull", "bear": "reviewer-2-bear",
+             "risk": "reviewer-3-risk", "verdict": "reviewer-4-verdict"}
 REVIEW = "REVIEW"                            # what a broken emission becomes
 MAX_INDEPENDENT = 4        # the dossier's five channels less the prior one
 BLIND_CONFIDENCE_CAP = 0.5
@@ -504,6 +513,36 @@ NOTE: thin coverage, so the confidence is deliberately low.
 """
 
 
+def _selftest_agents():
+    """Every stage must have a subagent definition on disk.
+
+    The STAGED copy under scripts/claude/agents/ is checked unconditionally --
+    it is what a fresh checkout gets and the only copy review ever sees. The
+    INSTALLED copy under .claude/agents/ is checked only when it exists, since
+    `.claude/` is gitignored and created by a cp: asserting against it on a
+    clean clone fails the module for the operator's environment rather than for
+    the code, which is how pipeline.py came to fail every sweep.
+    """
+    roles = {r for r, _ in STAGES}
+    assert roles == set(AGENT_FOR), \
+        f"STAGES roles {sorted(roles)} != AGENT_FOR {sorted(AGENT_FOR)}"
+    sdir = paths.ROOT / "scripts" / "claude" / "agents"
+    missing = [a for a in AGENT_FOR.values() if not (sdir / f"{a}.md").exists()]
+    assert not missing, ("no staged definition in scripts/claude/agents/ for: "
+                         + ", ".join(sorted(missing)))
+    adir = paths.ROOT / ".claude" / "agents"
+    if adir.exists():
+        for a in AGENT_FOR.values():
+            inst = adir / f"{a}.md"
+            assert inst.exists(), f"installed .claude/agents/{a}.md is missing"
+            assert inst.read_text() == (sdir / f"{a}.md").read_text(), (
+                f"{a} differs between scripts/claude/agents/ and .claude/"
+                "agents/: the installed copy has drifted from the reviewable "
+                "source")
+    print(f"review.agents selftest ok ({len(AGENT_FOR)} reviewer definitions"
+          + ("" if adir.exists() else "; .claude/ not installed") + ")")
+
+
 def _selftest():
     import types
 
@@ -742,6 +781,7 @@ def _selftest():
     assert not offenders, \
         f"the selection/execution path imports the reviewer verdict: {offenders}"
 
+    _selftest_agents()
     print("review selftest ok (accept path first; REVIEW never defaults; "
           "no order path imports it)")
 

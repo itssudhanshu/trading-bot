@@ -5531,3 +5531,78 @@ comparing feature lists. The dead `engine.gate()`, the unreachable selftests in
 `fundamentals.py`, the two-schema learning ledger, a wrong dict key reported as
 missing data, a risk framework contradicting the book it appeared to govern.
 Every one was invisible to a feature comparison and obvious to a census.
+
+## L111 — Three agent checks that could not pass on a clean checkout, and one that did not exist
+
+An agent health check, asked for directly. The sweep stood at 67 passed / 14
+failed and I had been calling all 14 environmental for several sessions. Three
+of them were not.
+
+**1. `pipeline.py` read the LIVE order book from its selftest.** Its fixture set
+`records_received: _closed_equity_count()` — correctly, to avoid drift — while
+hardcoding its companion `independent_paths: 1`. `data/positions.db` is
+gitignored, so on a fresh clone the book is created empty, the count is 0, and
+the invariant `independent_paths > records_received` rejects the fixture as
+self-contradictory. The module failed the sweep every run on any machine whose
+live book held no closed equity trade.
+
+CLAUDE.md already carries this rule for a different file: *"A module whose
+selftest touches the book must redirect `positions.DB`, not just STATE and
+LEDGER"* — written after `paper.py` wrote two fixture rows into the live book.
+Here it only READ the live book, which corrupts nothing and was therefore easy
+to miss, and it still made the test depend on the operator's data.
+`positions.DB` is now redirected to a temp book seeded with three known closed
+rows through `positions.db()`, so the real schema, the real triggers and the
+real query all apply.
+
+**2. Behind it, a second failure nobody had ever seen.** With the first fixed,
+the selftest reached an assertion that `.claude/agents/<stage>.md` exists for all
+eight agents — and `.claude/` is gitignored, being the INSTALLED copy that a `cp`
+creates from the tracked `scripts/claude/`. On a clean checkout it is absent, and
+the module died with *"the pipeline is not runnable"*, which is false: the
+pipeline was fine and merely uninstalled. Now the STAGED source is checked
+unconditionally (it is what a fresh checkout gets and the only copy review ever
+sees) and the installed copy only when it exists, with the drift check intact.
+**One failing check hid another for as long as both existed.**
+
+**3. `sentiment.py` depended on `equity_master.csv` to test its own matcher.**
+`news_evidence` calls `company_name(symbol)`, which reads the master out of the
+gitignored `data/raw/`. Without it the symbol yields the single term
+`20microns`, which cannot match the fixture's spaced headline "20 Microns wins
+order", and the block failed with a bare `AssertionError: []`. `company_name` is
+now pinned inside the block, so it tests MATCHING rather than the operator's
+snapshot.
+
+**And the part worth more than the fix: two assertions there were passing
+vacuously.** They are of the form *"nothing unwanted came back"* — an
+always-empty matcher satisfies them perfectly. The positive case now runs FIRST
+and asserts non-empty, so a dead matcher cannot present itself as a clean pass.
+This is the dossier's *uncovered is not negative* rule wearing different
+clothes.
+
+**4. Nothing asserted the four reviewer definitions exist.** `pipeline.py` has
+checked its eight agent files since it was written; `review.py` had no
+equivalent, so renaming `reviewer-3-risk.md` would have left a session
+dispatching a subagent that is not there, with the failure landing in a log
+nobody reads — the exact thing `agent.py._selftest` was built to catch when the
+scripts moved. `AGENT_FOR` now lives beside `STAGES` (so the mapping cannot
+drift from the stage list) and `_selftest_agents` asserts staged existence,
+installed existence and non-drift.
+
+Sweep now 69 passed / 12 failed. The remaining 12 really are environmental: 8
+need the gitignored price corpus, 2 need `bs4`, 2 need Python 3.12 for a PEP 701
+f-string.
+
+**A count that had been wrong in CLAUDE.md the whole time.** It said *"no build
+step, no linter and no dependencies. Stdlib Python only — every import in `src/`
+and `tests/` resolves to the standard library or to a module in this repo."*
+`screener_fundamentals.py` and `sector_backfill.py` both import `bs4` with the
+`lxml` parser. Function-local, so the modules load without it, which is how the
+claim survived. Corrected.
+
+**The through-line across all four.** Every one passed or failed on the
+operator's ENVIRONMENT rather than on the code: the live order book, an
+installed `.claude/`, a downloaded price master. That is the PYTHONPATH lesson
+again — *a check that passes because of the operator's shell is not a check* —
+and it generalises further than the shell. The test for it is whether the sweep
+passes on a fresh clone, and until today nobody had run one.

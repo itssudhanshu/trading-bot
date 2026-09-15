@@ -686,10 +686,17 @@ exists on disk, and it caught exactly that the day the files moved.
 
     python3 tests/run_selftests.py
 
-**There is no build step, no linter and no dependencies.** Stdlib Python only --
-every import in `src/` and `tests/` resolves to the standard library or to a
-module in this repo, and there is no `requirements.txt`, `pyproject.toml` or
-Makefile to look for. The selftest sweep IS the test suite, the lint and the
+**There is no build step and no linter, and two modules have a dependency.**
+`screener_fundamentals.py` and `sector_backfill.py` each do a function-local
+`from bs4 import BeautifulSoup` with the `lxml` parser, so the modules import
+fine without it and only those functions fail -- but their selftests call those
+functions, so on a machine without bs4 the sweep reports two failures that are
+about the environment and not the code. This paragraph claimed "no
+dependencies" until 2026-09-15, which was false for as long as those two files
+have existed. Everything else is stdlib only --
+every other import in `src/` and `tests/` resolves to the standard library or
+to a module in this repo, and there is no `requirements.txt`, `pyproject.toml`
+or Makefile to look for. The selftest sweep IS the test suite, the lint and the
 integration check.
 
 **~3m45s for 68 modules. While iterating, run the ONE module you changed** --
